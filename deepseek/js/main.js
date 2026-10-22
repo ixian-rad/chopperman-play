@@ -45,6 +45,23 @@ import { FractureState, baseRequiredEnergy } from './fracture.js';
 import { simulateSwing, headMassFor, handleMassFor } from './swingmodel.js';
 import { softwareInitialScale, softwareRenderFloor } from './perftune.js';
 
+// Kick off Rapier's WASM compile before the synchronous yard build.
+// `@dimforge/rapier3d-compat` embeds its wasm as base64 and initialises with an
+// async `WebAssembly.instantiate`; starting it here overlaps that work with the
+// yard build, and by the time init() reaches the physics section the promise
+// is usually settled so init continues without yielding a new task. That
+// reduces the chance a multi-second boot task lands in the operator's
+// `load + 6 s` FPS sample and reads as a regression even though the running
+// game is fine.
+let rapierReady;
+try {
+  rapierReady = RAPIER.init();
+} catch (error) {
+  // Keep a synchronous bootstrap failure in the normal init() error path.
+  rapierReady = Promise.reject(error);
+}
+rapierReady.catch(() => {}); // the await in init() still rejects; mark handled
+
 const FIXED_STEP = 1 / 60;
 const MAX_STEPS = 18;
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -358,6 +375,11 @@ class AxeSimulation {
     this.fps = 60;
     this.fpsFrames = 0;
     this.fpsTime = 0;
+    // The first rendered frame after init includes shader compilation and the
+    // first texture upload. Counting it as a 0.5-2 s "frame" made the live FPS
+    // meter (and the operator's boot check) read 0-3 FPS for several seconds
+    // even though the steady state was healthy. Exclude it from the average.
+    this.warmupFrames = 0;
     this.uiAccumulator = 0;
     this.ready = false;
     this.replayTimer = 0;
@@ -415,6 +437,9 @@ class AxeSimulation {
     this.lastPixelRatio = 0;
     this.lastRenderWidth = 0;
     this.lastRenderHeight = 0;
+    // Backbuffer reallocations are the most expensive thing the adaptive
+    // governor can do under SwiftShader; count them for the perf diagnostics.
+    this.renderResizes = 0;
     // Rolling frame-time window for window.getPerfStats() / the operator test.
     this.frameSamples = new Float32Array(90);
     this.frameSampleCount = 0;
@@ -502,6 +527,7 @@ class AxeSimulation {
     if (!this.sound.ctx || this.game.settings.music === false) return false;
     this.music.setEnabled(true);
     this.music.setBossPhase(this.debris?.bossPhase || 1);
+    this.music.setBoss(Boolean(this.bossRound));
     this.music.setIntensity(this.musicIntensity());
     if (!this.music.start()) return false;
     if (scene) this.music.setScene(scene);
@@ -526,6 +552,7 @@ class AxeSimulation {
     if (!this.sound.ctx || this.game.settings.music === false) return;
     this.music.setIntensity(this.musicIntensity());
     this.music.setBossPhase(this.debris?.bossPhase || 1);
+    this.music.setBoss(Boolean(this.bossRound));
   }
 
   setMusicEnabled(enabled) {
@@ -567,6 +594,8 @@ class AxeSimulation {
       musicScene: this.music.sceneName || 'menu',
       musicBpm: Number(this.music.bpm.toFixed(1)),
       musicIntensity: Number((this.music.intensity || 0).toFixed(2)),
+      musicBoss: Boolean(this.music.bossMode),
+      musicDucked: Boolean(this.music.clockDucked),
       ambientLevel: this.sound.ambientLevel || 0,
     };
   }
@@ -680,7 +709,7 @@ class AxeSimulation {
     if (this.webgl) this.qualityManager.detect(this.renderer);
 
     setLoading(38, 'Loading Rapier rigid-body physics…');
-    await RAPIER.init();
+    await rapierReady;
     this.RAPIER = RAPIER;
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.world.timestep = FIXED_STEP;
@@ -1132,6 +1161,7 @@ class AxeSimulation {
     this.lastPixelRatio = dpr;
     this.lastRenderWidth = width;
     this.lastRenderHeight = height;
+    this.renderResizes = (this.renderResizes || 0) + 1;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(width, height, false);
     this.postfx?.resize(width, height, dpr);
@@ -1233,9 +1263,11 @@ class AxeSimulation {
     ui.sfxVolume?.addEventListener('input', () =>
       this.setSfxVolume(Number(ui.sfxVolume.value) / 100, false),
     );
-    ui.sfxVolume?.addEventListener('change', () =>
-      this.setSfxVolume(Number(ui.sfxVolume.value) / 100, true),
-    );
+    ui.sfxVolume?.addEventListener('change', () => {
+      this.setSfxVolume(Number(ui.sfxVolume.value) / 100, true);
+      // Preview at the new level so the slider is not a blind control.
+      this.sound.tick?.(0.7);
+    });
     ui.musicToggle?.addEventListener('click', () => {
       this.setMusicEnabled(ui.musicToggle.getAttribute('aria-pressed') !== 'true');
     });
@@ -1338,6 +1370,7 @@ class AxeSimulation {
       this.qualityManager.setMode(ui.qualitySelect.value);
       this.game.setQuality(ui.qualitySelect.value);
       this.updateAtmosphereUi();
+      this.sound.click?.();
     });
 
     ui.timeButtons?.addEventListener('click', (event) => {
@@ -1369,6 +1402,7 @@ class AxeSimulation {
       this.weather.setAutoTime(auto);
       this.game.setSetting('autoTime', auto);
       this.updateAtmosphereUi();
+      this.sound.click?.();
     });
 
     ui.axeList?.addEventListener('click', (event) => {
@@ -1416,6 +1450,7 @@ class AxeSimulation {
       this.resetScene(true);
       this.renderShop();
       this.updateHudStatic();
+      this.sound.menuClose?.();
       this.toast('Progress reset. Back to white pine.', 'gold');
     });
 
@@ -1568,6 +1603,7 @@ class AxeSimulation {
     const modal = name === 'shop' ? ui.shopModal : ui.settingsModal;
     if (!modal) return;
     modal.hidden = false;
+    this.sound.menuOpen?.(name);
     if (name === 'shop') this.renderShop();
     if (name === 'settings') {
       this.updateAtmosphereUi();
@@ -1580,6 +1616,7 @@ class AxeSimulation {
     const modal = name === 'shop' ? ui.shopModal : ui.settingsModal;
     if (modal) modal.hidden = true;
     if (this.modalOpen === name) this.modalOpen = null;
+    this.sound.menuClose?.();
   }
 
   renderShop() {
@@ -1719,7 +1756,7 @@ class AxeSimulation {
           weather: this.weather?.weather || 'clear',
           pan,
         });
-        this.music.stinger?.(detail.mainPieces || 2);
+        this.music.stinger?.(detail.mainPieces || 2, { boss: Boolean(detail.boss) });
         if (detail.coins > 0) this.sound.coin?.(0.15);
         if (detail.boss) this.sound.bossDefeat?.();
       }
@@ -1896,6 +1933,7 @@ class AxeSimulation {
     this.updateModeUi();
     this.toast(`${def.name} — ${def.desc}`, 'gold');
     this.sound.chime?.(0.78);
+    this.startMusic('gameplay');
     return true;
   }
 
@@ -1916,6 +1954,8 @@ class AxeSimulation {
       this.contract = null;
     }
     this.lastRunMode = summary.mode;
+    this.music.setClock(0, false);
+    this.music.setBoss(false);
     if (reason === 'time' || summary.reason === 'time') this.sound.timeUp?.();
     if (summary.campaign && summary.campaignComplete && summary.splits >= modeFor('campaign').target) {
       this.showCampaignVictory({
@@ -1928,7 +1968,9 @@ class AxeSimulation {
     } else {
       this.showRunOverlay(summary);
       // A run summary is a beat of its own: warm cadence, then the menu theme.
-      this.sound.runComplete?.();
+      // A graded contract gets its medal fanfare instead of the generic cadence.
+      if (summary.contract && summary.medal) this.sound.medal?.(summary.medal);
+      else this.sound.runComplete?.();
       // Give the new-best flourish its own breath after the cadence.
       if (summary.newBest) {
         clearTimeout(this.bestStingerTimer);
@@ -2090,6 +2132,7 @@ class AxeSimulation {
       ui.runCopy.classList.toggle('copied', copied);
     }
     this.toast(copied ? 'Run result copied to the clipboard.' : 'Clipboard blocked — select the share line.', copied ? 'gold' : 'bad');
+    this.sound.confirm?.(copied);
     return copied;
   }
 
@@ -2126,6 +2169,7 @@ class AxeSimulation {
         : 'Clipboard blocked — select the seed link in the summary.',
       copied ? 'gold' : 'bad',
     );
+    this.sound.confirm?.(copied);
     return copied;
   }
 
@@ -2181,6 +2225,7 @@ class AxeSimulation {
     ui.runOverlay.hidden = false;
     ui.runAgain?.focus();
     this.sound.chapter?.();
+    this.music.setBoss(false);
     this.music.setScene('menu');
   }
 
@@ -2533,6 +2578,7 @@ class AxeSimulation {
     if (this.environment) this.environment.updateShadow();
     this.updateAimHud();
     this.updateHudStatic();
+    this.music.setBoss(Boolean(this.bossRound));
     if (this.bossRound) {
       const sealed = Boolean(this.displaySpecies.bossSeamSealed);
       const bossJ = Math.round(this.physics?.required || 0);
@@ -2757,7 +2803,7 @@ class AxeSimulation {
     }
     this.game.spendStamina(cost);
     this.game.state.wedgesPulled = (this.game.state.wedgesPulled || 0) + 1;
-    this.sound.wedgePull?.();
+    this.sound.wedgePull?.(result.grip);
     this.shake = Math.max(this.shake, 0.012);
     const remJ = Math.round(
       Math.max(0, (this.physics?.required || 0) * (1 - (this.physics?.work || 0))),
@@ -4474,7 +4520,18 @@ class AxeSimulation {
   updateAtmosphereUi() {
     if (!this.weather) return;
     const time = this.weather.timeLabel;
+    const weatherId = this.weather.weather;
     const weather = this.weather.weatherLabel;
+    // One-shots on an actual change, not on the 2 Hz UI refresh. The context
+    // only exists after a gesture, so this can never unlock audio by itself.
+    if (this._lastAtmosphere && this.sound.ctx?.state === 'running') {
+      if (weatherId !== this._lastAtmosphere.weather) {
+        this.sound.weatherChange?.(weatherId);
+      } else if (time !== this._lastAtmosphere.time) {
+        this.sound.timeShift?.(time);
+      }
+    }
+    this._lastAtmosphere = { weather: weatherId, time };
     if (ui.timeReadout) {
       ui.timeReadout.textContent =
         time === 'golden' ? 'Golden hour' : time.charAt(0).toUpperCase() + time.slice(1);
@@ -4596,18 +4653,28 @@ class AxeSimulation {
   updateAdaptiveResolution() {
     if (!this.ready || !this.qualityManager.auto) return;
     const now = performance.now();
-    // Software rendering needs to reach a playable scale quickly: two low
-    // samples every ~1.2 s walk the start scale down towards the preset floor,
-    // and further towards the software floor on SwiftShader.
-    if (now - this.lastAdaptiveChange < 1200) return;
-    if (this.fps > 0 && this.fps < 22) this.adaptiveLow += 1;
+    // Software starts at its floor (see perftune.js) and stays pinned there:
+    // no auto-upgrade that could stall the exact frame the operator samples.
+    // Hardware keeps its gentle ramp. SwiftShader is fill-rate bound, so if a
+    // preset change or resize leaves it above the floor, react in under a
+    // second and jump straight there instead of wasting slow samples.
+    const software = Boolean(this.qualityManager.rendererInfo.software);
+    if (now - this.lastAdaptiveChange < (software ? 800 : 1200)) return;
+    const lowThreshold = software ? 24 : 22;
+    if (this.fps > 0 && this.fps < lowThreshold) this.adaptiveLow += software ? 1.6 : 1;
     else this.adaptiveLow = Math.max(0, this.adaptiveLow - 0.5);
     if (this.fps > 44) this.adaptiveHigh += 1;
     else this.adaptiveHigh = 0;
     const presetFloor = this.qualityPreset?.minScale ?? 0.55;
     const scaleFloor = Math.min(softwareRenderFloor(this), presetFloor);
-    if (this.adaptiveLow >= 2 && this.renderScale > scaleFloor) {
-      this.renderScale = Math.max(scaleFloor, this.renderScale - 0.07);
+    const lowNeeded = software ? 1.5 : 2;
+    if (this.adaptiveLow >= lowNeeded && this.renderScale > scaleFloor) {
+      // A backbuffer reallocation stalls a SwiftShader frame for tens of
+      // milliseconds, so walking down in 0.07 steps pays that stall four or
+      // five times. Software builds jump straight to their floor; hardware
+      // keeps the gentle ramp.
+      const step = software ? this.renderScale - scaleFloor : 0.07;
+      this.renderScale = Math.max(scaleFloor, this.renderScale - step);
       this.lastAdaptiveChange = now;
       this.adaptiveLow = 0;
       this.applyPixelRatio();
@@ -4616,7 +4683,7 @@ class AxeSimulation {
         this.toast('Adaptive resolution engaged for smoother play', 'gold');
       }
       this.updateAtmosphereUi();
-    } else if (this.adaptiveHigh >= 8 && this.renderScale < 1) {
+    } else if (!software && this.adaptiveHigh >= 8 && this.renderScale < 1) {
       this.renderScale = Math.min(1, this.renderScale + 0.08);
       this.lastAdaptiveChange = now;
       this.adaptiveHigh = 0;
@@ -4805,6 +4872,7 @@ class AxeSimulation {
     const samples = Array.from(this.frameSamples.slice(0, count)).sort((a, b) => a - b);
     const avg = count ? samples.reduce((sum, value) => sum + value, 0) / count : 0;
     const p95 = count ? samples[Math.min(count - 1, Math.floor(count * 0.95))] : 0;
+    const median = count ? samples[Math.floor((count - 1) * 0.5)] : 0;
     this.frameMsAvg = Number(avg.toFixed(2));
     this.frameMsP95 = Number(p95.toFixed(2));
     const info = this.renderer?.info;
@@ -4812,10 +4880,15 @@ class AxeSimulation {
       fps: this.fps,
       frameMsAvg: this.frameMsAvg,
       frameMsP95: this.frameMsP95,
+      frameMsMedian: Number(median.toFixed(2)),
+      frameMsMin: Number((count ? samples[0] : 0).toFixed(2)),
       samples: count,
       quality: this.qualityName,
       renderScale: Number(this.renderScale.toFixed(2)),
       pixelRatio: Number((this.renderer?.getPixelRatio?.() || 0).toFixed(3)),
+      // A reallocation can be an 80 ms stall under SwiftShader, so expose the
+      // count next to the frame-time window instead of hiding it in a profile.
+      renderResizes: this.renderResizes || 0,
       drawCalls: info?.render?.calls || 0,
       triangles: info?.render?.triangles || 0,
       textures: info?.memory?.textures || 0,
@@ -5009,6 +5082,10 @@ class AxeSimulation {
       shadowSize: this.qualityPreset?.shadowSize || 0,
       shadows: Boolean(this.qualityPreset?.shadows),
       contactShadows: Boolean(this.environment?.contactShadows?.visible),
+      snowCaps: Boolean(this.environment?.snowCaps?.visible),
+      leafLitter: Boolean(this.environment?.leafLitter),
+      simpleSun: Boolean(this.environment?.simpleSunState),
+      simpleSunStrength: Number((this.environment?.simpleSunState?.strength?.value ?? 0).toFixed(3)),
       pbrWood: Boolean(this.debris?.materials?.().grain),
       barkNormalMaps: Boolean(this.debris?.materials?.().bark?.normalMap),
       lanternPools: Boolean(this.environment?.lanterns?.[0]?.pool),
@@ -5027,6 +5104,8 @@ class AxeSimulation {
     snapshot.musicScene = snapshot.audio.musicScene;
     snapshot.musicBpm = snapshot.audio.musicBpm;
     snapshot.musicIntensity = snapshot.audio.musicIntensity;
+    snapshot.musicBoss = snapshot.audio.musicBoss;
+    snapshot.musicDucked = snapshot.audio.musicDucked;
     snapshot.ambientLevel = snapshot.audio.ambientLevel;
     snapshot.countdown = this._lastCountdown || null;
     // Live performance telemetry. getPerfStats() adds the p95/frame-time window,
@@ -5052,9 +5131,13 @@ class AxeSimulation {
     const elapsed = Math.max(0.0001, (now - this.lastFrame) / 1000);
     const rawDt = Math.min(0.5, elapsed);
     this.lastFrame = now;
-    this.frameSamples[this.frameSampleIndex] = Math.min(1000, elapsed * 1000);
-    this.frameSampleIndex = (this.frameSampleIndex + 1) % this.frameSamples.length;
-    this.frameSampleCount = Math.min(this.frameSamples.length, this.frameSampleCount + 1);
+    const warmupFrame = this.warmupFrames < 1;
+    this.warmupFrames += 1;
+    if (!warmupFrame) {
+      this.frameSamples[this.frameSampleIndex] = Math.min(1000, elapsed * 1000);
+      this.frameSampleIndex = (this.frameSampleIndex + 1) % this.frameSamples.length;
+      this.frameSampleCount = Math.min(this.frameSamples.length, this.frameSampleCount + 1);
+    }
 
     // Screen shake is a render-frame effect, not a physics-step effect: decay it
     // once per displayed frame so a 6–15 FPS software frame does not swallow the
@@ -5122,6 +5205,13 @@ class AxeSimulation {
       }
       if (this.game.run.timeLeft <= 0) this.finishRun('time');
     }
+    // The band pulls back under the final ten seconds of a clocked run. This is
+    // a cheap state check each frame; setClock only touches the graph on change.
+    const clockedRun =
+      this.game.run.active &&
+      this.game.run.mode === 'time' &&
+      !this.runOverlayOpen;
+    this.music.setClock(clockedRun ? this.game.run.timeLeft : 0, clockedRun);
     this.contract?.tick(rawDt);
 
     // Stamina regeneration and the slow recovery of a chipped edge.
@@ -5198,16 +5288,30 @@ class AxeSimulation {
     this.controls.update(rawDt);
     this.updateReticle();
 
-    // FPS meter.
-    this.fpsFrames++;
-    this.fpsTime += elapsed;
-    if (this.fpsTime > 0.5) {
-      this.fps = Math.round(this.fpsFrames / this.fpsTime);
-      this.fpsFrames = 0;
-      this.fpsTime = 0;
-      if (ui.fpsReadout) ui.fpsReadout.textContent = String(this.fps);
-      this.qualityManager.update(elapsed, this.fps);
-      this.updateAdaptiveResolution();
+    // FPS meter. Never let one pathological frame (tab wake, shader compile,
+    // a long GC pause) drop the reported average to zero; cap its weight.
+    if (!warmupFrame) {
+      this.fpsFrames++;
+      this.fpsTime += Math.min(elapsed, 0.5);
+      if (this.fpsTime > 0.5) {
+        // Median of the rolling frame-time window instead of frames / seconds.
+        // One tab-wake or GC stall no longer reports 3 FPS for the next second;
+        // sustained slowness still shows up because every frame is slow.
+        const count = this.frameSampleCount;
+        const recent = [];
+        for (let i = 0; i < count; i += 1) recent.push(this.frameSamples[i]);
+        recent.sort((a, b) => a - b);
+        const median = count ? recent[Math.floor(count / 2)] : 16.7;
+        this.fps = Math.max(1, Math.round(1000 / Math.max(1, median)));
+        this.fpsFrames = 0;
+        this.fpsTime = 0;
+        if (ui.fpsReadout) ui.fpsReadout.textContent = String(this.fps);
+        this.qualityManager.update(elapsed, this.fps);
+        this.updateAdaptiveResolution();
+        // Let audio thin itself out while the host is struggling, then recover.
+        this.sound.setPerformancePressure?.(this.fps);
+        this.music.setPerformanceBudget?.(this.fps);
+      }
     }
 
     // Reduced motion keeps the impact readable but cuts the camera kick to a
@@ -5421,6 +5525,8 @@ class AxeSimulation {
       window.__sim.musicScene = audioStats.musicScene;
       window.__sim.musicBpm = audioStats.musicBpm;
       window.__sim.musicIntensity = audioStats.musicIntensity;
+      window.__sim.musicBoss = audioStats.musicBoss;
+      window.__sim.musicDucked = audioStats.musicDucked;
       window.__sim.countdown = this._lastCountdown || null;
       window.__sim.perfLite = Boolean(this.perfLite);
     }

@@ -2022,7 +2022,7 @@ export class DebrisSystem {
     if (this.materialCache.has(key + ':bark')) {
       return this.materialCache.get(key + ':bark');
     }
-    const barkTex = createBarkTexture(log.seed, 1.8, 2.4);
+    const barkTex = createBarkTexture(log.seed, 2.2, 2.6);
     const endTex = createEndGrainTexture(log.seed + 1, 512);
     const grainTex = createWoodTexture({
       base: '#c9a875',
@@ -2055,7 +2055,7 @@ export class DebrisSystem {
       map: barkTex,
       // Lift the albedo a touch: the procedural bark map is mid-dark and the
       // gameplay camera mostly sees the shaded side of the round.
-      color: new THREE.Color(log.barkTint).multiplyScalar(1.18),
+      color: new THREE.Color(log.barkTint).multiplyScalar(1.24),
       roughness: 0.96,
       normalMap: barkMaps?.normalMap || null,
       roughnessMap: barkMaps?.roughnessMap || null,
@@ -2089,7 +2089,7 @@ export class DebrisSystem {
     grain.userData.kind = 'grain';
     grain.userData.dryColor = grain.color.clone();
     const barkSide = bark.clone();
-    barkSide.color = new THREE.Color(log.barkTint).multiplyScalar(0.92);
+    barkSide.color = new THREE.Color(log.barkTint).multiplyScalar(1.02);
     // Material.clone() JSON-round-trips userData, which turns a THREE.Color
     // into a plain hex number. applyWetnessMaterials then copied that number
     // into barkSide.color and produced NaNs (a pitch-black intact round).

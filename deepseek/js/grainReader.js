@@ -10,7 +10,10 @@
 
 const TAU = Math.PI * 2;
 const INK = 'rgba(241, 236, 223, 0.9)';
-const FAINT = 'rgba(241, 236, 223, 0.22)';
+const FAINT = 'rgba(241, 236, 223, 0.85)';
+// The canvas is 192 internal px and displayed at 136 CSS px, so 23 px here is
+// ~16.3 CSS px on screen — above the legibility floor like the rest of the HUD.
+const LABEL_FONT = '23px "SFMono-Regular", "DejaVu Sans Mono", Consolas, monospace';
 const GOLD = '#ffd27a';
 const MINT = '#bdeee0';
 const ORANGE = '#ff8a2f';
@@ -61,7 +64,7 @@ export class GrainReader {
 
     if (!debris) {
       ctx.fillStyle = FAINT;
-      ctx.font = '8px monospace';
+      ctx.font = LABEL_FONT;
       ctx.textAlign = 'center';
       ctx.fillText('NO ROUND', cx, cy + 3);
       return;
@@ -191,8 +194,8 @@ export class GrainReader {
     }
 
     // Small caption.
-    ctx.fillStyle = 'rgba(241, 236, 223, 0.42)';
-    ctx.font = '7px monospace';
+    ctx.fillStyle = 'rgba(241, 236, 223, 0.88)';
+    ctx.font = LABEL_FONT;
     ctx.textAlign = 'left';
     ctx.fillText('END GRAIN', 6, size - 6);
   }

@@ -50,13 +50,20 @@ export class SoundEngine {
     this.noise = null;
     this.voices = new Set();
     this.nextVoiceId = 1;
-    this.maxVoices = 40;
+    this.maxVoices = 32;
     this.ambient = null;
     this.ambientState = { weather: 'clear', night: 0, wind: 0 };
     this._lastFragmentSound = 0;
     this._lastHoverSound = 0;
     this._nextCritter = 0;
     this._noiseOffsets = 0;
+    // Performance governor: the main loop feeds us the measured FPS twice a
+    // second. Under SwiftShader a burst of foley should never compete with the
+    // frame; a low tier caps voices and mutes the continuous ambience, and it
+    // recovers automatically (with hysteresis) once frames are healthy again.
+    this._lastSweep = 0;
+    this._perfTier = 0;
+    this._ambientSuspended = false;
   }
 
   /* ------------------------------------------------------------------ *
@@ -68,7 +75,14 @@ export class SoundEngine {
       if (!this.ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return null;
-        this.ctx = new AC();
+        // 'balanced' gives the audio thread a little more buffer than the
+        // interactive default. Under software rendering the extra latency is
+        // imperceptible next to a 30-60 ms frame and it lowers wake-up pressure.
+        try {
+          this.ctx = new AC({ latencyHint: 'balanced' });
+        } catch {
+          this.ctx = new AC();
+        }
         this.master = this.ctx.createGain();
         this.master.gain.value = 0.9;
         // A gentle limiter keeps a split + coins + stinger + storm from clipping.
@@ -198,12 +212,76 @@ export class SoundEngine {
     this._releaseVoice(oldest);
   }
 
-  _sweep() {
+  _sweep(force = false) {
     if (!this.ctx || this.voices.size === 0) return;
     const now = this.ctx.currentTime;
+    // The live telemetry getter asks for activeVoices every frame. Sweeping at
+    // 60 Hz is wasted work; finished sources also fire 'ended'. A short gate
+    // keeps the count honest without walking the set on every rendered frame.
+    if (!force && now - this._lastSweep < 0.12) return;
+    this._lastSweep = now;
     for (const entry of [...this.voices]) {
       if (entry.stopAt && now > entry.stopAt + 0.3) this._releaseVoice(entry);
     }
+  }
+
+  /**
+   * Feed measured frame rate in. Cheap to call at HUD cadence (2 Hz).
+   * tier 0 = full, 1 = low, 2 = severe. Hysteresis avoids oscillating when the
+   * host sits right on a threshold.
+   */
+  setPerformancePressure(fps) {
+    const value = Number(fps);
+    if (!Number.isFinite(value) || value <= 0) return;
+    const previous = this._perfTier;
+    let tier = previous;
+    if (value < 16) tier = 2;
+    else if (value < 24 && previous === 0) tier = 1;
+    else if (value < 20) tier = 2;
+    else if (value >= 30) tier = 0;
+    else if (value >= 22) tier = Math.min(previous, 1);
+    if (tier === previous) return;
+    this._perfTier = tier;
+    this.maxVoices = tier === 2 ? 16 : tier === 1 ? 24 : 32;
+    while (this.voices.size > this.maxVoices) this._stealVoice();
+    // The three looping beds run on the audio thread for the whole session.
+    // Stop them under severe pressure; setAmbient() rebuilds them on recovery.
+    const suspend = tier === 2;
+    if (suspend !== this._ambientSuspended) {
+      this._ambientSuspended = suspend;
+      if (suspend) this._destroyAmbientBed();
+    }
+  }
+
+  _destroyAmbientBed() {
+    if (!this.ambient) return;
+    try {
+      this.ambient.source?.stop();
+      this.ambientLfo?.stop();
+    } catch {
+      /* already stopped */
+    }
+    const nodes = [
+      this.ambient.source,
+      this.ambient.rain?.filter,
+      this.ambient.rain?.gain,
+      this.ambient.wind?.filter,
+      this.ambient.wind?.gain,
+      this.ambient.hush?.filter,
+      this.ambient.hush?.gain,
+      this.ambientLfo,
+      this.ambientLfoGain,
+    ];
+    for (const node of nodes) {
+      try {
+        node?.disconnect?.();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.ambient = null;
+    this.ambientLfo = null;
+    this.ambientLfoGain = null;
   }
 
   _noiseOffset(duration) {
@@ -325,6 +403,7 @@ export class SoundEngine {
     this.ambientState = { weather, night, wind };
     const ctx = this.ensure();
     if (!ctx || !this.noise) return;
+    if (this._ambientSuspended) return;
     if (!this.ambient) this._buildAmbientBed();
     const now = ctx.currentTime;
     const a = this.ambient;
@@ -346,10 +425,13 @@ export class SoundEngine {
 
   _buildAmbientBed() {
     const ctx = this.ctx;
-    const makeLoop = (type, freq, q) => {
-      const src = ctx.createBufferSource();
-      src.buffer = this.noise;
-      src.loop = true;
+    // One looped noise source feeds all three bands. Three independent sources
+    // (the round-2 shape) did the same job but tripled the source processing
+    // and buffer-read work for a bed this quiet.
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const makeBand = (type, freq, q) => {
       const filter = ctx.createBiquadFilter();
       filter.type = type;
       filter.frequency.value = freq;
@@ -357,14 +439,15 @@ export class SoundEngine {
       const gain = ctx.createGain();
       gain.gain.value = 0.0001;
       src.connect(filter).connect(gain).connect(this.sfxBus);
-      src.start(0, Math.random() * 1.4);
-      return { src, filter, gain };
+      return { filter, gain };
     };
     this.ambient = {
-      rain: makeLoop('highpass', 2400, 0.4),
-      wind: makeLoop('lowpass', 380, 0.7),
-      hush: makeLoop('highpass', 2800, 0.3),
+      source: src,
+      rain: makeBand('highpass', 2400, 0.4),
+      wind: makeBand('lowpass', 380, 0.7),
+      hush: makeBand('highpass', 2800, 0.3),
     };
+    src.start(0, Math.random() * 1.4);
     // A slow LFO breathes through the wind filter so the bed never feels static.
     const lfo = ctx.createOscillator();
     lfo.type = 'sine';
@@ -374,6 +457,7 @@ export class SoundEngine {
     lfo.connect(lfoGain).connect(this.ambient.wind.filter.frequency);
     lfo.start();
     this.ambientLfo = lfo;
+    this.ambientLfoGain = lfoGain;
   }
 
   get ambientLevel() {
@@ -520,6 +604,131 @@ export class SoundEngine {
   /** Alias used by menus that prefer the word "error". */
   error() {
     this.deny();
+  }
+
+  /** A modal opens: a wooden latch, a small hinge and a paper/leather rustle. */
+  menuOpen(kind = 'shop') {
+    this._noiseVoice({ dur: 0.1, type: 'bandpass', freq: 560, freqEnd: 260, q: 1.2, gain: 0.048, attack: 0.003 });
+    this._toneVoice({ dur: 0.12, type: 'triangle', f0: 330, f1: 205, gain: 0.038 });
+    this._noiseVoice({ at: 0.055, dur: 0.22, type: 'highpass', freq: 2400, freqEnd: 5400, q: 0.6, gain: 0.012, attack: 0.03 });
+    if (kind === 'settings') {
+      this._toneVoice({ at: 0.11, dur: 0.2, type: 'sine', f0: 880, f1: 1046.5, gain: 0.014 });
+    }
+  }
+
+  /** A modal closes: the latch lets go and the lid settles. */
+  menuClose() {
+    this._noiseVoice({ dur: 0.12, type: 'bandpass', freq: 480, freqEnd: 180, q: 1.4, gain: 0.04, attack: 0.003 });
+    this._toneVoice({ dur: 0.16, type: 'sine', f0: 170, f1: 96, gain: 0.04 });
+  }
+
+  /** Clipboard/copy acknowledgement. A refusal falls back to the deny cue. */
+  confirm(ok = true) {
+    if (!ok) {
+      this.deny();
+      return;
+    }
+    [880, 1174.66].forEach((frequency, index) => {
+      this._toneVoice({ at: index * 0.055, dur: 0.16, type: 'sine', f0: frequency, f1: frequency, gain: 0.026 });
+    });
+  }
+
+  /**
+   * A weather front rolls in. The looping beds in setAmbient() carry the steady
+   * state; this is the short one-shot that makes the change audible.
+   */
+  weatherChange(kind = 'clear') {
+    if (kind === 'rain') {
+      this._noiseVoice({ dur: 1.1, type: 'highpass', freq: 1100, freqEnd: 3400, q: 0.55, gain: 0.032, attack: 0.28 });
+      for (let i = 0; i < 5; i += 1) {
+        this._toneVoice({
+          at: 0.14 + i * 0.11 + Math.random() * 0.05,
+          dur: 0.05,
+          type: 'sine',
+          f0: 2100 + Math.random() * 1800,
+          f1: 700 + Math.random() * 500,
+          gain: 0.012,
+          pan: -0.7 + Math.random() * 1.4,
+        });
+      }
+      this._toneVoice({ dur: 0.9, type: 'sine', f0: 58, f1: 42, gain: 0.035, attack: 0.25 });
+    } else if (kind === 'snow') {
+      this._noiseVoice({ dur: 1.2, type: 'highpass', freq: 3600, freqEnd: 6800, q: 0.5, gain: 0.024, attack: 0.35 });
+      for (let i = 0; i < 4; i += 1) {
+        const f = 2600 + Math.random() * 2600;
+        this._toneVoice({
+          at: 0.08 + i * 0.12,
+          dur: 0.18 + Math.random() * 0.12,
+          type: 'sine',
+          f0: f,
+          f1: f * 0.96,
+          gain: 0.009,
+          pan: -0.5 + Math.random(),
+        });
+      }
+    } else if (kind === 'wind') {
+      this._noiseVoice({ dur: 1.3, type: 'bandpass', freq: 220, freqEnd: 1250, q: 1.1, gain: 0.048, attack: 0.3 });
+      this._noiseVoice({ at: 0.4, dur: 0.9, type: 'bandpass', freq: 1300, freqEnd: 380, q: 1.4, gain: 0.03, attack: 0.2 });
+    } else if (kind === 'fog') {
+      this._noiseVoice({ dur: 1.15, type: 'lowpass', freq: 900, freqEnd: 260, q: 0.7, gain: 0.04, attack: 0.32 });
+      this._toneVoice({ dur: 0.9, type: 'sine', f0: 146, f1: 130, gain: 0.012, attack: 0.3 });
+    } else {
+      this._noiseVoice({ dur: 0.7, type: 'highpass', freq: 1200, freqEnd: 2600, q: 0.5, gain: 0.012, attack: 0.24 });
+    }
+  }
+
+  /**
+   * Time of day changes: a warm golden-hour lift, a cool night fall, a dawn
+   * bird call or a short bright noon shimmer. Quiet enough for auto-time.
+   */
+  timeShift(preset = 'golden') {
+    if (preset === 'night') {
+      this._toneVoice({ dur: 0.8, type: 'sine', f0: 392, f1: 330, gain: 0.02, attack: 0.05 });
+      this._toneVoice({ at: 0.24, dur: 0.9, type: 'sine', f0: 294, f1: 247, gain: 0.016, attack: 0.06 });
+      this._noiseVoice({ dur: 1.3, type: 'lowpass', freq: 420, freqEnd: 140, q: 0.7, gain: 0.014, attack: 0.35 });
+    } else if (preset === 'dawn') {
+      [0, 0.16, 0.34].forEach((at, i) => {
+        this._toneVoice({
+          at,
+          dur: 0.12,
+          type: 'triangle',
+          f0: 2100 + i * 240,
+          f1: 2900 + i * 260,
+          gain: 0.014,
+          attack: 0.015,
+          pan: -0.3 + i * 0.3,
+        });
+      });
+      this._noiseVoice({ dur: 1, type: 'highpass', freq: 1800, freqEnd: 3200, q: 0.5, gain: 0.01, attack: 0.3 });
+    } else if (preset === 'noon') {
+      [523.25, 659.25, 783.99].forEach((frequency, index) => {
+        this._toneVoice({ at: index * 0.06, dur: 0.3, type: 'sine', f0: frequency, f1: frequency, gain: 0.016, attack: 0.02 });
+      });
+    } else {
+      [261.63, 329.63, 392].forEach((frequency, index) => {
+        this._toneVoice({ at: index * 0.075, dur: 0.62, type: 'triangle', f0: frequency, f1: frequency, gain: 0.019, attack: 0.03 });
+      });
+      this._toneVoice({ dur: 0.7, type: 'sine', f0: 130.81, f1: 130.81, gain: 0.03, attack: 0.04 });
+      this._noiseVoice({ dur: 0.9, type: 'highpass', freq: 3600, freqEnd: 6200, q: 0.6, gain: 0.008, attack: 0.3 });
+    }
+  }
+
+  /** Contract medal / grade fanfare. Gold gets the full cadence. */
+  medal(tier = 'gold') {
+    const rank = String(tier || '').toLowerCase();
+    const notes =
+      rank === 'gold'
+        ? [392, 493.88, 587.33, 783.99, 987.77]
+        : rank === 'silver'
+          ? [392, 493.88, 587.33, 783.99]
+          : [349.23, 440, 523.25];
+    notes.forEach((frequency, index) => {
+      this._toneVoice({ at: index * 0.085, dur: 0.75, type: 'triangle', f0: frequency, f1: frequency, gain: 0.046 });
+    });
+    this._toneVoice({ at: 0.02, dur: 1.1, type: 'sine', f0: rank === 'gold' ? 98 : 110, f1: rank === 'gold' ? 98 : 110, gain: 0.08, attack: 0.03 });
+    this._noiseVoice({ at: 0.08, dur: 0.8, type: 'highpass', freq: 4200, freqEnd: 6800, q: 0.6, gain: 0.014, attack: 0.25 });
+    this.coin(0.28);
+    if (rank === 'gold') this._toneVoice({ at: 0.4, dur: 1.0, type: 'sine', f0: 659.25, f1: 659.25, gain: 0.03, attack: 0.03 });
   }
 
   /** A winded swing: a short breath in and a tired, weak follow-through. */
@@ -730,11 +939,14 @@ export class SoundEngine {
     this._toneVoice({ at: 0.26, dur: 0.7, type: 'sine', f0: 62, f1: 34, gain: 0.13, attack: 0.02 });
   }
 
-  /** Steel wedge drawn back out of a check. */
-  wedgePull() {
-    this._noiseVoice({ dur: 0.25, type: 'bandpass', freq: 600, freqEnd: 1600, q: 2.8, gain: 0.07 });
+  /** Steel wedge drawn back out of a check. `grip` 0-1 deepens the creak. */
+  wedgePull(grip = 0.5) {
+    const hold = Math.max(0, Math.min(1, safeNumber(grip, 0.5)));
+    this._noiseVoice({ dur: 0.25 + hold * 0.16, type: 'bandpass', freq: 600, freqEnd: 1600, q: 2.8, gain: 0.07 });
     this._toneVoice({ at: 0.12, dur: 0.16, type: 'triangle', f0: 1900, f1: 1250, gain: 0.03 });
     this._toneVoice({ at: 0.2, dur: 0.2, type: 'sine', f0: 120, f1: 56, gain: 0.07 });
+    // A longer, lower grain creak when the wedge is driven deep and grips hard.
+    this._toneVoice({ at: 0.03, dur: 0.24 + hold * 0.26, type: 'sawtooth', f0: 180 + hold * 70, f1: 96, gain: 0.01 + hold * 0.012, lp: 520 });
   }
 
   /** Steel wedge driven into an open check: a bright ring and a wood creak. */
@@ -950,7 +1162,9 @@ export class SoundEngine {
     const ctx = this.ensure();
     if (!ctx) return;
     const now = ctx.currentTime;
-    if (now - this._lastFragmentSound < 0.045) return;
+    // Under load, fragment foley yields more aggressively: with a dozen chips
+    // landing at once the frame budget is worth more than every individual tick.
+    if (now - this._lastFragmentSound < (this._perfTier ? 0.09 : 0.045)) return;
     this._lastFragmentSound = now;
     const mass = Math.max(0.05, Math.min(2.2, safeNumber(item?.mass, 0.2)));
     const splinter = item?.kind === 'splinter';

@@ -52,6 +52,10 @@ export class MusicDirector {
     this.scene = 'menu';
     this.intensity = 0;
     this.bossPhase = 1;
+    this.boss = false;
+    this.clockActive = false;
+    this.clockLeft = 0;
+    this._clockDucked = false;
     this.step = 0;
     this.nextStepTime = 0;
     this.timer = 0;
@@ -59,12 +63,19 @@ export class MusicDirector {
     this._voices = new Set();
     this._ksCache = new Map();
     this._maxMusicVoices = 18;
-    this._lookahead = 0.16;
+    // A longer look-ahead lets the scheduler wake half as often while still
+    // placing every note on the AudioContext clock. Under software rendering
+    // those saved main-thread wakeups are worth more than 40 ms of grid slack.
+    this._lookahead = 0.22;
+    this._schedulerMs = 60;
+    this._perfTier = 0;
+    this._lastSweep = 0;
     this._lastStinger = 0;
     // A short, cheap porch-room send built from two filtered delay taps. It is
     // created once per context and shared by every instrument, so no voice
     // carries its own reverb node.
     this.mix = null;
+    this.duck = null;
     this.roomIn = null;
     this.roomTaps = [];
     this._roomReady = false;
@@ -78,6 +89,16 @@ export class MusicDirector {
 
   get bpm() {
     return this._bpm();
+  }
+
+  /** Boss arrangement is a different groove, not just the gameplay loop louder. */
+  get bossMode() {
+    return Boolean(this.boss);
+  }
+
+  /** True while the music is holding back for the final countdown. */
+  get clockDucked() {
+    return Boolean(this._clockDucked);
   }
 
   /* ------------------------------------------------------------------ *
@@ -112,7 +133,11 @@ export class MusicDirector {
       this.mix.gain.setValueAtTime(0.0001, ctx.currentTime);
       this.mix.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 0.32);
     }
-    this.timer = setInterval(() => this._schedule(), 40);
+    if (this.duck) {
+      // Preserve the clock pull-back if the band restarts mid-countdown.
+      this.duck.gain.setValueAtTime(this._clockDucked ? 0.55 : 1, ctx.currentTime);
+    }
+    this.timer = setInterval(() => this._schedule(), this._schedulerMs);
     return true;
   }
 
@@ -130,10 +155,15 @@ export class MusicDirector {
     const ctx = this.ctx;
     this.mix = ctx.createGain();
     this.mix.gain.value = 0.0001;
-    this.mix.connect(this.bus);
+    // A single duck stage handles the last-ten-seconds pull-back. Both the dry
+    // band and the porch return pass through it, so no layer stays loud.
+    this.duck = ctx.createGain();
+    this.duck.gain.value = this._clockDucked ? 0.55 : 1;
+    this.mix.connect(this.duck);
+    this.duck.connect(this.bus);
     this.roomIn = ctx.createGain();
     this.roomIn.gain.value = 0.3;
-    this.mix.connect(this.roomIn);
+    this.duck.connect(this.roomIn);
     const makeTap = (delayTime, feedback, level, tone) => {
       const delay = ctx.createDelay(0.6);
       delay.delayTime.value = delayTime;
@@ -148,10 +178,10 @@ export class MusicDirector {
       wet.gain.value = level;
       const fb = ctx.createGain();
       fb.gain.value = feedback;
-      // delay -> high -> low -> wet -> music bus, with a damped feedback loop.
+      // delay -> high -> low -> wet -> duck, with a damped feedback loop.
       this.roomIn.connect(delay);
       delay.connect(high).connect(low);
-      low.connect(wet).connect(this.bus);
+      low.connect(wet).connect(this.duck);
       low.connect(fb).connect(delay);
       return { delay, low, high, wet, fb };
     };
@@ -185,7 +215,8 @@ export class MusicDirector {
       this.step = 0;
       this.nextStepTime = now + 0.12;
       if (this.roomIn) {
-        const wet = next === 'menu' ? 0.36 : this.bossPhase >= 2 ? 0.2 : 0.27;
+        const full = next === 'menu' ? 0.36 : this.bossPhase >= 2 ? 0.2 : 0.27;
+        const wet = this._perfTier === 2 ? 0.08 : this._perfTier === 1 ? 0.16 : full;
         this.roomIn.gain.setTargetAtTime(wet, now, 0.25);
       }
     }
@@ -207,8 +238,69 @@ export class MusicDirector {
     this.intensity = clamp(safe(value, 0), 0, 1);
   }
 
+  /**
+   * Measured-FPS governor. 0 = full band, 1 = low, 2 = severe. Called from the
+   * main loop at HUD cadence, so this never adds per-frame work. Lower tiers
+   * cap voices, thin decorative layers and dry up the porch send.
+   */
+  setPerformanceBudget(fps) {
+    const value = Number(fps);
+    if (!Number.isFinite(value) || value <= 0) return;
+    const previous = this._perfTier;
+    let tier = previous;
+    if (value < 16) tier = 2;
+    else if (value < 24 && previous === 0) tier = 1;
+    else if (value < 20) tier = 2;
+    else if (value >= 30) tier = 0;
+    else if (value >= 24) tier = Math.min(previous, 1);
+    if (tier === previous) return;
+    this._perfTier = tier;
+    this._maxMusicVoices = tier === 2 ? 8 : tier === 1 ? 12 : 18;
+    while (this._voices.size > this._maxMusicVoices) this._steal();
+    if (this.ctx && this.roomIn) {
+      const wet = tier === 2 ? 0.08 : tier === 1 ? 0.16 : this.scene === 'menu' ? 0.36 : 0.27;
+      this.roomIn.gain.setTargetAtTime(wet, this.ctx.currentTime, 0.3);
+    }
+  }
+
   setBossPhase(phase) {
     this.bossPhase = Math.max(1, Math.round(safe(phase, 1)));
+    if (this.scene === 'gameplay' && this.roomIn && this.ctx) {
+      const full = this.bossPhase >= 2 ? 0.2 : 0.27;
+      const wet = this._perfTier === 2 ? 0.08 : this._perfTier === 1 ? 0.16 : full;
+      this.roomIn.gain.setTargetAtTime(wet, this.ctx.currentTime, 0.3);
+    }
+  }
+
+  /**
+   * Swap to the boss arrangement. It is deliberately a different groove — a
+   * slower half-time stomp, a low drone and a sparse banjo ostinato — rather
+   * than the same loop with a few extra layers.
+   */
+  setBoss(active) {
+    const next = Boolean(active);
+    if (next === this.boss) return;
+    this.boss = next;
+    if (this._running && this.ctx) this._transitionFill(this.ctx.currentTime + 0.02);
+  }
+
+  /**
+   * Clock awareness for Time Attack and timed contracts. In the final ten
+   * seconds the band pulls back under the countdown; the scheduler keeps going
+   * so it resolves naturally when the run ends.
+   */
+  setClock(seconds, active = true) {
+    const on = Boolean(active);
+    const left = on ? Math.max(0, safe(seconds, 0)) : 0;
+    const ducked = on && left > 0 && left <= 10;
+    const changed = ducked !== this._clockDucked;
+    this.clockLeft = left;
+    this.clockActive = on;
+    if (!changed) return;
+    this._clockDucked = ducked;
+    if (this.ctx && this.duck) {
+      this.duck.gain.setTargetAtTime(ducked ? 0.55 : 1, this.ctx.currentTime, 0.25);
+    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -217,6 +309,11 @@ export class MusicDirector {
 
   _bpm() {
     if (this.scene === 'menu') return 88;
+    // The boss enters at a slower, heavier half-time feel; Phase II pushes it.
+    if (this.boss) {
+      const base = 96 + this.intensity * 9;
+      return this.bossPhase >= 2 ? base + 10 : base;
+    }
     const base = 108 + this.intensity * 12;
     return this.bossPhase >= 2 ? base + 8 : base;
   }
@@ -255,12 +352,14 @@ export class MusicDirector {
     const beat = step % 16;
     const chord = this._chordForBar(bar);
     if (this.scene === 'menu') this._menuStep(beat, bar, chord, time);
+    else if (this.boss) this._bossStep(beat, bar, chord, time);
     else this._gameplayStep(beat, bar, chord, time);
   }
 
   _menuStep(beat, bar, chord, time) {
     // Sparse porch theme: stomp + bass on the downbeat, a fingerpicked chord
     // roll, and a melody note every other bar. Plenty of air.
+    const minimal = this._perfTier >= 2;
     if (beat === 0) {
       this._stomp(time, 0.22);
       this._bass(chord.bass, time, 1.4, 0.2);
@@ -271,7 +370,7 @@ export class MusicDirector {
       this._bass(chord.fifth - 12, time, 1.2, 0.16);
       this._pluck(chord.banjo[1], time + 0.02, 0.1, 0.9, 0.15);
     }
-    if (beat === 3 || beat === 6 || beat === 11 || beat === 14) {
+    if (!minimal && (beat === 3 || beat === 6 || beat === 11 || beat === 14)) {
       const note = chord.banjo[(beat + bar) % chord.banjo.length];
       this._pluck(note, time, 0.085, 0.7, beat % 2 ? 0.28 : -0.28);
     }
@@ -285,7 +384,7 @@ export class MusicDirector {
       const motif = MENU_MOTIF[bar % MENU_MOTIF.length];
       this._pluck(motif, time + 0.035, beat === 0 ? 0.075 : 0.055, beat === 0 ? 1.25 : 0.8, 0.06);
     }
-    if (bar % 4 === 3 && beat === 15) {
+    if (!minimal && bar % 4 === 3 && beat === 15) {
       // Turnaround: a low fifth walks back to the top.
       this._bass(chord.fifth - 12, time, 0.5, 0.12);
     }
@@ -294,21 +393,34 @@ export class MusicDirector {
   _gameplayStep(beat, bar, chord, time) {
     const hot = this.intensity;
     const boss = this.bossPhase >= 2;
+    const lite = this._perfTier >= 1;
+    const minimal = this._perfTier >= 2;
+    if (minimal) {
+      // Keep the pulse and the low end; drop decoration until frames recover.
+      if (beat === 0 || beat === 8) this._stomp(time, beat === 0 ? 0.24 : 0.15);
+      if (beat === 0) this._bass(chord.bass, time, 0.55, 0.22);
+      if (beat === 8) this._bass(chord.bass + 12, time, 0.4, 0.16);
+      if (beat === 0 || beat === 8) {
+        this._pluck(chord.banjo[(beat / 8 + bar) % chord.banjo.length], time, 0.12, 0.7, beat ? 0.2 : -0.24);
+      }
+      if (this._clockDucked) this._clockBeat(beat, chord, time);
+      return;
+    }
     // Stomp-clap backbone: stomps on 1, the "and" of 2, 3 and the "and" of 4.
     if (beat === 0 || beat === 8 || (hot > 0.25 && beat === 6) || (hot > 0.55 && beat === 14)) {
       this._stomp(time, beat === 0 ? 0.24 : 0.16);
     }
     if (beat === 4 || beat === 12) this._clap(time, 0.09 + hot * 0.03);
-    if (boss && (beat === 7 || beat === 15)) this._block(time, 0.11);
+    if (boss && !lite && (beat === 7 || beat === 15)) this._block(time, 0.11);
 
     // Upright bass: root-heavy walking feel.
     if (beat === 0) this._bass(chord.bass, time, 0.55, 0.22);
     else if (beat === 4) this._bass(chord.bass + 7, time, 0.35, 0.15);
     else if (beat === 8) this._bass(chord.bass + 12, time, 0.4, 0.16);
     else if (beat === 12) this._bass(chord.fifth - 12, time, 0.35, 0.15);
-    else if (hot > 0.35 && (beat === 2 || beat === 10)) {
+    else if (!lite && hot > 0.35 && (beat === 2 || beat === 10)) {
       this._bass(chord.bass + 12, time, 0.22, 0.1);
-    } else if (hot > 0.68 && (beat === 6 || beat === 14)) {
+    } else if (!lite && hot > 0.68 && (beat === 6 || beat === 14)) {
       this._bass(chord.bass + 7, time, 0.18, 0.09);
     }
     // Phase II gets a low heartwood drone and a heavier off-beat stomp.
@@ -323,25 +435,79 @@ export class MusicDirector {
       const accent = beat === 0 || beat === 8;
       this._pluck(tones[idx], time, accent ? 0.15 : 0.105, accent ? 0.9 : 0.55, idx === 0 ? -0.24 : 0.2);
     }
-    if (hot > 0.5 && beat % 2 === 1 && beat % 4 !== 3) {
+    if (!lite && hot > 0.5 && beat % 2 === 1 && beat % 4 !== 3) {
       const passing = tones[(beat + bar) % tones.length] + (beat > 7 ? 12 : 0);
       this._pluck(passing, time, 0.055, 0.34, beat % 2 ? 0.34 : -0.34);
     }
-    if (beat === 3 && hot > 0.62) {
+    if (!lite && beat === 3 && hot > 0.62) {
       this._pluck(tones[2] + 12, time, 0.06, 0.4, 0.3);
     }
-    if (boss && beat === 11) {
+    if (boss && !lite && beat === 11) {
       this._pluck(chord.melody[2], time, 0.09, 0.6, -0.1);
     }
     // A sparse high counter-melody once the combo is really moving.
-    if (hot > 0.42 && !boss && (beat === 14 && bar % 2 === 1)) {
+    if (!lite && hot > 0.42 && !boss && (beat === 14 && bar % 2 === 1)) {
       this._pluck(MENU_MOTIF[bar % MENU_MOTIF.length] + 12, time, 0.045, 0.45, 0.3);
     }
-    if (bar % 4 === 3 && beat === 15) {
+    if (!lite && bar % 4 === 3 && beat === 15) {
       // A short rising fill into the next phrase.
       [0, 1, 2].forEach((n) => this._pluck(chord.melody[n], time + n * 0.055, 0.055, 0.28, 0.1 * n));
     }
-    if (this.intensity > 0.82 && beat === 0) this._stomp(time + 0.005, 0.08);
+    if (!lite && this.intensity > 0.82 && beat === 0) this._stomp(time + 0.005, 0.08);
+    if (this._clockDucked) this._clockBeat(beat, chord, time);
+  }
+
+  /**
+   * Boss arrangement. Slower half-time feel, a low heartwood drone, sparse
+   * banjo ostinato and heavy claps; Phase II adds the block and high melody.
+   */
+  _bossStep(beat, bar, chord, time) {
+    const phase2 = this.bossPhase >= 2;
+    const hot = this.intensity;
+    const lite = this._perfTier >= 1;
+    const minimal = this._perfTier >= 2;
+    if (minimal) {
+      if (beat === 0) {
+        this._stomp(time, 0.3);
+        this._bass(chord.bass - 12, time, 1.5, 0.2);
+        this._pluck(chord.banjo[0] - 12, time + 0.02, 0.1, 0.9, -0.18);
+      }
+      if (beat === 8) this._stomp(time, 0.2);
+      return;
+    }
+    if (beat === 0) {
+      this._stomp(time, 0.3);
+      this._bass(chord.bass - 12, time, 1.5, 0.2);
+      this._bass(chord.bass, time, 0.55, 0.13);
+      this._pluck(chord.banjo[0] - 12, time + 0.02, 0.12, 1.05, -0.18);
+    }
+    if (beat === 6) this._stomp(time, 0.16);
+    if (beat === 8) this._stomp(time, 0.22);
+    if (beat === 14) this._stomp(time, 0.1 + hot * 0.06);
+    if (beat === 4 || beat === 12) this._clap(time, 0.1 + hot * 0.03);
+    if (beat === 10) this._bass(chord.fifth - 12, time, 0.3, 0.12);
+    if (phase2 && !lite && (beat === 7 || beat === 15)) this._block(time, 0.12);
+
+    // Sparse, low banjo ostinato: space is what makes the boss feel heavy.
+    if (beat === 0 || beat === 3 || beat === 6 || beat === 11) {
+      const tone = chord.banjo[(beat + bar) % chord.banjo.length];
+      this._pluck(tone, time, beat === 0 ? 0.11 : 0.075, 0.55, beat % 2 ? 0.28 : -0.28);
+    }
+    if (!lite && phase2 && beat === 13) this._pluck(chord.melody[2] + 12, time, 0.06, 0.5, 0.2);
+    if (!lite && bar % 4 === 3 && beat === 12) {
+      this._pluck(chord.melody[0], time, 0.05, 0.4, -0.3);
+    }
+    if (this._clockDucked) this._clockBeat(beat, chord, time);
+  }
+
+  /** A low wooden pulse under the final-ten-seconds music pull-back. */
+  _clockBeat(beat, chord, time) {
+    if (beat === 0) {
+      this._block(time, 0.07);
+      this._bass(chord.bass - 12, time, 0.2, 0.07);
+    } else if (beat === 8) {
+      this._block(time, 0.05);
+    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -349,7 +515,7 @@ export class MusicDirector {
    * ------------------------------------------------------------------ */
 
   /** Short musical flourish layered over a split. Size 2-6 widens the voicing. */
-  stinger(size = 2) {
+  stinger(size = 2, opts = {}) {
     // Never create an AudioContext here: stingers may be requested by a
     // programmatic swing before the player's first gesture. The band must be
     // running (which only happens after unlockAudio) for a stinger to land.
@@ -361,6 +527,18 @@ export class MusicDirector {
     const chord = this._chordForBar(Math.floor(this.step / 16));
     const at = ctx.currentTime + 0.015;
     const pieces = clamp(Math.round(safe(size, 2)), 2, 6);
+    const boss = Boolean(opts && opts.boss);
+    if (boss) {
+      // A boss split gets a heavier, darker cadence than an ordinary round.
+      const low = [chord.banjo[0] - 12, chord.banjo[1] - 12, chord.banjo[2] - 12];
+      low.forEach((note, index) => {
+        this._pluck(note, at + index * 0.06, 0.12 - index * 0.015, 0.9, -0.22 + index * 0.22);
+      });
+      this._pluck(chord.banjo[2], at + 0.2, 0.07, 0.7, 0.25);
+      this._bass(chord.bass - 12, at, 0.9, 0.2);
+      this._stomp(at, 0.12);
+      return;
+    }
     const lift = pieces >= 4 ? 12 : 0;
     const notes = [chord.banjo[0] + lift, chord.banjo[1] + lift, chord.banjo[2] + lift];
     notes.forEach((note, index) => {
@@ -594,9 +772,13 @@ export class MusicDirector {
     this._release(oldest);
   }
 
-  _sweep() {
+  _sweep(force = false) {
     if (!this.ctx || this._voices.size === 0) return;
     const now = this.ctx.currentTime;
+    // activeVoices is polled by getAudioStats every frame; a 0.12 s gate keeps
+    // that cheap (sources also release themselves via 'ended').
+    if (!force && now - this._lastSweep < 0.12) return;
+    this._lastSweep = now;
     for (const voice of [...this._voices]) {
       if (voice.stopAt && now > voice.stopAt + 0.25) this._release(voice);
     }

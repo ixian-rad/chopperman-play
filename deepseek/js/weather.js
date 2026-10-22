@@ -200,6 +200,8 @@ export class WeatherSystem {
     this._tmpColor = new THREE.Color();
     this._tmpColor2 = new THREE.Color();
     this._sunDir = new THREE.Vector3();
+    this._simpleSunColor = new THREE.Color(0xffe2b8);
+    this._simpleSunStrength = 0.55;
     this._wind = new THREE.Vector2();
     this._ambientTint = new THREE.Color(0xffffff);
     this._applyKey = '';
@@ -302,7 +304,7 @@ export class WeatherSystem {
         fog: false,
       }),
     );
-    this.sunGlow.scale.set(9, 9, 1);
+    this.sunGlow.scale.set(24, 24, 1);
     this.scene.add(this.sunGlow);
 
     // Rain hits the ground: one cheap point batch, only drawn while raining.
@@ -591,6 +593,16 @@ export class WeatherSystem {
     if (night > 0.55) sunColor.lerp(new THREE.Color(0x8fa8d8), 1);
     const sunIntensity = Math.max(0, (2.78 + golden * 0.35) * day * (1 - stormDim * 0.55));
 
+    // The Low preset swaps most Standard materials for unlit Basic clones to
+    // save raster cost. Give those clones a cheap directional term so the yard
+    // still has sun/shade form; the strength fades out at night.
+    this._simpleSunColor.copy(sunColor);
+    this._simpleSunStrength = clamp(
+      (0.16 + day * 0.5 + golden * 0.12) * (1 - stormDim * 0.45),
+      0,
+      0.82,
+    );
+
     if (env.sun) {
       env.sun.color.copy(sunColor);
       env.sun.intensity = sunIntensity;
@@ -658,8 +670,11 @@ export class WeatherSystem {
     }
 
     this.sunGlow.position.copy(this._sunDir).multiplyScalar(60);
+    // A wide, soft aureole rather than a tiny disc: at golden hour the low sun
+    // sits behind the tree line/roof, so the halo bleeding through the gaps is
+    // what makes the light direction readable from the default camera.
     this.sunGlow.material.opacity =
-      (0.12 + golden * 0.48 + day * 0.08) * (1 - night) * (1 - stormDim * 0.9);
+      (0.1 + golden * 0.4 + day * 0.06) * (1 - night) * (1 - stormDim * 0.9);
     this.sunGlow.visible = this.sunGlow.material.opacity > 0.01;
     this.sunGlow.material.color.copy(sunColor);
 
@@ -709,9 +724,16 @@ export class WeatherSystem {
         puddle.material.roughness = 0.08 + (1 - rain) * 0.4;
       }
     }
+    // Cache the storm intensities on the environment so a live quality switch
+    // can re-apply opacity to freshly swapped (lit vs unlit) materials.
+    env.setStormIntensity?.(snow, rain, fog);
     if (env.snowOverlay) {
       env.snowOverlay.visible = snow > 0.03;
       env.snowOverlay.material.opacity = snow * 0.82;
+    }
+    if (env.snowCaps) {
+      env.snowCaps.visible = snow > 0.03;
+      env.snowCaps.material.opacity = snow * 0.94;
     }
     if (env.setWind) env.setWind(this.getWindStrength());
     if (env.setWetness) env.setWetness(Math.max(rain, snow * 0.55, fog * 0.3, wind * 0.1));
@@ -726,6 +748,7 @@ export class WeatherSystem {
     const ambientStrength = 0.42 + day * 0.6 - rain * 0.08 + snow * 0.08 + golden * 0.03 + night * 0.22;
     env.setAmbientLight?.(ambient, ambientStrength);
     env.onAmbient?.(ambient, ambientStrength);
+    env.setSimpleSun?.(this._sunDir, this.camera, this._simpleSunColor, this._simpleSunStrength);
 
     if (this.renderer) {
       this.renderer.toneMappingExposure =
@@ -756,6 +779,9 @@ export class WeatherSystem {
       this._applyKey = applyKey;
       this.applyTime(this.phase, false);
     }
+    // Camera orbit changes the view-space sun direction even when the clock
+    // and weather are stable, so refresh the Low shading term every frame.
+    this.env?.setSimpleSun?.(this._sunDir, this.camera, this._simpleSunColor, this._simpleSunStrength);
 
     const rainI = this.weatherIntensity.rain;
     const snowI = this.weatherIntensity.snow;

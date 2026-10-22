@@ -758,7 +758,7 @@ body.webgl-fallback #scene {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-.stat-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.stat-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }
 .stat-chips span {
   padding: 2px 6px;
   border: 1px solid rgba(241, 236, 223, 0.1);
@@ -2121,7 +2121,7 @@ body.perf-lite .swing-icon {
   .telemetry-blade { font-size: 7px; }
   .contract-strip button { font-size: 7.5px; }
   .contract-status { font-size: 7px; }
-  .level-badge span { font-size: 6.5px; }
+  .level-badge span { font-size: 7px; }
   .keys-hint,
   .keys-hint kbd { font-size: 7.5px; }
 }
@@ -2156,4 +2156,976 @@ body.perf-lite .telemetry {
 body.perf-lite .contract-strip *,
 body.perf-lite .telemetry * {
   text-shadow: none !important;
+}
+
+/* ==========================================================================
+ *  ITERATION 27 — LEGIBILITY TYPE SCALE
+ * --------------------------------------------------------------------------
+ *  The editorial HUD was designed with 6–8 px microtype. This block is the
+ *  single source of truth for readable type: a five-step scale, >=16 px for
+ *  every label/readout, 14 px only for bold uppercase secondary labels, and
+ *  20 px+ for the primary HUD numbers. Panels are opaque enough that the
+ *  golden-hour yard can never wash the text out. It sits last in the cascade
+ *  on purpose so it overrides every earlier size/position without rewriting
+ *  the layout rules that legacy panels still share.
+ * ========================================================================== */
+
+:root {
+  --fs-micro: 14px;   /* bold uppercase secondary labels only */
+  --fs-body: 16px;    /* every other label, readout, button, caption */
+  --fs-lg: 18px;
+  --fs-num: 20px;     /* minimum primary HUD number */
+  --fs-num-lg: 26px;  /* score / combo / coins */
+  --fs-h3: 20px;
+  --fs-h2: 26px;
+  --fs-h1: 42px;
+  --fs-hero: 52px;
+  --lh-body: 1.4;
+  --lh-tight: 1.35;
+  --panel-glass: rgba(10, 14, 8, 0.86);
+  --panel-glass-strong: rgba(9, 12, 7, 0.94);
+  --ink-dim: rgba(241, 236, 223, 0.9);
+  --ink-faint: rgba(241, 236, 223, 0.82);
+  --line: rgba(241, 236, 223, 0.22);
+}
+
+html { font-size: var(--fs-body); }
+body {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+/* ---- Shared backing panels: WCAG AA over the live 3D scene ------------- */
+.score-ribbon,
+.mode-strip,
+.contract-strip,
+.atmosphere,
+.telemetry,
+.log-card,
+.stamina-card,
+.aim-chip,
+.toast,
+.run-summary,
+.modal-panel {
+  background: var(--panel-glass);
+}
+.brand,
+.keys-hint,
+.grain-panel {
+  border: 1px solid var(--line);
+  background: rgba(9, 13, 7, 0.78);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+.brand { padding: 6px 12px; }
+.keys-hint { padding: 8px 10px; }
+
+/* ---- Top bar ----------------------------------------------------------- */
+.topbar { top: 10px; left: 14px; right: 14px; gap: 12px; }
+.brand { gap: 10px; }
+.brand-mark { width: 40px; height: 40px; }
+.brand-mark svg { width: 24px; height: 24px; }
+.eyebrow {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #f6c987;
+  line-height: 1.3;
+}
+.brand h1 {
+  font-size: clamp(24px, 2vw, 30px);
+  line-height: 1.05;
+}
+.stat { min-width: 116px; padding: 8px 14px 7px; }
+.combo-stat { min-width: 126px; }
+.stat-label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.stat strong { font-size: var(--fs-num-lg); line-height: 1.2; }
+.score-stat strong { min-width: 62px; }
+.combo-stat small {
+  position: static;
+  right: auto;
+  bottom: auto;
+  margin-top: 1px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.level-badge {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.level-badge strong { font-size: 24px; line-height: 1.1; }
+.level-badge span {
+  position: static;
+  bottom: auto;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.xp-block { width: 170px; }
+.xp-label {
+  margin-bottom: 6px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.xp-bar { height: 8px; }
+.top-button {
+  height: 42px;
+  padding: 0 14px;
+  background: rgba(10, 14, 8, 0.84);
+  gap: 8px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.top-button svg { width: 18px; height: 18px; }
+.top-button.icon-only { width: 42px; }
+
+/* ---- Run modes + contracts -------------------------------------------- */
+.mode-strip {
+  top: 98px;
+  left: 14px;
+  max-width: calc(100vw - 28px);
+  gap: 4px;
+  padding: 5px;
+  background: rgba(10, 14, 8, 0.88);
+}
+.mode-kicker {
+  padding: 0 7px 0 4px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.mode-strip button {
+  padding: 8px 10px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+.mode-strip button.chapter-chip {
+  min-width: 32px;
+  padding: 8px 6px;
+  font-size: var(--fs-body);
+}
+.mode-strip button.chapter-chip.locked { color: rgba(241, 236, 223, 0.7); }
+.run-timer {
+  padding: 5px 8px;
+  font-size: var(--fs-num);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.run-score-chip {
+  padding: 5px 8px;
+  font-size: var(--fs-num);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.contract-strip {
+  top: 150px;
+  left: 14px;
+  max-width: calc(100vw - 28px);
+  padding: 4px 5px;
+  background: rgba(10, 14, 8, 0.86);
+}
+.contract-strip button {
+  padding: 7px 10px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+.contract-status {
+  padding: 0 8px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.3;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---- Atmosphere / telemetry / grain reader ---------------------------- */
+.atmosphere {
+  top: 98px;
+  right: 14px;
+  width: 320px;
+  padding: 8px 14px;
+  background: rgba(10, 14, 8, 0.88);
+}
+.atmosphere-icon { width: 30px; height: 30px; font-size: 18px; }
+.atmosphere-row { gap: 10px; }
+.atmosphere-row strong { font-size: var(--fs-h3); line-height: 1.2; }
+.atmosphere-row span:not(.atmosphere-icon) {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.atmosphere-meta {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  margin-top: 5px;
+  padding-top: 4px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.atmosphere-meta b { color: var(--ink); font-weight: 700; }
+
+.telemetry {
+  top: 200px;
+  left: 14px;
+  right: auto;
+  width: 320px;
+  padding: 8px 12px;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+  background: rgba(10, 14, 8, 0.88);
+}
+.telemetry-title {
+  margin-bottom: 3px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.telemetry-row {
+  padding: 1px 0;
+  font-size: var(--fs-body);
+  line-height: 1.3;
+}
+.telemetry-row b { font-size: var(--fs-body); font-weight: 700; color: var(--ink); }
+.telemetry-fracture b { font-size: var(--fs-body); }
+.telemetry-blade {
+  margin-top: 3px;
+  padding-top: 3px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.grain-panel {
+  position: absolute;
+  z-index: 12;
+  top: 192px;
+  right: 14px;
+  width: 152px;
+  padding: 8px;
+  pointer-events: none;
+}
+.grain-reader {
+  display: block;
+  width: 136px;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* ---- Log card --------------------------------------------------------- */
+.log-card {
+  right: 14px;
+  bottom: 150px;
+  width: 360px;
+  padding: 14px 16px 13px;
+  background: rgba(10, 14, 8, 0.9);
+}
+.log-card-top { flex-wrap: wrap; gap: 2px 8px; }
+.log-eyebrow {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  white-space: normal;
+}
+.log-difficulty { font-size: var(--fs-body); letter-spacing: 0.04em; line-height: 1.3; }
+.log-card h2 { margin: 7px 0 4px; font-size: var(--fs-h2); line-height: 1.1; }
+.log-card p {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--ink-dim);
+}
+.log-facts {
+  margin-top: 9px;
+  padding-top: 8px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.log-modifiers {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+.round-health-head {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.round-health-head span:last-child { font-size: var(--fs-num); font-weight: 700; }
+.round-health-track { height: 7px; }
+.wedge-button {
+  padding: 8px 10px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+/* ---- Aim chip + controls ---------------------------------------------- */
+.aim-chip {
+  bottom: 150px;
+  padding: 8px 14px;
+  gap: 9px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  background: rgba(10, 14, 8, 0.86);
+  width: max-content;
+  max-width: calc(100vw - 28px);
+}
+.aim-chip.perfect { background: rgba(10, 26, 12, 0.9); }
+.aim-chip.off { background: rgba(32, 12, 8, 0.9); }
+.aim-chip.weak { background: rgba(38, 24, 8, 0.9); }
+.aim-chip.hazard { background: rgba(40, 18, 6, 0.92); }
+.aim-chip.wedge { background: rgba(10, 24, 27, 0.9); }
+.aim-chip.root { background: rgba(30, 20, 10, 0.9); }
+.aim-chip.grain { background: rgba(36, 26, 9, 0.9); }
+.aim-chip.ring { background: rgba(8, 26, 22, 0.9); }
+.aim-chip.core { background: rgba(7, 28, 23, 0.92); }
+.aim-dot { width: 8px; height: 8px; }
+.stamina-card {
+  left: 14px;
+  bottom: 150px;
+  width: 336px;
+  padding: 12px 14px 11px;
+  background: rgba(10, 14, 8, 0.9);
+}
+.stamina-head {
+  margin-bottom: 7px;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.stamina-head strong { font-size: var(--fs-num); font-weight: 700; color: var(--ink); }
+.stamina-bar { height: 7px; }
+.axe-line { margin-top: 9px; padding-top: 8px; }
+.axe-name { font-size: var(--fs-lg); line-height: 1.3; }
+.axe-stats {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.stat-chips span {
+  padding: 2px 4px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.control-deck {
+  bottom: 14px;
+  width: min(880px, calc(100vw - 28px));
+  padding: 10px;
+  background: rgba(10, 14, 8, 0.93);
+}
+.power-panel { padding: 4px 16px 2px 8px; }
+.power-label {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.power-value output { font-size: 30px; line-height: 1; }
+.power-value span {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+.meter-track { height: 16px; }
+.meter-scale {
+  margin-top: 6px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.meter-scale span:nth-child(2) { color: #c3dd9b; }
+.power-caption {
+  margin-top: 6px;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.power-caption span:first-child { color: var(--ink); }
+.swing-copy strong { font-size: var(--fs-num); line-height: 1.1; }
+.swing-copy small {
+  margin-top: 5px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  opacity: 1;
+  color: #2a2113;
+}
+.swing-button { flex-basis: 210px; padding: 8px 16px; }
+.util-btn {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  color: var(--ink-dim);
+}
+.util-btn svg { width: 17px; height: 17px; opacity: 1; }
+.utility-buttons { flex-basis: 236px; }
+
+.keys-hint {
+  left: 14px;
+  top: 370px;
+  bottom: auto;
+  width: 320px;
+  max-width: 320px;
+  gap: 8px 10px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.keys-hint kbd {
+  min-width: 18px;
+  height: 20px;
+  padding: 0 4px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ---- Popups + toasts --------------------------------------------------- */
+.popup { gap: 4px; }
+.popup .popup-head {
+  font-size: clamp(30px, 4vw, var(--fs-hero));
+  line-height: 1.05;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 4px 26px rgba(0, 0, 0, 0.8);
+}
+.popup .popup-sub {
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: rgba(8, 11, 6, 0.82);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.popup .popup-points {
+  font-size: var(--fs-num-lg);
+  line-height: 1.2;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.95);
+}
+.toast {
+  padding: 9px 15px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  color: var(--ink);
+  background: rgba(10, 14, 8, 0.92);
+}
+.toast-host { top: 200px; width: min(560px, calc(100vw - 28px)); }
+.shock-pulse span {
+  padding: 4px 10px;
+  background: rgba(8, 11, 6, 0.8);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* ---- Run summary / results -------------------------------------------- */
+.run-summary {
+  width: min(560px, 94vw);
+  padding: 30px 34px 26px;
+  background: var(--panel-glass-strong);
+}
+.run-summary h2 { font-size: clamp(34px, 5vw, var(--fs-hero)); line-height: 1.1; }
+.run-summary p {
+  max-width: 440px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--ink-dim);
+}
+.run-score { font-size: clamp(34px, 5vw, var(--fs-hero)); line-height: 1.1; }
+.run-score small {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.run-stats span {
+  padding: 5px 9px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+}
+.run-share {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+.run-share .run-seed-line { font-size: var(--fs-body); }
+.run-share .run-history-row { font-size: var(--fs-body); line-height: 1.45; }
+.run-actions { gap: 10px; }
+.run-actions .primary-button,
+.run-actions .top-button { min-height: 42px; }
+
+/* ---- Shop / settings --------------------------------------------------- */
+.modal-panel {
+  max-height: calc(100vh - 24px);
+  background: var(--panel-glass-strong);
+}
+.modal-head h2 { font-size: clamp(32px, 3vw, var(--fs-h1)); line-height: 1.1; }
+.modal-head p {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--ink-dim);
+}
+.wallet span {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--ink-dim);
+}
+.wallet strong { font-size: 24px; }
+.modal-close { width: 40px; height: 40px; font-size: 28px; }
+.section-title { flex-wrap: wrap; gap: 2px 12px; }
+.section-title span {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+.section-title small {
+  font-size: var(--fs-body);
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.axe-info h3 { font-size: var(--fs-h3); line-height: 1.25; }
+.axe-info p {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.axe-meta span {
+  padding: 2px 6px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.buy-button, .primary-button, .danger-button {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  padding: 9px 12px;
+}
+.axe-card.locked { opacity: 1; }
+.axe-card.locked .axe-info h3 { color: var(--ink-dim); }
+.upgrade-info h3 { font-size: var(--fs-h3); line-height: 1.3; }
+.upgrade-info h3 span {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.upgrade-info p {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.upgrade-action small {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.hone-copy strong { font-size: var(--fs-h3); line-height: 1.3; }
+.hone-copy span {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+.reset-block strong { font-size: var(--fs-lg); line-height: 1.3; }
+.reset-block span {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.modal-foot span {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.select-label {
+  margin-bottom: 6px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--ink-dim);
+  line-height: 1.3;
+}
+.select-input {
+  padding: 10px 12px;
+  font-size: var(--fs-body);
+  line-height: 1.3;
+}
+.settings-note {
+  margin-top: 9px;
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+.segmented button {
+  padding: 9px 4px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+.toggle-label {
+  margin-top: 11px;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+}
+.audio-control label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.audio-toggle {
+  min-width: 60px;
+  padding: 7px 10px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+/* ---- Loading / title / error ------------------------------------------ */
+.loading-copy { padding: 0 20px; text-align: center; }
+.loading-copy strong { font-size: 32px; line-height: 1.2; }
+.loading-copy span {
+  max-width: calc(100vw - 40px);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.error-panel strong { font-size: 30px; line-height: 1.2; }
+.error-panel p {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.error-panel button {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ---- 1280–1320 desktop: keep the full HUD, move it clear of the deck --- */
+@media (min-width: 781px) and (max-width: 1366px) {
+  .topbar { gap: 8px; }
+  .brand { padding: 5px 9px; }
+  .brand h1 { font-size: 24px; }
+  .stat { min-width: 104px; padding: 7px 11px 6px; }
+  .combo-stat { min-width: 112px; }
+  .top-button { padding: 0 10px; }
+  .top-button.icon-only { width: 40px; }
+  .xp-block { width: 160px; }
+  .utility-buttons { flex-basis: 236px; }
+  .mode-strip { gap: 2px; }
+  .mode-strip button { padding: 8px 5px; }
+  .mode-strip button.chapter-chip { min-width: 24px; padding: 8px 2px; }
+  .run-timer, .run-score-chip { padding: 5px 6px; }
+}
+
+/* At 1280 the mode strip is ~1000 px wide and would slide under the
+   right-hand atmosphere panel. Let it wrap to two rows and drop the
+   contract/telemetry stack just below it; every panel keeps all its text. */
+@media (min-width: 781px) and (max-width: 1320px) {
+  .mode-strip { max-width: calc(100vw - 360px); }
+  .contract-strip { top: 154px; }
+  .telemetry { top: 204px; }
+}
+
+/* A run adds the 20 px score/timer chips. Chapter select is meaningless
+   mid-run, so hide the six chapter chips while either chip is visible; this
+   keeps the strip one row on desktop and one row shorter on a phone. */
+@media (max-width: 1500px) {
+  .mode-strip:has(.run-score-chip:not([hidden])) .chapter-chip,
+  .mode-strip:has(.run-timer:not([hidden])) .chapter-chip,
+  .mode-strip:has(.run-score-chip:not([hidden])) .chapter-kicker,
+  .mode-strip:has(.run-timer:not([hidden])) .chapter-kicker,
+  .mode-strip:has(.run-score-chip:not([hidden])) .mode-sep,
+  .mode-strip:has(.run-timer:not([hidden])) .mode-sep { display: none; }
+}
+
+/* 1367–1500 px: the base mode strip gets its larger padding back and would
+   touch the atmosphere panel. Compact it the same way, without moving the
+   contract stack (the strip still fits on one row here). */
+@media (min-width: 1367px) and (max-width: 1500px) {
+  .mode-strip { max-width: calc(100vw - 360px); gap: 2px; }
+  .mode-strip button { padding: 8px 6px; }
+  .mode-strip button.chapter-chip { min-width: 24px; padding: 8px 2px; }
+  .run-timer, .run-score-chip { padding: 5px 6px; }
+}
+
+/* ---- Phone / narrow layout: reflow, never shrink ---------------------- */
+@media (max-width: 980px) {
+  .atmosphere,
+  .log-card,
+  .grain-panel,
+  .keys-hint { display: none; }
+}
+
+@media (max-width: 780px) {
+  .topbar {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand actions"
+      "score score"
+      "level level";
+    align-items: center;
+    gap: 8px;
+  }
+  .brand { grid-area: brand; min-width: 0; padding: 5px 9px; gap: 8px; }
+  .brand-mark { width: 36px; height: 36px; }
+  .brand h1 { font-size: clamp(22px, 6vw, 26px); }
+  .brand .eyebrow { font-size: var(--fs-micro); letter-spacing: 0.05em; }
+  .top-actions { grid-area: actions; }
+  .top-button { width: 42px; height: 42px; padding: 0; justify-content: center; }
+  .top-button span { display: none; }
+  .score-ribbon {
+    grid-area: score;
+    margin: 0;
+    width: 100%;
+    justify-content: stretch;
+  }
+  .stat { min-width: 0; padding: 7px 10px 6px; }
+  .stat strong { font-size: 24px; }
+  .combo-stat small { font-size: var(--fs-micro); }
+  .level-cluster {
+    grid-area: level;
+    margin-left: 0;
+    justify-content: flex-start;
+    gap: 9px;
+  }
+  .level-badge { width: 44px; height: 44px; }
+  .level-badge strong { font-size: 22px; }
+  .level-badge span { font-size: var(--fs-micro); }
+  .xp-block { width: 150px; }
+  .xp-label { font-size: var(--fs-micro); }
+
+  .mode-strip {
+    top: 194px;
+    left: 8px;
+    right: 8px;
+    max-width: none;
+    padding: 4px;
+    gap: 4px;
+    overflow-x: visible;
+    flex-wrap: wrap;
+  }
+  .mode-kicker, .mode-sep, .chapter-kicker { display: none; }
+  .mode-strip button { font-size: var(--fs-body); padding: 7px 9px; }
+  .mode-strip button.chapter-chip { min-width: 30px; padding: 7px 5px; }
+  .contract-strip {
+    top: 326px;
+    left: 8px;
+    right: 8px;
+    max-width: none;
+    padding: 3px 4px;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .contract-strip button { font-size: var(--fs-body); padding: 7px 9px; }
+  .contract-status { display: none; }
+  .telemetry { display: none; }
+  .toast-host { top: 416px; width: calc(100vw - 20px); }
+  .toast { font-size: var(--fs-body); line-height: 1.35; }
+  .popup { top: 46%; z-index: 25; }
+
+  .stamina-card {
+    display: block;
+    left: 8px;
+    bottom: 204px;
+    width: 210px;
+    padding: 7px 10px 8px;
+    background: rgba(10, 14, 8, 0.9);
+  }
+  .stamina-head { font-size: var(--fs-body); margin-bottom: 5px; }
+  .stamina-head strong { font-size: var(--fs-num); }
+  .stamina-bar { height: 6px; }
+  .stamina-card .axe-line,
+  .stamina-card .stat-chips { display: none; }
+
+  .aim-chip {
+    bottom: 270px;
+    max-width: calc(100vw - 24px);
+    padding: 7px 11px;
+    font-size: var(--fs-body);
+    line-height: 1.35;
+    white-space: normal;
+    text-align: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .control-deck {
+    bottom: 6px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    transform: none;
+    padding: 7px;
+    flex-wrap: wrap;
+  }
+  .power-panel {
+    flex-basis: 100%;
+    padding: 2px 4px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .power-value output { font-size: 30px; }
+  .power-caption { gap: 6px; }
+  .swing-button {
+    flex: 1 1 120px;
+    min-width: 0;
+    min-height: 54px;
+    border-right: 0;
+    padding: 6px 10px;
+  }
+  .swing-copy strong { font-size: var(--fs-num); }
+  .utility-buttons { flex: 0 0 150px; padding-left: 6px; gap: 4px; }
+  .util-btn { justify-content: center; padding: 5px; }
+  .util-btn span { display: none; }
+  .swing-copy small { display: none; }
+  .swing-icon { display: grid; width: 25px; height: 25px; }
+
+  .modal { padding: 8px; }
+  .modal-panel { max-height: calc(100vh - 16px); width: 100%; }
+  .modal-head { padding: 16px 14px 13px; gap: 10px; }
+  .modal-head h2 { font-size: clamp(30px, 8vw, 36px); }
+  .modal-head p { font-size: var(--fs-body); }
+  .shop-section, .settings-section { padding: 14px 14px 16px; }
+  .modal-foot { padding: 13px 14px; }
+  .modal-foot .primary-button { width: 100%; }
+  .section-title { flex-wrap: wrap; }
+  .axe-card { grid-template-columns: 40px 1fr; }
+  .axe-card .buy-button { grid-column: 1 / -1; width: 100%; }
+  .hone-block, .reset-block { flex-wrap: wrap; }
+  .hone-block .buy-button, .reset-block .danger-button { width: 100%; }
+  .segmented button { font-size: var(--fs-body); }
+  .run-summary { padding: 24px 18px 22px; }
+  .run-summary p { max-width: none; }
+  .run-actions { flex-direction: column; }
+  .run-actions .primary-button,
+  .run-actions .top-button { width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .brand .eyebrow { display: none; }
+  .brand h1 { font-size: 24px; }
+  .top-actions { gap: 4px; }
+  .top-button { width: 40px; height: 40px; }
+  .top-button.icon-only { width: 40px; }
+  .level-badge { width: 44px; height: 44px; }
+  .level-badge strong { font-size: 22px; }
+  .level-badge span { font-size: var(--fs-micro); }
+  .xp-block { width: 170px; }
+  .score-ribbon .stat:nth-child(3) { display: flex; }
+  .combo-stat small { display: none; }
+  .swing-icon { display: none; }
+  .utility-buttons { flex-basis: 138px; }
+  .stamina-card { width: 210px; }
+  .aim-chip { bottom: 262px; }
+  .modal { padding: 6px; }
+  .shop-section, .settings-section { padding: 12px; }
+  .audio-control label { font-size: var(--fs-micro); }
+}
+
+@media (max-width: 1600px) {
+  .keys-hint { display: none; }
+}
+
+/* Keep the compact phone HUD readable in the software flat-paint path too. */
+body.perf-lite .brand,
+body.perf-lite .grain-panel,
+body.perf-lite .keys-hint {
+  background-color: rgba(10, 14, 8, 0.94) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

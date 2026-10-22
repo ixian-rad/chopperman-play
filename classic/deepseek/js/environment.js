@@ -764,6 +764,9 @@ function createTrees(scene) {
       baseRotation: tree.rotation.y,
       phase: rnd() * 6.28,
       scale,
+      x,
+      z,
+      crownY,
     });
     return tree;
   }
@@ -1522,6 +1525,71 @@ function createPuddles(scene) {
   return puddles;
 }
 
+/**
+ * A single merged batch of autumn leaves around the block and woodpile. The
+ * lawn is a big empty plane at Low; a little ground litter adds near-field
+ * detail for one draw call and ~220 triangles, with vertex colours so it
+ * survives the quality switch to the unlit material set.
+ */
+function createLeafLitter(scene) {
+  const random = mulberry32(0x1eaf);
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const palette = [0xa8582f, 0x8c4a22, 0xc07a3a, 0x6f4a27, 0xb98a3d, 0x7d5a30];
+  const color = new THREE.Color();
+  const count = 120;
+  for (let i = 0; i < count; i++) {
+    const angle = random() * Math.PI * 2;
+    const radius = 0.65 + random() * 3.4;
+    const x = Math.cos(angle) * radius;
+    const z = -0.95 + Math.sin(angle) * radius * 0.9;
+    // Keep the leaf litter out of the flagstone path approach.
+    if (z > 2.0 && Math.abs(x - 1.7) < 0.75) continue;
+    const yaw = random() * Math.PI * 2;
+    const sx = 0.035 + random() * 0.055;
+    const sz = sx * (0.55 + random() * 0.5);
+    const tilt = (random() - 0.5) * 0.22;
+    const y = 0.022 + random() * 0.012;
+    color.setHex(palette[(random() * palette.length) | 0]);
+    color.offsetHSL(0, (random() - 0.5) * 0.1, (random() - 0.5) * 0.12);
+    const base = positions.length / 3;
+    const corners = [
+      [0, sz], [sx, 0], [0, -sz], [-sx, 0],
+    ];
+    for (let c = 0; c < 4; c++) {
+      const lx = corners[c][0];
+      const lz = corners[c][1];
+      const rx = lx * Math.cos(yaw) - lz * Math.sin(yaw);
+      const rz = lx * Math.sin(yaw) + lz * Math.cos(yaw);
+      positions.push(x + rx, y + rz * tilt, z + rz);
+      const shade = 0.86 + random() * 0.24;
+      colors.push(color.r * shade, color.g * shade, color.b * shade);
+    }
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.95,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'leaf-litter';
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+  return mesh;
+}
+
 function createSnowOverlay(scene) {
   const texture = makeSnowTexture();
   const material = new THREE.MeshStandardMaterial({
@@ -1541,6 +1609,79 @@ function createSnowOverlay(scene) {
   plane.visible = false;
   scene.add(plane);
   return plane;
+}
+
+/**
+ * Snow that accumulates on things above the ground: fence rails, the roof
+ * ridge and porch awning, and flattened caps on the tree crowns. All pieces
+ * are merged into a single static mesh (one draw call) and the shared material
+ * fades with snow intensity, so a storm reads as accumulation rather than a
+ * white lawn plane with green trees.
+ */
+function createSnowCaps(scene, treeList = [], house = null) {
+  const parts = [];
+  const push = (geometry, x, y, z, rotY = 0) => {
+    const g = geometry.index ? geometry.toNonIndexed() : geometry;
+    if (g !== geometry) geometry.dispose();
+    if (rotY) g.rotateY(rotY);
+    g.translate(x, y, z);
+    parts.push(g);
+  };
+  const box = (w, h, d, x, y, z, rotY = 0) =>
+    push(new THREE.BoxGeometry(w, h, d), x, y, z, rotY);
+  const blob = (sx, sy, sz, x, y, z, rotY = 0) => {
+    const g = new THREE.IcosahedronGeometry(1, 0);
+    g.scale(sx, sy, sz);
+    push(g, x, y, z, rotY);
+  };
+
+  // Fence rails: the long back run plus the two side runs. The rail top is at
+  // y = 0.68 with 0.085 thickness, so the snow slab sits just above it.
+  box(17.5, 0.035, 0.1, 0, 0.742, -6.45);
+  box(9.1, 0.035, 0.1, -8.72, 0.742, -2, Math.PI / 2);
+  box(9.1, 0.035, 0.1, 8.72, 0.742, -2, Math.PI / 2);
+
+  // House (group at -2.8, -10.1, yaw 0.07): roof ridge, porch awning and the
+  // chimney cap catch the most snow.
+  if (house) {
+    const yaw = house.rotation?.y || 0;
+    const hx = house.position?.x || 0;
+    const hz = house.position?.z || 0;
+    box(9.9, 0.05, 0.36, hx, 6.02, hz, yaw);
+    box(3.15, 0.035, 1.08, hx, 2.76, hz + 2.68, yaw);
+    box(0.78, 0.04, 0.82, hx + 3.0, 6.9, hz - 0.5, yaw);
+  }
+
+  // Tree crowns: two overlapping flattened blobs per tree give a dusted,
+  // irregular cap instead of a single white mushroom.
+  for (const tree of treeList) {
+    const s = tree.scale || 1;
+    const crownY = (tree.crownY || 4.5) * s;
+    blob(2.25 * s, 0.42 * s, 2.1 * s, tree.x, crownY + 1.55 * s, tree.z, 0.4);
+    blob(1.3 * s, 0.3 * s, 1.45 * s, tree.x + 0.7 * s, crownY + 1.9 * s, tree.z - 0.35 * s, 1.1);
+  }
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xf3f9ff,
+    roughness: 0.96,
+    metalness: 0,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const merged = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  const mesh = new THREE.Mesh(merged, material);
+  mesh.name = 'snow-caps';
+  mesh.visible = false;
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+  return mesh;
 }
 
 /**
@@ -1596,7 +1737,7 @@ function createContactShadows(scene) {
   return mesh;
 }
 
-function buildSimpleMaterialSet(root) {
+function buildSimpleMaterialSet(root, sunState = null) {
   const cache = new Map();
   const states = [];
   const makeLambert = (material) => {
@@ -1624,10 +1765,50 @@ function buildSimpleMaterialSet(root) {
     simple.name = `${material.name || 'material'}-low`;
     simple.userData = { ...material.userData };
     simple.userData.baseColor = simple.color.clone();
-    // Preserve the grass wind hook when the material is swapped at low quality.
-    if (typeof material.onBeforeCompile === 'function') {
-      simple.onBeforeCompile = material.onBeforeCompile;
-    }
+    // Remember the source so live material changes (wet bark, frost whitening,
+    // hazard scorch) can be re-tinted into the unlit clone when the weather
+    // grade refreshes.
+    simple.userData.refreshFrom = material;
+    simple.userData.colorScale = 0.95;
+    // Unlit Basic materials were the main reason Low looked like a flat
+    // poster: no sun, no normals, no form. Inject a single per-vertex sun
+    // term into the existing Basic shader (one dot product, no extra draw or
+    // light loop) so the house, fence, trees and log read as volumes. The
+    // shared uniforms are driven by WeatherSystem so the shade direction and
+    // warmth follow the real sun, golden hour and night.
+    const previousCompile = typeof material.onBeforeCompile === 'function'
+      ? material.onBeforeCompile
+      : null;
+    simple.onBeforeCompile = (shader, rendererInstance) => {
+      if (previousCompile) previousCompile.call(simple, shader, rendererInstance);
+      if (!sunState) return;
+      shader.uniforms.uSunDirView = sunState.direction;
+      shader.uniforms.uSunColor = sunState.color;
+      shader.uniforms.uSunStrength = sunState.strength;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying float vSunLit;\nuniform vec3 uSunDirView;',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          /* glsl */ `#include <begin_vertex>
+            vSunLit = clamp(dot(normalize(normalMatrix * normal), normalize(uSunDirView)) * 0.5 + 0.5, 0.0, 1.0);
+          `,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying float vSunLit;\nuniform vec3 uSunColor;\nuniform float uSunStrength;',
+        )
+        .replace(
+          '#include <tonemapping_fragment>',
+          /* glsl */ `vec3 shadeTint = vec3(0.82, 0.86, 1.0);
+            vec3 sunTint = mix(shadeTint, uSunColor, vSunLit);
+            gl_FragColor.rgb *= mix(vec3(1.0), sunTint * (0.82 + 0.32 * vSunLit), uSunStrength);
+            #include <tonemapping_fragment>`,
+        );
+    };
     cache.set(material, simple);
     return simple;
   };
@@ -1748,7 +1929,9 @@ export function createEnvironment(scene, renderer, preset = null) {
 
   const lanterns = createLanterns(scene);
   const puddles = createPuddles(scene);
+  const leafLitter = createLeafLitter(scene);
   const snowOverlay = createSnowOverlay(scene);
+  const snowCaps = createSnowCaps(scene, trees.trees || [], house.group);
   const contactShadows = createContactShadows(scene);
 
   const state = {
@@ -1767,7 +1950,9 @@ export function createEnvironment(scene, renderer, preset = null) {
     motes,
     lanterns,
     puddles,
+    leafLitter,
     snowOverlay,
+    snowCaps,
     contactShadows,
     ground,
     windowMaterials: [...(house.windowMaterials || [])],
@@ -1775,9 +1960,20 @@ export function createEnvironment(scene, renderer, preset = null) {
     grassShader: grass.material.userData.shader,
     wind: 1,
     wetness: 0,
+    snowIntensity: 0,
+    rainIntensity: 0,
+    fogIntensity: 0,
   };
 
-  const simpleSet = buildSimpleMaterialSet(scene);
+  // Shared uniforms for the cheap directional shading used by Low's unlit
+  // material clones. WeatherSystem writes them once per frame.
+  const simpleSunState = {
+    direction: { value: new THREE.Vector3(0.35, 0.82, 0.45).normalize() },
+    color: { value: new THREE.Color(0xffe2b8) },
+    strength: { value: 0.55 },
+  };
+  const simpleSunScratch = new THREE.Vector3();
+  const simpleSet = buildSimpleMaterialSet(scene, simpleSunState);
 
   function applySimpleMaterials(enabled) {
     simpleSet.apply(enabled);
@@ -1791,9 +1987,12 @@ export function createEnvironment(scene, renderer, preset = null) {
     const key = `${color.getHexString()}:${intensity.toFixed(2)}`;
     if (state._ambientKey === key) return;
     state._ambientKey = key;
-    for (const simple of simpleSet.cache.values()) {
+    for (const [source, simple] of simpleSet.cache) {
       const base = simple.userData.baseColor;
       if (!base) continue;
+      if (source?.color) {
+        base.copy(source.color).multiplyScalar(simple.userData.colorScale ?? 0.95);
+      }
       simple.color.copy(base).multiply(color).multiplyScalar(intensity);
     }
     const groundMaterial = ground.ground?.material;
@@ -1871,6 +2070,34 @@ export function createEnvironment(scene, renderer, preset = null) {
     }
   }
 
+  /**
+   * Drive the cheap directional term on the Low material clones. The world
+   * sun direction is rotated into view space with the camera so the shading
+   * survives orbit; colour and strength follow the time-of-day pass.
+   */
+  function setSimpleSun(sceneDirection, camera, color, strength = 0.55) {
+    if (!sceneDirection) return;
+    if (camera?.matrixWorldInverse) {
+      simpleSunScratch.copy(sceneDirection).transformDirection(camera.matrixWorldInverse);
+      simpleSunState.direction.value.copy(simpleSunScratch);
+    } else {
+      simpleSunState.direction.value.copy(sceneDirection).normalize();
+    }
+    if (color) simpleSunState.color.value.copy(color);
+    simpleSunState.strength.value = THREE.MathUtils.clamp(strength, 0, 1);
+  }
+
+  /**
+   * Remember the current storm intensities inside `state` (the returned
+   * object also exposes copies), so a live quality switch can re-apply
+   * opacity to the freshly swapped lit/unlit snow and puddle materials.
+   */
+  function setStormIntensity(snow = 0, rain = 0, fog = 0) {
+    state.snowIntensity = THREE.MathUtils.clamp(snow, 0, 1);
+    state.rainIntensity = THREE.MathUtils.clamp(rain, 0, 1);
+    state.fogIntensity = THREE.MathUtils.clamp(fog, 0, 1);
+  }
+
   function setQuality(p) {
     if (!p) return;
     state.quality = p;
@@ -1909,6 +2136,25 @@ export function createEnvironment(scene, renderer, preset = null) {
     sun.shadow.radius = p.shadowRadius ?? 2;
     sun.castShadow = Boolean(p.shadows) && size > 0;
     applySimpleMaterials(Boolean(p.simpleMaterials));
+    // A quality switch swaps the snow/puddle materials back to their lit
+    // originals. The last weather pass wrote opacity onto whichever material
+    // was active then, so re-apply the cached intensity to the new one.
+    state.snowIntensity = state.snowIntensity || 0;
+    state.rainIntensity = state.rainIntensity || 0;
+    if (snowOverlay) {
+      snowOverlay.material.opacity = state.snowIntensity * 0.82;
+      snowOverlay.visible = state.snowIntensity > 0.03;
+    }
+    if (snowCaps) {
+      snowCaps.material.opacity = state.snowIntensity * 0.94;
+      snowCaps.visible = state.snowIntensity > 0.03;
+    }
+    for (const puddle of puddles) {
+      puddle.material.opacity = state.rainIntensity > 0.08
+        ? 0.18 + state.rainIntensity * 0.42
+        : 0;
+      puddle.visible = state.rainIntensity > 0.08;
+    }
     if (ground.ground) {
       const useSimpleGround = Boolean(p.simpleGround);
       ground.ground.material = useSimpleGround
@@ -1939,6 +2185,9 @@ export function createEnvironment(scene, renderer, preset = null) {
   }
 
   state.setQuality = setQuality;
+  state.setSimpleSun = setSimpleSun;
+  state.setStormIntensity = setStormIntensity;
+  state.simpleSunState = simpleSunState;
   state.setAmbientLight = applyAmbientTint;
   state.onAmbient = null;
   state.setWind = setWind;

@@ -128,6 +128,11 @@
       <div class="telemetry-row"><span>Grain</span><b id="telemetryGrain">0% grain</b></div>
       <div class="telemetry-row telemetry-fracture"><span>Fracture</span><b id="telemetryFracture">Ready</b></div>
       <span class="telemetry-blade" id="telemetryBlade">Blade 0° · Q/E turn</span>
+    </aside>
+
+    <!-- End grain reader (kept out of the telemetry panel so the 16 px
+         readout rows and the canvas can both scale up without a scrollbox) -->
+    <aside class="grain-panel" aria-label="End grain reader">
       <canvas class="grain-reader" id="grainReader" width="192" height="192" aria-label="End grain reader"></canvas>
     </aside>
 
