@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f2eb"><meta name="description" content="Find the grain. A fictional backyard chopping game with physics, weather, and a little progression.">
+  <title>Backyard — Find the grain</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23b75031'/%3E%3Cpath d='M22 49L42 15M35 16l18 6-9 14-17-7' fill='none' stroke='%23fff8ed' stroke-width='5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","cannon-es":"https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"}}</script>
+</head>
+<body>
+  <div id="viewport" aria-label="3D chopping game. Aim at the log, drag and release to chop. Right drag to orbit."></div>
+  <div id="pull-guide" hidden aria-hidden="true"><svg><line id="pull-line" stroke-width="3" stroke-dasharray="6 5"/></svg><span id="pull-label"></span></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="axe-mark">↟</span> BACKYARD<span class="brand-period">.</span></a>
+    <div class="header-caption">FIND THE GRAIN <span> / </span> A FICTIONAL NEW JERSEY BACKYARD</div>
+    <button id="help-button" class="icon-button" aria-label="Controls and field notes">?</button>
+  </header>
+  <main class="overlay">
+    <section class="scoreboard panel" aria-label="Game progress">
+      <div class="score-cell"><span>SCORE</span><output id="score">0</output></div>
+      <div class="score-cell"><span>COMBO</span><output id="combo">—</output></div>
+      <div class="xp-cell"><div><strong id="level">LV 1</strong><span id="xp-label">0 / 100 XP</span></div><progress id="xp" max="100" value="0" aria-label="Experience to next level"></progress></div>
+      <div class="stamina-cell"><div><span>STAMINA</span><output id="stamina-label">100</output></div><progress id="stamina" max="100" value="100" aria-label="Stamina"></progress></div>
+    </section>
+    <section id="control-panel" class="control-panel panel" aria-label="Chopping controls">
+      <div class="eyebrow">YOUR NEXT GOOD SPLIT</div><h1>Find the grain.</h1>
+      <div class="campaign"><span id="campaign-label">CHAPTER 1 / 6 · First firewood</span><progress id="campaign-progress" value="0" max="18" aria-label="Campaign logs cleared"></progress></div>
+      <details id="contracts"><summary>CAMPAIGN / CHALLENGE CONTRACTS</summary>
+        <label class="field">PLAY MODE<select id="game-mode"><option value="campaign">Campaign · saved progress</option><option value="time">90 second sprint</option><option value="daily">Daily six · same UTC seed</option><option value="precision">Precision six · 12 strikes</option></select></label>
+        <p>Contracts use a fresh axe and separate records. Precision: six marked targets, twelve strikes. Aim at the mint rings, match grain and the requested power. Timer starts on your first swing. Campaign gear stays saved.</p>
+        <button id="start-contract" class="wedge-button">Start / replay selected mode</button>
+      </details>
+      <section id="contract-results" class="contract-results" hidden aria-label="Contract results">
+        <div class="eyebrow" id="result-medal">CONTRACT COMPLETE</div><strong id="result-score"></strong><p id="result-detail"></p><p id="result-record"></p>
+        <div class="result-actions"><button id="replay-contract">Replay route</button><button id="return-campaign">Campaign</button></div>
+        <details><summary>RECENT RUNS / MEDAL TARGETS</summary><ol id="result-history"></ol><p>Daily gold: six logs in 90s, no misses, three clean splits. Silver: finish in 150s with 80% contact accuracy. Sprint gold: six logs, 90% accuracy; silver: four logs, 80%. Any completed log earns bronze. Precision gold: six clears, 690 points, four first-strike bullseyes, no misses. Silver: six clears and 480 points; any six clears earn bronze. Records rank points, then time, misses, and swings.</p></details>
+      </section><p id="contract-status" role="status">Campaign progress saves automatically.</p>
+      <div class="log-heading"><strong id="log-type">Pine</strong><span id="log-count">LOG 01</span></div>
+      <p id="log-tip">A forgiving start. Aim for the center.</p>
+      <div class="aim-readout"><span id="aim-label">CENTER AIM</span><span id="angle-label">GRAIN 0°</span></div>
+      <details id="grain-reader"><summary>OPEN THE AIM / GRAIN READER</summary><canvas id="grain-map" width="416" height="272" aria-label="Enlarged end grain. Aim here, drag down and release to swing."></canvas><p>Drag here to chop. Aim near a dark cut: gold selects the wedge point. W drives; X pulls.</p></details>
+      <div class="timing-label"><span id="timing-label">Ready to find your rhythm</span><output id="timing-value">100%</output></div>
+      <div class="timing-track" aria-label="Timing meter"><div class="sweet-zone"></div><i id="timing-needle"></i></div>
+      <button id="swing-button" class="swing-button" disabled><span>Loading the backyard…</span><kbd>SPACE</kbd></button>
+      <div class="secondary-controls"><button id="reset-button" disabled>↺ Reset log</button><button id="center-button">◎ Center aim</button></div>
+      <div class="wedge-controls"><button id="wedge-button" class="wedge-button" disabled>Wedge · open a cut first</button>
+      <button id="extract-wedge" class="wedge-button" hidden>Pull wedge [X]</button></div>
+      <p class="gesture-tip">Aim at the end grain. Drag down & release.<br>Power & grain preview while you pull.<br>Space twice also chops. Q / E turns the blade.</p>
+      <details id="shop"><summary>THE TOOL SHED <span id="coins">0 coins</span></summary><div class="shop-content">
+        <p id="axe-stats">2.4 kg axe · sharpness 100%</p>
+        <button data-upgrade="sharpness"><span>Hone edge <small>+12% cutting efficiency</small></span><b>70</b></button>
+        <button data-upgrade="weight"><span>Heavier head <small>+0.28 kg · stronger axe & wedge</small></span><b>70</b></button>
+        <button data-upgrade="stamina"><span>Conditioning <small>More stamina & faster recovery</small></span><b>70</b></button>
+        <button id="repair-edge"><span>Repair chipped edge <small>Restore edge to 100%</small></span><b>12 ¢</b></button>
+        <p id="shop-message" role="status">Earn coins by finishing logs.</p>
+      </div></details>
+    </section>
+    <aside class="telemetry panel" aria-label="Physics and conditions">
+      <div class="eyebrow"><i class="live-dot"></i> LIVE / THE CUT</div>
+      <div class="physics-metrics"><div><span>EDGE SPEED</span><output id="speed">0.0</output><small>m/s</small></div><div><span>IMPACT</span><output id="energy">—</output><small>J</small></div></div>
+      <div class="fracture-line"><span id="fracture">Intact</span><span id="penetration">0 mm</span></div>
+      <details id="conditions" open><summary>THE CONDITIONS</summary>
+      <label class="field">WEATHER<select id="weather"><option value="sun">Clear skies</option><option value="rain">Rain</option><option value="snow">Snow & frost</option><option value="wind">Wind</option><option value="fog">Fog</option></select></label>
+      <p id="wood-condition">Moisture 8% · frost 0%</p><p id="weather-effect">Dry wood · steady grip</p>
+      <label class="field" for="time">TIME OF DAY <output id="time-label">16:30</output></label><input id="time" type="range" min="0" max="24" value="16.5" step="0.1">
+      <label class="check"><input id="day-cycle" type="checkbox" checked> Sun follows the clock</label>
+      <label class="field">QUALITY<select id="quality"><option value="auto">Auto · adapts to FPS</option><option value="low">Low · software friendly</option><option value="medium">Balanced</option><option value="high">High · bloom + SSAO</option></select></label>
+      <p id="performance">Measuring frame rate…</p></details>
+      <details class="settings"><summary>FIELD SETTINGS</summary>
+        <label class="check"><input id="slow-motion" type="checkbox"> Slow motion · ¼ speed</label>
+        <label class="check"><input id="impact-effects" type="checkbox" checked> Hit-stop, shake & perfect slow-mo</label>
+        <label class="check"><input id="debug-physics" type="checkbox"> Collision hulls & self-checks</label>
+        <button id="camera-button">Reset camera</button><button id="reset-progress">Reset saved progress</button><p id="save-state">Progress saves locally.</p>
+      </details>
+    </aside>
+    <div id="hit-feedback" aria-live="polite"><strong id="hit-title"></strong><span id="hit-detail"></span></div>
+    <div class="scene-status" role="status" aria-live="polite"><i class="live-dot"></i><span id="scene-status">Preparing the backyard…</span></div>
+    <div class="camera-hint">RIGHT DRAG TO ORBIT <span>·</span> SCROLL TO EXPLORE</div>
+  </main>
+  <footer><span>A quiet backyard. A better swing.</span><span>GRAIN / GRIT / A LITTLE MOMENTUM</span><span id="session-note">6 CHAPTERS · 18 LOGS · 6 BOSSES</span></footer>
+  <dialog id="help-dialog"><button class="dialog-close icon-button" aria-label="Close controls">×</button><div class="eyebrow">FIELD NOTES / 006</div><h2>Read the wood.<br>Make it count.</h2>
+    <p>Aim at the center and align the blade with the long grain guide. Tap Space or the swing button to start the timing meter; tap again in the green zone. For direct control, aim on the log, pull the mouse down, and release. Longer, quicker pulls add power. The pull line previews the exact power and grain alignment; sideways pulls turn the blade. Mouse blows do not depend on the timing meter.</p>
+    <dl><dt>Mouse / touch</dt><dd>Aim; drag down & release to swing</dd><dt>Space / click</dt><dd>Start meter, then stop to chop</dd><dt>Q / E</dt><dd>Rotate blade 5°</dd><dt>Arrow keys</dt><dd>Nudge strike point</dd><dt>W / X</dt><dd>Drive selected cut / pull seated wedge</dd><dt>C / R / S</dt><dd>Center aim / reset log / slow motion</dd><dt>Right drag / wheel</dt><dd>Orbit camera / zoom</dd></dl>
+    <p>Six chapters lead from pine to ironwood. Every third log is an oversized boss with a bonus bounty. A weak chop leaves a particular crack: follow its grain line to deepen it. Once a cut is open, aim near its dark kerf: a gold ring marks the selected wedge point. Press W to drive it using 12 stamina. A seated wedge stays in that cut even if you aim elsewhere; X pulls it for a small friction/depth-based stamina cost. Then aim at a different crack to move it. Wedges need no sharp edge; axe splits can earn clean combos. Splitting wood restores stamina.</p>
+    <p>The grain reader is an enlarged, interactive end-grain view: aim and drag there just as on the log. Twisted elm has changing grain. Steel on knotty oak chips your edge by 18%; embedded stone on late ironwood chips it by 12%. The orange aim ring warns when any part of the edge overlaps an inclusion. The Iron Crown has three separate stone-bound sections, divided by faint seams. Work beside each stone and finish that section before moving to another; released pockets leave real gaps. All three must fall for the boss bounty. Repair in the shed for 12 coins. Rain soaks wood over time, raising resistance and lowering friction. Snow accumulates frost; centered frozen wood gets a brittle bonus. Conditions persist as weather changes and snapshot when you swing. Forked elm has two leaning limbs and a lower interlocked crotch: remove both limbs first, then open the crotch. C finds the next section; each has its own grain and persistent cuts. A driven wedge stays seated until that section breaks. Heart-rotted hickory has a dark, soft core: a light blow crumbles it, but the dense outer walls still need separate cuts. Wind pushes loose pieces and light chips more than heavy billets; the yard ribbon shows gusts. Hollow oak has a real cavity: strike each standing wall and align radially. C aims at the next wall. Impact effects respect reduced-motion preferences and can be toggled in field settings.</p>
+    <p>Open Campaign / Challenge contracts for a 90 second seeded sprint, the daily six-log route, or Precision Six. Precision gives twelve strikes to clear six mint-ring targets: match the marked point, grain, and requested power. Each log pays its average strike quality, plus first-strike and bullseye streak bonuses; misses lower that average, and extra blows lose first-strike bonuses. Resetting does not restore attempts. All use a fresh axe and separate local records. The timer begins with your first swing; slow motion and upgrades are disabled during contracts. A result card awards bronze, silver, or gold and tracks your last five runs. Equal scores rank by time, misses, then swings. Replay or return to your saved campaign anytime between swings.</p><p class="fine-print">Fictional person and place. Procedural PBR surfaces; a hand-driven, calibrated axe arc with swept edge contact and an energy-based fracture approximation. Grain sections are prepared convex pieces, not a material stress solver. Saves stay in this browser.</p><button class="dialog-done">Back to the backyard ↗</button>
+  </dialog>
+  <div id="load-error" hidden><h2>The backyard couldn’t load.</h2><p id="error-detail">This scene needs WebGL 2 and access to jsDelivr.</p><button onclick="location.reload()">Try again ↗</button></div>
+  <script type="module">import('./app.js').catch(error=>{document.getElementById('load-error').hidden=false;document.getElementById('error-detail').textContent=`The 3D engine could not start: ${error.message}. Check WebGL 2 and your connection to jsDelivr.`;document.getElementById('scene-status').textContent='Scene unavailable';console.error(error);});</script>
+</body>
+</html>

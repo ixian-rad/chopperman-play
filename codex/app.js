@@ -1,0 +1,385 @@
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildEnvironment, createWoodMaterials, standard, mesh } from './environment.js';
+import { createHumanoid } from './humanoid.js';
+import { Simulation } from './physics.js';
+import { Game, WEATHER, CHAPTERS } from './game.js';
+import { Contract, dailySeed } from './challenges.js';
+import { grainAt, crackPoint, LOG_RADIUS, LOG_TOP, evolveCondition, conditionPhysics, pullGesture, inclusions, inclusionAt, knotAt, burlSectorAt } from './mechanics.js';
+import { Atmosphere } from './atmosphere.js';
+
+const $=id=>document.getElementById(id);
+const viewport=$('viewport');if(innerWidth<=760)$('conditions').open=false;
+if(innerWidth<=760)$('grain-reader').open=false;
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1));renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
+viewport.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xdce2d2);scene.fog=new THREE.Fog(0xdce2d2,18,48);
+const reflectionGenerator=new THREE.PMREMGenerator(renderer),reflectionRoom=new RoomEnvironment();
+const reflection=reflectionGenerator.fromScene(reflectionRoom,.04);scene.environment=reflection.texture;scene.environmentIntensity=.35;reflectionRoom.dispose();reflectionGenerator.dispose();
+const ambient=new THREE.HemisphereLight(0xf7f1dc,0x78825b,2.25);scene.add(ambient);
+const sun=new THREE.DirectionalLight(0xffe2ac,3.25);sun.position.set(-3.5,8,4.5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-10;sun.shadow.camera.right=10;sun.shadow.camera.top=10;sun.shadow.camera.bottom=-10;sun.shadow.camera.near=.5;sun.shadow.camera.far=30;sun.shadow.normalBias=.025;sun.shadow.bias=-.0003;sun.shadow.radius=4;sun.target.position.set(0,.3,-1);scene.add(sun,sun.target);
+const fill=new THREE.DirectionalLight(0xd8e8e1,.5);fill.position.set(4,3,-5);scene.add(fill);
+const camera=new THREE.PerspectiveCamera(37,innerWidth/innerHeight,.1,110);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.065;controls.minDistance=3.4;controls.maxDistance=20;controls.maxPolarAngle=Math.PI/2-.035;controls.minPolarAngle=.18;controls.target.set(-.7,1,-.32);controls.enablePan=false;controls.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};controls.touches={ONE:null,TWO:THREE.TOUCH.DOLLY_ROTATE};controls.screenSpacePanning=false;
+function resetCamera(){
+  camera.position.set(innerWidth<=760?4.4:4.6,innerWidth<=760?4.6:3.8,innerWidth<=760?6.2:5.7);
+  controls.target.set(-.05,innerWidth<=760?.95:1.1,-.3);camera.fov=innerWidth<=760?44:38;
+  camera.updateProjectionMatrix();controls.update();
+}resetCamera();
+const wood=createWoodMaterials();const environment=buildEnvironment(scene,wood);
+// Merge static meshes sharing materials. The rich scenery stays inexpensive.
+environment.updateMatrixWorld(true);
+const batches=new Map(),canonicalMaterials=new Map();environment.traverse(object=>{
+  if(!object.isMesh||object.isInstancedMesh||Array.isArray(object.material))return;
+  const m=object.material;
+  const signature=[m.type,m.color?.getHex(),m.map?.uuid,m.bumpMap?.uuid,m.bumpScale,m.roughness,m.metalness,m.transparent,m.opacity,m.side,m.flatShading,m.depthWrite].join('|');
+  if(canonicalMaterials.has(signature)){const canonical=canonicalMaterials.get(signature);if(m!==canonical)m.dispose();object.material=canonical;}else canonicalMaterials.set(signature,m);
+  const key=`${object.material.uuid}-${object.castShadow}-${object.receiveShadow}`;
+  if(!batches.has(key))batches.set(key,[]);batches.get(key).push(object);
+});
+for(const batch of batches.values()){
+  if(batch.length<3)continue;
+  const geometries=batch.map(o=>{const g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);return g;});
+  const merged=mergeGeometries(geometries,false);geometries.forEach(g=>g.dispose());
+  if(!merged)continue;
+  const combined=new THREE.Mesh(merged,batch[0].material);combined.castShadow=batch[0].castShadow;combined.receiveShadow=batch[0].receiveShadow;scene.add(combined);
+  batch.forEach(o=>{o.removeFromParent();o.geometry.dispose();});
+}
+const actor=createHumanoid(scene);
+let storage;try{if(!new URLSearchParams(location.search).has('test'))storage=localStorage;}catch{/* Session play is available without storage. */}
+const campaignGame=new Game(storage);let game=campaignGame,contract=null,contractLastTick=performance.now();
+let condition={moisture:.08,frost:0},campaignConditions=null;const frostColor=new THREE.Color(0xdce4df);
+function physicalWeather(){return conditionPhysics(condition,WEATHER[atmosphere.weather]);}
+const atmosphere=new Atmosphere(scene,sun,ambient,wood);
+let currentLog=game.log,aim={x:0,z:0},yaw=currentLog.grain,slowMotion=false,armed=false,meterStart=0,meter=.82,feedbackUntil=0;
+let soundContext,quality='medium',qualityMode='auto',composer,postLoading=false,qualityEpoch=0;
+let fps=60,frameTime=0,frames=0,qualityClock=0,lastReadout=0,lastSave=0;
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let impactEffects=!reducedMotion,hitStopUntil=0,perfectUntil=0,shakeUntil=0,shakeStrength=0;
+$('impact-effects').checked=impactEffects;
+const simulation=new Simulation(scene,wood,result=>{
+  if(contract?.finished)return;
+  const graded=contract?.grade(result,currentLog)??{};const hit=game.hit({...result,...graded,contract:!!contract},currentLog);contract?.hit(hit,game.score);
+  const perfectPrecision=!!hit.precisionGrade?.bullseye&&result.split;
+  $('energy').textContent=Math.round(result.energy);$('fracture').textContent=result.panelBroken&&!result.split?`${result.remainingPanels} ${currentLog.burl?'stump sections':currentLog.mineral?'stone-bound sections':currentLog.rotten?'pieces':currentLog.forked?'sections':'walls'} remain`:result.split?`Split into ${simulation.dynamic.length}`:result.source==='miss'?'Missed':result.hazard?result.hazardKind==='stone'?'Embedded stone!':'Steel staple!':`${Math.round(result.damage*100)}% · grain holding`;$('penetration').textContent=`${Math.round(result.penetration*1000)} mm`;
+  $('hit-title').textContent=perfectPrecision&&!contract?.finished?`${contract.precisionCombo}× · Bullseye. Grain and power matched.`:contract?.finished?'Contract complete.':result.coreCrumbled&&!result.split?'The rotten heart crumbles.':result.braced?'The limbs brace this crotch.':result.panelBroken&&!result.split?currentLog.burl?result.section===1?'The knot heart breaks free.':'A flank peels away. The heart relaxes.':currentLog.mineral?'A stone-bound section breaks free.':currentLog.forked?result.remainingPanels===1?'Both limbs down. Open the crotch.':'A limb breaks free.':'A wall breaks free.':hit.campaignVictory?'The Iron Crown is yours.':hit.boss&&result.split?'Boss timber down!':result.hazard?result.hazardKind==='stone'?'Stone! Your edge is chipped.':'Steel! Your edge is chipped.':hit.clean?`${game.combo>1?game.combo+'× · ':''}Right through the grain.`:result.split?result.tool==='wedge'?'The wedge opens it up.':'Wood gives way.':result.source==='miss'?currentLog.hollow||currentLog.rotten?'Empty space. Aim for a wall.':'Just wide.':result.alignment<.6?'Turn with the grain.':result.knot>.5?'Work around the knot.':'A deeper cut. Keep working it.';
+  $('hit-detail').textContent=`+${hit.points} points · +${hit.xp} XP · +${hit.coins} coins${result.split?'':` · ${Math.min(99,Math.round(simulation.damage*100))}% fractured`}${result.hazard?` · −${Math.round(result.edgeWear*100)}% edge`:''}${hit.precisionGrade?` · precision ${hit.precisionGrade.quality}/100${hit.precisionGrade.bullseye?' · BULLSEYE':''}`:''}`;
+  $('hit-feedback').classList.add('visible');feedbackUntil=performance.now()+3600;
+  $('scene-status').textContent=result.coreCrumbled&&!result.split?'Soft core gone. The dense outer walls still hold. C finds a standing wall.':contract?.finished?`Contract complete · ${game.score} points · best ${contract.best}. Replay or return to campaign.`:result.braced?'Take off both upper limbs first. C aims at a standing limb.':result.panelBroken&&!result.split?currentLog.burl?`${result.remainingPanels} stump sections remain. Each removed flank eases the knot heart. C finds the next safe cut.`:currentLog.mineral?`${result.remainingPanels} stone-bound sections remain. Each holds its own cuts. C finds safe grain in the next section.`:currentLog.forked?result.remainingPanels===1?'The interlocked crotch is exposed. Follow its grain; W can finish the cut.':'One limb remains. Aim at its end grain; C finds it.':`${result.remainingPanels} walls remain. Aim at another standing wall.`:hit.campaignVictory?'Campaign complete! Keep chopping ironwood in the open yard.':result.split?hit.boss?'Chapter cleared! +60 boss coins, +75 XP, and a second wind.':'Split complete. +15 stamina. Next log when you are.':result.hazard?'Work around visible steel and stone. Repair the edge in the tool shed for 12 coins.':result.source==='miss'?currentLog.hollow||currentLog.rotten?'Strike the standing rim. C aligns with the next wall.':'Aim inside the end grain. C centers your strike.':'Follow the same crack, or press W to drive a wedge.';
+  if(impactEffects&&result.energy>0){const now=performance.now();hitStopUntil=now+(hit.clean||perfectPrecision?65:40);perfectUntil=hit.clean||perfectPrecision?now+350:0;shakeUntil=now+(result.split?280:150);shakeStrength=result.hazard?.018:result.split?.035:.013;}
+  if(result.hazard)atmosphere.spark(result.x,result.z);
+  if(result.panelBroken)game.stamina=Math.min(game.maxStamina,game.stamina+8);
+  guide.visible=!result.split;playImpact(result.energy,result.split,result.hazardKind,result.coreCrumbled,perfectPrecision);updateHUD();
+});
+simulation.configure({log:currentLog,recoil:impactEffects});simulation.reset();
+
+// End-grain target, grain direction, knot and staple all share the physics coordinates.
+const guide=new THREE.Group();scene.add(guide);guide.position.y=1.338;
+const ring=mesh(new THREE.RingGeometry(.035,.042,48),new THREE.MeshBasicMaterial({color:0xf7e6bc,side:THREE.DoubleSide,depthWrite:false}),guide);ring.rotation.x=-Math.PI/2;ring.castShadow=false;
+const bladeGuide=mesh(new THREE.BoxGeometry(.009,.003,.07),new THREE.MeshBasicMaterial({color:0xb64b2d}),guide);bladeGuide.position.y=.004;bladeGuide.castShadow=false;
+const grainGuide=new THREE.Group();guide.add(grainGuide);
+for(const x of [-.018,.018]){const g=mesh(new THREE.BoxGeometry(.002,.002,.35),new THREE.MeshBasicMaterial({color:0x6d552c,transparent:true,opacity:.65}),grainGuide,[x,0,0]);g.castShadow=false;}
+const knot=mesh(new THREE.CircleGeometry(.041,24),standard(0x62482d,{roughness:.95}),guide,[.075,.001,-.025]);knot.rotation.x=-Math.PI/2;knot.scale.y=.68;knot.castShadow=false;
+const knotRing=mesh(new THREE.RingGeometry(.046,.049,24),standard(0x8c653b),guide,[.075,.002,-.025]);knotRing.rotation.x=-Math.PI/2;knotRing.scale.y=.7;knotRing.castShadow=false;
+const precisionMarker=new THREE.Group();guide.add(precisionMarker);
+for(const radius of [.025,.055]){const marker=mesh(new THREE.RingGeometry(radius-.0015,radius,32),new THREE.MeshBasicMaterial({color:0x4ff5c8,side:THREE.DoubleSide,depthWrite:false}),precisionMarker);marker.rotation.x=-Math.PI/2;marker.castShadow=false;}
+const wedgeGuide=mesh(new THREE.RingGeometry(.014,.019,24),new THREE.MeshBasicMaterial({color:0xf5bb49,side:THREE.DoubleSide,depthWrite:false}),guide);wedgeGuide.rotation.x=-Math.PI/2;wedgeGuide.castShadow=false;
+function updateGuide(){simulation.wedgeAim={...aim};guide.position.y=(simulation.surfaceAt(aim.x,aim.z)?.top??LOG_TOP)+.005;guide.visible=!simulation.split;ring.position.set(aim.x,.004,aim.z);bladeGuide.position.set(aim.x,.006,aim.z);bladeGuide.rotation.y=yaw;grainGuide.rotation.y=grainAt(simulation.materialLog,aim.x,aim.z);grainGuide.position.set(aim.x,0,aim.z);grainGuide.scale.z=(currentLog.burl||currentLog.hollow||currentLog.forked||currentLog.rotten||currentLog.mineral)?.36:(currentLog.radius??LOG_RADIUS)/LOG_RADIUS;const knotCenter=knotAt(currentLog);knot.position.set(knotCenter.x,.001,knotCenter.z);knotRing.position.set(knotCenter.x,.002,knotCenter.z);knot.visible=knotRing.visible=!!currentLog.knot&&!currentLog.forked&&(!currentLog.burl||!simulation.shell[1]?.released);precisionMarker.visible=!!currentLog.precisionTarget;if(currentLog.precisionTarget)precisionMarker.position.set(currentLog.precisionTarget.x,.009,currentLog.precisionTarget.z);const danger=inclusionAt(simulation.materialLog,aim.x,aim.z,yaw);ring.material.color.setHex(danger?0xff643c:0xf7e6bc);const cut=simulation.wedgeCrack;wedgeGuide.visible=!!cut;if(cut)wedgeGuide.position.set(cut.x,(simulation.surfaceAt(cut.x,cut.z)?.top??LOG_TOP)-guide.position.y+.012,cut.z);drawGrainReader();}
+
+const modeName=mode=>mode==='daily'?'DAILY SIX':mode==='precision'?'PRECISION SIX':'90 SECOND SPRINT';
+let resultsSignature='';
+function updateResults(){
+  const result=contract?.result;$('contract-results').hidden=!result;
+  if(!result){resultsSignature='';return;}
+  const signature=JSON.stringify(result);if(signature===resultsSignature)return;resultsSignature=signature;
+  $('result-medal').textContent=`${result.medal.toUpperCase()} · ${modeName(contract.mode)}`;
+  $('contract-results').dataset.medal=result.medal.toLowerCase();
+  $('result-score').textContent=`${result.score.toLocaleString()} points`;
+  $('result-detail').textContent=`${result.clears} logs · ${result.elapsed.toFixed(1)}s · ${result.swings} swings · ${result.misses} misses · ${result.cleanSplits} clean splits${result.mode==='precision'?` · ${result.bullseyes} bullseyes`:''}`;
+  $('result-record').textContent=result.newBest?'Personal best!':`Best ${contract.best} points${contract.bestRecord?` · ${contract.bestRecord.elapsed.toFixed(1)}s · ${contract.bestRecord.misses} misses`:''}`;
+  const list=$('result-history');list.replaceChildren();
+  for(const run of contract.history){const item=document.createElement('li');item.textContent=`${run.mode==='daily'?run.seed:run.mode==='precision'?'Precision':'Sprint'} · ${run.medal} · ${run.score} pts · ${Number(run.elapsed).toFixed(1)}s · ${run.misses} misses`;list.appendChild(item);}
+}
+function updateHUD(){
+  const locked=!!contract?.finished;
+  updateResults();
+  $('start-contract').disabled=simulation.running;
+  $('contract-status').textContent=contract?contract.finished?`FINISHED · ${game.score} pts · BEST ${contract.best}`:contract.mode==='precision'?`${contract.round} / 6 logs · ${12-contract.swings} strikes left · ${contract.bullseyes} bullseyes`:contract.mode==='daily'?`${contract.seed} UTC · ${contract.round} / 6 logs · ${Math.floor(contract.elapsed)}s`:`${Math.ceil(contract.remaining)}s · ${contract.round} logs · BEST ${contract.best}`:'Campaign progress saves automatically.';
+  $('contract-status').classList.toggle('finished',locked);
+  const level=game.level,base=100*(level-1)**2,next=100*level**2;
+  $('score').textContent=game.score.toLocaleString();const combo=contract?.mode==='precision'?contract.precisionCombo:game.combo;$('combo').textContent=combo?`${combo}×`:'—';$('level').textContent=`LV ${level}`;$('xp-label').textContent=`${game.xp-base} / ${next-base} XP`;$('xp').max=next-base;$('xp').value=game.xp-base;
+  $('stamina').max=game.maxStamina;$('stamina').value=game.stamina;$('stamina-label').textContent=Math.floor(game.stamina);
+  $('log-type').textContent=currentLog.boss?currentLog.bossName:currentLog.burl?'Knot-bound stump':currentLog.rotten?'Heart-rotted hickory':currentLog.name;$('log-count').textContent=currentLog.boss?'BOSS':`LOG ${String(game.clears+(simulation.split?0:1)).padStart(2,'0')}`;
+  $('campaign-label').textContent=contract?`${modeName(contract.mode)} · ${contract.finished?'FINISHED':!contract.started?'STARTS ON FIRST SWING':contract.mode==='time'?`${Math.ceil(contract.remaining)}s LEFT`:`${contract.round} / 6 · ${Math.floor(contract.elapsed)}s`}`:game.campaignComplete?'CAMPAIGN CLEARED · OPEN YARD':`CHAPTER ${currentLog.chapter} / 6 · ${CHAPTERS[currentLog.chapter-1]}`;
+  $('campaign-progress').max=contract&&contract.mode!=='time'?6:18;$('campaign-progress').value=contract?contract.round:Math.min(18,game.clears);$('campaign-progress').setAttribute('aria-valuetext',contract?`${contract.round} contract logs cleared`:`${Math.min(18,game.clears)} of 18 logs cleared`);
+  $('control-panel').classList.toggle('boss-round',!!currentLog.boss);
+  $('center-button').textContent=currentLog.precisionTarget?'◎ Aim precision target':currentLog.burl?'◎ Find safe peeling cut':currentLog.stony?'◎ Find safe grain':currentLog.rotten?simulation.snapshot().coreRemaining?'◎ Aim soft core':'◎ Aim standing wall':currentLog.forked?'◎ Aim next section':currentLog.hollow?'◎ Aim standing wall':'◎ Center aim';
+  $('log-tip').textContent=currentLog.precisionTarget?`Precision · mint bullseye, local grain, ${currentLog.precisionTarget.power}% power. Six logs / twelve strikes. First-strike bullseyes build a bonus.`:currentLog.burl?`Knot-bound stump · ${simulation.shell.filter(p=>!p.released).length} pieces. Peel the flanks to ease the knot heart (${simulation.snapshot().confinement.toFixed(2)}× resistance). Steel lies in the left flank. C finds safe grain; W follows your cut.`:currentLog.stony?currentLog.mineral?`The Iron Crown · ${simulation.shell.filter(p=>!p.released).length} stone-bound sections. Faint seams show their borders. Deepen a safe cut in each; aim at its dark kerf and W to wedge. C finds the next section.`:'Stone-bound ironwood · pale, angular inclusions chip the edge by 12%. The aim ring turns orange when the blade would touch stone. Work beside it.':currentLog.rotten?simulation.snapshot().coreRemaining?'Heart rot · dark, spongy core crumbles easily. Its work stays separate from the dense outer walls. C finds the core.':'Core cleared · strike the solid rim and turn the blade radially. Every outer wall must fall to finish. C finds one.':currentLog.forked?simulation.snapshot().phase==='limbs'?'Forked elm · remove both leaning limbs, then split the tough crotch. Each limb has its own grain. C finds the next section.':'Crotch exposed · interlocked fibers resist. Open a cut and drive the wedge.':currentLog.hollow?`Hollow oak · ${simulation.shell.filter(p=>!p.released).length} walls remain. Aim halfway across the rim; align the blade radially. C finds a standing wall.`:currentLog.boss?`${currentLog.name} · oversized round. Follow a crack; W drives the wedge. +60 boss coins.`:currentLog.tip;
+  $('coins').textContent=`${game.coins} coins`;$('axe-stats').textContent=`${game.axeMass.toFixed(2)} kg · cutting ${Math.round(game.sharpness*100)}% · edge ${Math.round(game.edge*100)}%`;
+  $('repair-edge').disabled=locked||simulation.running||game.edge>=1||game.coins<12;
+  $('wedge-button').disabled=locked||!simulation.wedgeReady||game.stamina<12;
+  $('wedge-button').textContent=simulation.wedgeReady?simulation.seatedWedge?'Drive seated wedge · 12 stamina [W]':'Seat / drive selected cut · 12 stamina [W]':simulation.bestCrack?.depth>=.018?'Aim near a dark cut to place wedge':'Wedge · open a cut first';
+  $('extract-wedge').hidden=!simulation.seatedWedge;$('extract-wedge').disabled=locked||simulation.running||game.stamina<simulation.extractionCost;
+  $('extract-wedge').textContent=`Pull wedge · ${simulation.extractionCost} stamina [X]`;
+  $('aim-label').textContent=Math.hypot(aim.x,aim.z)<.035?'CENTER AIM':`${Math.round(Math.hypot(aim.x,aim.z)*1000)} mm OFF CENTER`;
+  $('angle-label').textContent=`GRAIN ${Math.round((yaw-grainAt(simulation.materialLog,aim.x,aim.z))*180/Math.PI)}°`;
+  document.querySelectorAll('[data-upgrade]').forEach(button=>{const stat=button.dataset.upgrade,maxed=game.upgrades[stat]>=5;button.disabled=!!contract||simulation.running||maxed||game.coins<game.price(stat);button.querySelector('b').textContent=maxed?'MAX':`${game.price(stat)} ¢`;button.title=`Rank ${game.upgrades[stat]} / 5`;});
+  $('save-state').textContent=contract?'Contract scores are separate. Campaign progress is preserved.':storage&&game.storageAvailable!==false?'Progress saves locally.':'Storage unavailable · session progress only.';
+  const button=$('swing-button');button.disabled=locked||simulation.running||game.stamina<game.cost;
+  button.querySelector('span').textContent=locked?'Contract finished':simulation.running?'Swinging…':game.stamina<game.cost?'Catching your breath…':pointer?'Release pull to chop':armed?'Stop in the green zone':simulation.split?'Next log · start meter':'Start your swing';
+}
+function clearTelemetry(){$('energy').textContent='—';$('speed').textContent='0.0';$('fracture').textContent='Intact';$('penetration').textContent='0 mm';}
+function prepareLog(){
+  currentLog=contract?contract.log:game.log;
+  if(contract){atmosphere.setWeather(currentLog.weather);$('weather').value=currentLog.weather;condition={moisture:currentLog.weather==='rain'?.65:.08,frost:currentLog.weather==='snow'?.65:0};}
+  simulation.configure({log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass});simulation.reset();
+  const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;clearTelemetry();updateGuide();
+}
+function resetScene(){
+  // Replacing a log during a precision windup still spends that attempt.
+  if(contract?.mode==='precision'&&simulation.running&&!simulation.impactHandled&&!contract.finished){const miss={source:'miss',split:false,accuracy:0,alignment:0,hazard:false,tool:'axe'};const hit=game.hit({...miss,...contract.grade(miss,currentLog),contract:true},currentLog);contract.hit(hit,game.score);}
+  armed=false;pointer=null;clearPull();hitStopUntil=perfectUntil=shakeUntil=0;prepareLog();$('timing-label').textContent='Ready to find your rhythm';$('timing-value').textContent='100%';$('timing-needle').style.left='82%';$('hit-feedback').classList.remove('visible');$('scene-status').textContent='Aim on the log or grain reader. Pull down and release to chop.';updateHUD();return window.getSimulationState();}
+function performSwing(power,automatic=false,pointerSwing=false){
+  if(simulation.running||contract?.finished)return false;
+  if(pointer){pointer=null;clearPull();}
+  if(game.stamina<game.cost){$('scene-status').textContent='Let your stamina recover for a moment.';return false;}
+  if(simulation.split)prepareLog();
+  if(power===undefined)power=automatic?(currentLog.precisionTarget?.power??100):100;
+  if(automatic){const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;updateGuide();}
+  const timingQuality=automatic||pointerSwing?1:1-Math.min(1,Math.abs(meter-.81)/.81);
+  const strikeAim=automatic?{...aim}:{x:aim.x+Math.sin(performance.now()*.003)*(1-timingQuality)*.015,z:aim.z};
+  const strikeYaw=automatic?yaw:yaw+(1-timingQuality)*.08;
+  const number=Number(power);power=Number.isFinite(number)?THREE.MathUtils.clamp(number,30,150):100;
+  if(!game.begin())return false;beginContract();
+  armed=false;unlockAudio();$('timing-label').textContent='Power locked';$('timing-value').textContent=`${Math.round(power)}%`;$('energy').textContent='—';$('hit-feedback').classList.remove('visible');
+  aim={...strikeAim};yaw=strikeYaw;updateGuide();
+  simulation.swing(power,{tool:'axe',log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass,aim:strikeAim,yaw:strikeYaw,timing:meter});
+  $('scene-status').textContent='Weight up. Eyes on the grain.';updateHUD();return true;
+}
+function driveWedge(){
+  if(contract?.finished||!simulation.wedgeReady||!game.begin(12))return false;beginContract();
+  armed=false;unlockAudio();simulation.swing(100,{tool:'wedge',aim:{...aim},log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass});
+  $('hit-feedback').classList.remove('visible');$('scene-status').textContent='Wedge seated. Drive the existing fracture open.';updateHUD();return true;
+}
+function extractWedge(){
+  if(contract?.finished||simulation.running||!simulation.seatedWedge||!game.begin(simulation.extractionCost))return false;
+  simulation.extractWedge();$('scene-status').textContent='Wedge pulled. Aim near another open crack to seat it there.';updateGuide();updateHUD();return true;
+}
+$('extract-wedge').addEventListener('click',extractWedge);
+function meterAction(){
+  if(pointer||contract?.finished||simulation.running||game.stamina<game.cost)return;
+  unlockAudio();if(!armed){if(simulation.split)prepareLog();armed=true;meterStart=performance.now();$('timing-label').textContent='Stop in the green zone';updateHUD();}
+  else {const timing=1-Math.min(1,Math.abs(meter-.81)/.81);performSwing(45+timing*75);}
+}
+function unlockAudio(){try{soundContext??=new(window.AudioContext||window.webkitAudioContext)();if(soundContext.state==='suspended')soundContext.resume().catch(()=>{});}catch{/* Optional audio. */}}
+function playImpact(energy,split,hazard,rotten=false,bullseye=false){
+  if(!soundContext||soundContext.state!=='running')return;
+  const now=soundContext.currentTime,buffer=soundContext.createBuffer(1,soundContext.sampleRate*.2,soundContext.sampleRate),data=buffer.getChannelData(0);
+  for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.exp(-i/(data.length*.13));
+  const noise=soundContext.createBufferSource();noise.buffer=buffer;const filter=soundContext.createBiquadFilter();filter.type='lowpass';filter.frequency.value=hazard==='stone'?4000:hazard?6500:rotten?550:split?2500:800;const gain=soundContext.createGain();gain.gain.setValueAtTime(Math.min(.15,energy*.0012),now);gain.gain.exponentialRampToValueAtTime(.001,now+.2);noise.connect(filter).connect(gain).connect(soundContext.destination);noise.start();
+  const thud=soundContext.createOscillator(),volume=soundContext.createGain();thud.frequency.setValueAtTime(hazard==='stone'?440:hazard?900:rotten?65:110,now);thud.frequency.exponentialRampToValueAtTime(hazard?300:45,now+.12);volume.gain.setValueAtTime(.09,now);volume.gain.exponentialRampToValueAtTime(.001,now+.16);thud.connect(volume).connect(soundContext.destination);thud.start();thud.stop(now+.2);
+  if(bullseye)for(const [delay,frequency] of [[0,660],[.08,990]]){const tone=soundContext.createOscillator(),v=soundContext.createGain();tone.type='sine';tone.frequency.value=frequency;v.gain.setValueAtTime(0,now+delay);v.gain.linearRampToValueAtTime(.045,now+delay+.008);v.gain.exponentialRampToValueAtTime(.001,now+delay+.22);tone.connect(v).connect(soundContext.destination);tone.start(now+delay);tone.stop(now+delay+.24);}
+}
+
+// Input: screen coordinates are projected onto the physical top of the log.
+const ray=new THREE.Raycaster(),pointerNDC=new THREE.Vector2(),aimPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-1.333),hitPoint=new THREE.Vector3();
+const reader=$('grain-map'),readerContext=reader.getContext('2d');let readerSignature='';
+let pointer=null;
+function clearPull(){ $('pull-guide').hidden=true; }
+function previewPull(e){
+  const p=pointer;if(!p)return;p.lastX=e.clientX;p.lastY=e.clientY;
+  const pull=pullGesture(e.clientX-p.x,e.clientY-p.y,(performance.now()-p.time)/1000);
+  yaw=p.yaw+pull.yawDelta;updateGuide();
+  const align=Math.round(Math.cos(yaw-grainAt(simulation.materialLog,aim.x,aim.z))**2*100),danger=inclusionAt(simulation.materialLog,aim.x,aim.z,yaw);
+  $('pull-guide').hidden=pull.distance<=12;
+  const line=$('pull-line');for(const [key,value]of Object.entries({x1:p.x,y1:p.y,x2:e.clientX,y2:e.clientY}))line.setAttribute(key,value);
+  $('pull-guide').dataset.aligned=align>=85&&!danger?'true':'false';
+  const label=$('pull-label');label.textContent=`${Math.round(pull.power)}% power · ${align}% grain${danger?` · ${danger.kind.toUpperCase()}!`:currentLog.precisionTarget?` · target ${currentLog.precisionTarget.power}%`:''}`;
+  label.style.left=`${Math.max(8,Math.min(innerWidth-330,e.clientX+15))}px`;label.style.top=`${Math.max(8,Math.min(innerHeight-76,e.clientY-64))}px`;
+  $('timing-label').textContent='Release to chop';$('timing-value').textContent=`${Math.round(pull.power)}% pull`;
+}
+function drawGrainReader(){
+  if(!readerContext||!$('grain-reader').open)return;
+  const signature=[currentLog.name,currentLog.boss,currentLog.burl,currentLog.hollow,currentLog.forked,currentLog.rotten,currentLog.stony,currentLog.grain,JSON.stringify(currentLog.precisionTarget),simulation.dynamic.length,aim.x,aim.z,yaw,simulation.split,simulation.cracks.map(c=>c.damage).join(','),simulation.wedgeCrack?.x,simulation.wedgeCrack?.z,!!simulation.seatedWedge].join('|');
+  if(signature===readerSignature)return;readerSignature=signature;
+  const ctx=readerContext,r=currentLog.radius??LOG_RADIUS,scale=58/(r*(currentLog.forked?1.3:1));
+  ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,208,136);ctx.save();ctx.translate(104,68);
+  ctx.fillStyle=simulation.split?'#c3c5ac':'#d5b27c';ctx.beginPath();ctx.arc(0,0,59,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#624a33';ctx.lineWidth=5;ctx.stroke();
+  ctx.save();ctx.beginPath();ctx.arc(0,0,56,0,Math.PI*2);ctx.clip();
+  if(currentLog.burl||currentLog.hollow||currentLog.forked||currentLog.rotten||currentLog.mineral){
+    ctx.clearRect(-62,-62,124,124);ctx.fillStyle='#342b22';ctx.beginPath();ctx.arc(0,0,59,0,Math.PI*2);ctx.fill();
+    for(const panel of simulation.shell.filter(p=>!p.released).sort((a,b)=>(a.top??LOG_TOP)-(b.top??LOG_TOP)))for(const polygon of (panel.polygons??[panel.polygon])){ctx.beginPath();polygon.forEach(([x,z],i)=>i?ctx.lineTo(x*scale,z*scale):ctx.moveTo(x*scale,z*scale));ctx.closePath();ctx.fillStyle=panel.core?'#5d4937':'#c9a46e';ctx.fill();ctx.lineWidth=.7;ctx.strokeStyle='#745635';ctx.stroke();}
+    ctx.beginPath();for(const panel of simulation.shell.filter(p=>!p.released).sort((a,b)=>(a.top??LOG_TOP)-(b.top??LOG_TOP)))for(const polygon of (panel.polygons??[panel.polygon])){polygon.forEach(([x,z],i)=>i?ctx.lineTo(x*scale,z*scale):ctx.moveTo(x*scale,z*scale));ctx.closePath();}ctx.clip();
+  }
+  ctx.lineWidth=.65;ctx.strokeStyle='#8f683957';
+  if(!currentLog.forked)for(let i=currentLog.hollow?7:1;i<14;i++){ctx.beginPath();ctx.ellipse(-2,1,i*4.5,i*4.2,.1,0,Math.PI*2);ctx.stroke();}
+  if(currentLog.forked)for(const p of simulation.shell.filter(p=>!p.released)){
+    ctx.strokeStyle='#87613980';ctx.lineWidth=.7;for(let i=1;i<7;i++){ctx.beginPath();ctx.ellipse(p.cx*scale,0,p.rx*scale*i/7,p.rz*scale*i/7,0,0,Math.PI*2);ctx.stroke();}
+  }
+  if(currentLog.rotten&&simulation.snapshot().coreRemaining){
+    ctx.fillStyle='#241d18aa';for(let i=0;i<45;i++){const a=i*2.399,radius=Math.sqrt((i+.5)/45)*r*.43*scale;ctx.beginPath();ctx.ellipse(Math.cos(a)*radius,Math.sin(a)*radius,1.4,.8,a,0,Math.PI*2);ctx.fill();}
+  }
+  ctx.strokeStyle='#887545';ctx.lineWidth=.8;
+  for(const offset of [-.018,.018]){ctx.beginPath();for(let i=0;i<=24;i++){const p=crackPoint({x:aim.x+offset,z:aim.z,yaw:grainAt(simulation.materialLog,aim.x,aim.z)},(i/24*2-1)*r,currentLog);i?ctx.lineTo(p.x*scale,p.z*scale):ctx.moveTo(p.x*scale,p.z*scale);}ctx.stroke();}
+  if(currentLog.knot&&!currentLog.forked&&(!currentLog.burl||!simulation.shell[1]?.released)){const center=knotAt(currentLog);ctx.fillStyle='#64472d';ctx.beginPath();ctx.ellipse(center.x*scale,center.z*scale,.041*scale,.028*scale,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ac804c';ctx.stroke();}
+  for(const p of inclusions(simulation.materialLog)){ctx.beginPath();if(p.kind==='stone'){for(let i=0;i<6;i++){const a=i*Math.PI/3,x=(p.x+Math.cos(a)*p.radius)*scale,z=(p.z+Math.sin(a)*p.radius)*scale;i?ctx.lineTo(x,z):ctx.moveTo(x,z);}ctx.closePath();ctx.fillStyle='#868d89';ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle='#d1d6cd';ctx.stroke();}else{ctx.strokeStyle='#d9e4e0';ctx.lineWidth=4;ctx.arc(p.x*scale,p.z*scale,.025*scale,0,Math.PI);ctx.stroke();}}
+  if(!simulation.split)for(const c of simulation.cracks.filter(c=>!(currentLog.burl||currentLog.hollow||currentLog.forked||currentLog.rotten||currentLog.mineral)||!simulation.shell[c.sector]?.released)){ctx.strokeStyle='#302015';ctx.lineWidth=1+c.damage*3;ctx.beginPath();for(let i=0;i<=24;i++){const p=crackPoint(c,(i/24*2-1)*r*(.25+.75*c.damage),currentLog);i?ctx.lineTo(p.x*scale,p.z*scale):ctx.moveTo(p.x*scale,p.z*scale);}ctx.stroke();}
+  const selected=simulation.wedgeCrack;if(selected&&!simulation.split){ctx.strokeStyle='#ffc453';ctx.lineWidth=2;ctx.beginPath();ctx.arc(selected.x*scale,selected.z*scale,4,0,Math.PI*2);ctx.stroke();}
+  ctx.restore();
+  if(!simulation.split&&currentLog.precisionTarget){const p=currentLog.precisionTarget;ctx.strokeStyle='#36edbd';ctx.lineWidth=1.5;for(const radius of [.025,.055]){ctx.beginPath();ctx.arc(p.x*scale,p.z*scale,radius*scale,0,Math.PI*2);ctx.stroke();}}
+  if(!simulation.split){ctx.translate(aim.x*scale,aim.z*scale);ctx.strokeStyle=inclusionAt(simulation.materialLog,aim.x,aim.z,yaw)?'#ff643c':'#fff8e8';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,8,0,Math.PI*2);ctx.stroke();ctx.rotate(-yaw);ctx.strokeStyle='#a43822';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(0,-.035*scale);ctx.lineTo(0,.035*scale);ctx.stroke();}
+  ctx.restore();
+}
+function aimAt(event){
+  if(simulation.running)return false;
+  if(event.currentTarget===reader){const rect=reader.getBoundingClientRect(),r=currentLog.radius??LOG_RADIUS;const extent=r*(currentLog.forked?1.3:1),x=((event.clientX-rect.left)/rect.width*208-104)*extent/58,z=((event.clientY-rect.top)/rect.height*136-68)*extent/58;if(Math.hypot(x,z)>extent)return false;aim={x,z};}
+  else {const rect=renderer.domElement.getBoundingClientRect();pointerNDC.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointerNDC,camera);let found=false;
+    for(const top of currentLog.forked?[...new Set(simulation.shell.filter(p=>!p.released).map(p=>p.top))].sort((a,b)=>b-a):[LOG_TOP]){
+      aimPlane.constant=-top;if(ray.ray.intersectPlane(aimPlane,hitPoint)&&Math.hypot(hitPoint.x,hitPoint.z)<.48){const target=simulation.surfaceAt(hitPoint.x,hitPoint.z);if(!currentLog.forked||target&&Math.abs(target.top-top)<.001){aim={x:hitPoint.x,z:hitPoint.z};found=true;break;}}
+    }if(!found)return false;}
+  updateGuide();return true;
+}
+for(const surface of [renderer.domElement,reader]){
+  surface.addEventListener('pointermove',e=>{if(!pointer)aimAt(e);else if(pointer.id===e.pointerId)previewPull(e);});
+  surface.addEventListener('pointerdown',e=>{if(e.button!==0||simulation.running||contract?.finished)return;if(simulation.split)prepareLog();if(!aimAt(e))return;pointer={id:e.pointerId,x:e.clientX,y:e.clientY,time:performance.now(),lastX:e.clientX,lastY:e.clientY,yaw,wasArmed:armed};surface.setPointerCapture(e.pointerId);unlockAudio();if(!armed){armed=true;meterStart=performance.now();}updateHUD();});
+  surface.addEventListener('pointerup',e=>{
+    if(!pointer||pointer.id!==e.pointerId)return;
+    const p=pointer,pull=pullGesture(e.clientX-p.x,e.clientY-p.y,(performance.now()-p.time)/1000);pointer=null;clearPull();
+    if(pull.distance>12){yaw=p.yaw+pull.yawDelta;yaw=Math.atan2(Math.sin(yaw),Math.cos(yaw));performSwing(pull.power,false,true);updateGuide();}
+    else {yaw=p.yaw;if(p.wasArmed||performance.now()-p.time>180)meterAction();else $('scene-status').textContent='Meter running. Click Swing or press Space to stop it.';}
+  });
+  const cancelPull=()=>{if(pointer){yaw=pointer.yaw;pointer=null;armed=false;clearPull();updateGuide();updateHUD();}};
+  surface.addEventListener('pointercancel',cancelPull);surface.addEventListener('lostpointercapture',cancelPull);
+}
+$('swing-button').addEventListener('click',meterAction);$('reset-button').addEventListener('click',resetScene);
+$('wedge-button').addEventListener('click',driveWedge);
+$('repair-edge').addEventListener('click',()=>{if(simulation.running)return;$('shop-message').textContent=game.repair()?'Edge restored. Avoid visible steel.':'Repair costs 12 coins and restores a chipped edge.';updateHUD();});
+function beginContract(){
+  if(contract&&!contract.started)contractLastTick=performance.now();
+  contract?.begin();
+}
+function selectMode(mode){
+  if(simulation.running)return false;
+  if(!['campaign','time','daily','precision'].includes(mode))return false;
+  if(!contract&&mode!=='campaign')campaignConditions={condition:{...condition},weather:atmosphere.weather,hour:atmosphere.hour,cycle:atmosphere.cycle};
+  contract=mode==='campaign'?null:new Contract(mode,mode==='daily'?dailySeed():mode==='precision'?'precision-v1':'sprint-v1',storage);
+  game=contract?new Game(null):campaignGame;contractLastTick=performance.now();
+  if(contract){atmosphere.hour=16.5;atmosphere.cycle=false;}
+  else if(campaignConditions){condition={...campaignConditions.condition};atmosphere.setWeather(campaignConditions.weather);atmosphere.hour=campaignConditions.hour;atmosphere.cycle=campaignConditions.cycle;campaignConditions=null;}
+  $('weather').value=atmosphere.weather;$('time').value=atmosphere.hour;$('day-cycle').checked=atmosphere.cycle;
+  $('time').disabled=$('day-cycle').disabled=!!contract;
+  $('game-mode').value=mode;$('weather').disabled=!!contract;$('slow-motion').disabled=!!contract;
+  slowMotion=false;$('slow-motion').checked=false;resetScene();return true;
+}
+$('start-contract').addEventListener('click',()=>selectMode($('game-mode').value));
+$('replay-contract').addEventListener('click',()=>{if(contract)selectMode(contract.mode);});
+$('return-campaign').addEventListener('click',()=>selectMode('campaign'));
+function centerAim(){if(simulation.running)return;const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;updateGuide();updateHUD();}
+$('center-button').addEventListener('click',centerAim);
+document.querySelectorAll('[data-upgrade]').forEach(button=>button.addEventListener('click',()=>{if(simulation.running||contract)return;const upgraded=game.upgrade(button.dataset.upgrade);$('shop-message').textContent=upgraded?'Ready for your next swing.':'A few more good chops will pay for it.';updateHUD();}));
+$('weather').addEventListener('change',e=>{if(!contract)atmosphere.setWeather(e.target.value);});
+$('time').addEventListener('input',e=>{if(contract)return;atmosphere.hour=Number(e.target.value);atmosphere.cycle=false;$('day-cycle').checked=false;});
+$('day-cycle').addEventListener('change',e=>{if(!contract)atmosphere.cycle=e.target.checked;});
+$('slow-motion').addEventListener('change',e=>{slowMotion=!contract&&e.target.checked;e.target.checked=slowMotion;});
+$('impact-effects').addEventListener('change',e=>{impactEffects=e.target.checked;simulation.configure({recoil:impactEffects});if(!impactEffects)hitStopUntil=perfectUntil=shakeUntil=0;});
+$('debug-physics').addEventListener('change',e=>{simulation.setDebug(e.target.checked);if(e.target.checked)selfCheck();});
+$('camera-button').addEventListener('click',resetCamera);
+let resetConfirmUntil=0;
+$('reset-progress').addEventListener('click',()=>{if(performance.now()>resetConfirmUntil){resetConfirmUntil=performance.now()+4000;$('reset-progress').textContent='Click again to erase saved progress';return;}campaignGame.reset();if(contract)selectMode('campaign');else resetScene();$('reset-progress').textContent='Reset saved progress';});
+const dialog=$('help-dialog');$('help-button').addEventListener('click',()=>dialog.showModal());dialog.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());dialog.querySelector('.dialog-done').addEventListener('click',()=>dialog.close());
+window.addEventListener('keydown',e=>{
+  if(dialog.open||e.target?.matches?.('input,textarea,select,button,a,summary')||e.ctrlKey||e.metaKey||e.altKey||e.repeat)return;
+  if(e.code==='Space'){e.preventDefault();meterAction();}
+  else if(e.code==='KeyX')extractWedge();else if(e.code==='KeyR')resetScene();else if(e.code==='KeyW')driveWedge();else if(e.code==='KeyC')centerAim();else if(e.code==='KeyS'&&!contract){$('slow-motion').checked=!slowMotion;$('slow-motion').dispatchEvent(new Event('change'));}
+  else if(!simulation.running){if(e.code==='KeyQ')yaw-=Math.PI/36;if(e.code==='KeyE')yaw+=Math.PI/36;
+    yaw=Math.atan2(Math.sin(yaw),Math.cos(yaw));
+    if(e.code.startsWith('Arrow')){e.preventDefault();const step=.015;if(e.code==='ArrowLeft')aim.x-=step;if(e.code==='ArrowRight')aim.x+=step;if(e.code==='ArrowUp')aim.z-=step;if(e.code==='ArrowDown')aim.z+=step;aim.x=THREE.MathUtils.clamp(aim.x,-.34,.34);aim.z=THREE.MathUtils.clamp(aim.z,-.34,.34);}updateGuide();updateHUD();}
+});
+
+async function setQuality(value){
+  const epoch=++qualityEpoch;quality=value;const pixel=value==='low'?.65:value==='medium'?1:Math.min(devicePixelRatio,1.5);
+  renderer.setPixelRatio(pixel);renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=value==='low'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
+  const size=value==='low'?512:value==='medium'?1024:2048;sun.shadow.mapSize.set(size,size);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
+  simulation.chipLimit=value==='low'?14:value==='medium'?24:36;simulation.chipPoolLimit=value==='low'?32:value==='medium'?56:80;simulation.trimChips();if(simulation.debugGroup.visible)simulation.rebuildDebug();atmosphere.count=value==='low'?160:value==='medium'?350:650;
+  if(composer){composer.dispose();for(const pass of composer.passes)pass.dispose?.();composer=null;}
+  if(value==='high'){
+    postLoading=true;
+    try{const [{EffectComposer},{RenderPass},{SSAOPass},{UnrealBloomPass},{OutputPass}]=await Promise.all([import('three/addons/postprocessing/EffectComposer.js'),import('three/addons/postprocessing/RenderPass.js'),import('three/addons/postprocessing/SSAOPass.js'),import('three/addons/postprocessing/UnrealBloomPass.js'),import('three/addons/postprocessing/OutputPass.js')]);
+      if(epoch!==qualityEpoch)return;composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));const ao=new SSAOPass(scene,camera,innerWidth,innerHeight);ao.kernelRadius=8;ao.minDistance=.003;ao.maxDistance=.12;composer.addPass(ao);composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.14,.5,1.15));composer.addPass(new OutputPass());composer.setSize(innerWidth,innerHeight);
+    }catch(error){$('performance').textContent='Post effects unavailable; using balanced.';if(epoch===qualityEpoch)await setQuality('medium');}finally{postLoading=false;}
+  }
+}
+$('quality').addEventListener('change',e=>{qualityMode=e.target.value;qualityClock=0;frameTime=0;frames=0;setQuality(qualityMode==='auto'?'medium':qualityMode);});
+window.addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);composer?.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();});
+renderer.domElement.addEventListener('webglcontextlost',event=>{event.preventDefault();$('load-error').hidden=false;$('error-detail').textContent='The graphics context was interrupted. Reload to return to the backyard.';});
+document.addEventListener('visibilitychange',()=>{previous=performance.now();frameTime=0;frames=0;});window.addEventListener('pagehide',()=>game.save());
+
+function selfCheck(){
+  const s=simulation.snapshot(),failures=[];const check=(ok,message)=>{console.assert(ok,message);if(!ok)failures.push(message);};
+  check(!(s.burl||s.hollow||s.forked||s.rotten||s.mineral)||s.remainingPanels+s.pieces===s.expectedPieces,'Sections must remain supported or become physical fragments');
+  if(s.burl||s.hollow||s.forked||s.rotten||s.mineral){const mass=simulation.shell.reduce((sum,p)=>sum+(p.released?p.body.mass:currentLog.mass*p.massFraction),0);check(Math.abs(mass-currentLog.mass)<1e-8,'Section releases must conserve the round mass');}
+  check(simulation.inclusionMeshes.every((p,i)=>{const owner=s.burl?burlSectorAt({...currentLog,removedSections:[]},p.x,p.z):i;return p.mesh.parent&&(s.mineral||s.burl?simulation.shell[owner].released?p.mesh.parent===simulation.shell[owner].mesh:p.mesh.parent===scene:s.split?p.mesh.parent!==scene:p.mesh.parent===scene);}),'Inclusions must stay attached to their wood');
+  check(s.chips<=s.chipBudget,'Chips must respect the active quality budget');
+  check(Number.isFinite(s.energy)&&Number.isFinite(s.speed),'Physics measurements must be finite');
+  check(s.peakSpeed<=15.2,'Measured axe edge speed must remain calibrated');
+  check(!s.split||(!s.logVisible&&s.pieces===s.expectedPieces&&s.fragmentMeshes===s.expectedPieces),'Fracture must replace the intact log with matching physical fragments');
+  for(const {body,mesh:m}of simulation.dynamic){check(m.position.distanceTo(new THREE.Vector3(body.position.x,body.position.y,body.position.z))<.0001,'Fragment mesh must follow its rigid body');}
+  check($('swing-button').querySelector('span').textContent!=='Swinging…'||s.running,'Swing button must match simulation state');
+  check(game.stamina>=0&&game.stamina<=game.maxStamina,'Stamina must stay within limits');
+  return {ok:failures.length===0,failures};
+}
+window.swing=power=>performSwing(power,true);
+window.driveWedge=driveWedge;
+window.extractWedge=extractWedge;
+window.resetScene=resetScene;
+window.getGameState=()=>({...game.snapshot(currentLog),mode:contract?.mode??'campaign',contract:contract?.snapshot()??null});
+window.startChallenge=mode=>selectMode(mode);
+window.getSimulationState=()=>({...simulation.snapshot(),inclusions:inclusions(simulation.materialLog).map(p=>({...p})),slowMotion,debugPhysics:simulation.debugGroup.visible,weather:atmosphere.weather,hour:atmosphere.hour,quality,fps,condition:{...condition},material:physicalWeather(),bodies:simulation.world.bodies.length,renderer:{calls:renderer.info.render.calls,triangles:renderer.info.render.triangles}});
+// This helper is deliberately restricted to sessions with persistence disabled.
+window.loadTestRound=index=>{if(!new URLSearchParams(location.search).has('test'))return false;simulation.running=false;selectMode('campaign');game.reset(false);game.clears=THREE.MathUtils.clamp(Math.floor(Number(index)||0),0,17);resetScene();return game.snapshot(currentLog);};
+window.runSelfChecks=selfCheck;
+// Deterministic stress runner for ?debug=1, advances the actual solver in large
+// frame chunks. Isolated world and materials; never awards XP or changes saves.
+window.runPhysicsChecks=()=>{
+  const testScene=new THREE.Scene(),testWood={...wood,end:wood.end.clone()},test=new Simulation(testScene,testWood);const trials=[];
+  for(const delta of [1/60,1/15,.25,.5]){test.configure({log:{...currentLog},weather:{...WEATHER.sun},aim:{x:0,z:0},yaw:currentLog.grain,sharpness:game.sharpness,axeMass:game.axeMass});test.reset();const target=test.goodAim();test.swing(100,{aim:{x:target.x,z:target.z},yaw:target.yaw});for(let t=0;t<4;t+=delta)test.update(delta);const s=test.snapshot();trials.push({delta,hit:s.energy>0,peakSpeed:s.peakSpeed,source:s.contactSource,visualsMatch:!s.split||!s.logVisible&&s.fragmentMeshes===s.expectedPieces});}
+  test.reset();testScene.traverse(o=>{o.geometry?.dispose();if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material])if(!Object.values(wood).includes(m))m.dispose?.();}});return {ok:trials.every(t=>t.hit&&t.peakSpeed<=15.2&&t.visualsMatch),trials};
+};
+let previous=performance.now();
+function animate(now){
+  const elapsed=Math.max(0,(now-previous)/1000),dt=Math.min(elapsed,.5);previous=now;
+  const wasRunning=simulation.running,impactScale=now<hitStopUntil?0:now<perfectUntil?.3:1;const wasFinished=contract?.finished;
+  contract?.tick(Math.max(0,(now-contractLastTick)/1000),game.score);contractLastTick=now;
+  if(contract?.finished&&!wasFinished){armed=false;pointer=null;clearPull();$('scene-status').textContent=`Time! ${game.score} points · ${contract.round} logs · best ${contract.best}. Replay or return to campaign.`;updateHUD();}
+  simulation.update(dt*(slowMotion?.25:impactScale));game.regenerate(dt);
+  condition=evolveCondition(condition,atmosphere.weather,Math.min(elapsed,5));
+  simulation.configure({weather:simulation.running?simulation.settings.weather:physicalWeather()});
+  if(wasRunning&&!simulation.running)updateHUD();actor.update(simulation.time,simulation.effort,...simulation.handPositions());
+  atmosphere.update(Math.min(dt,.1),quality,simulation.time);controls.update();updateGuide();
+  if(pointer)previewPull({clientX:pointer.lastX,clientY:pointer.lastY});
+  if(armed&&!pointer){meter=(Math.sin((now-meterStart)/1000*4.4-Math.PI/2)+1)/2;$('timing-needle').style.left=`${meter*100}%`;if(!pointer)$('timing-value').textContent=`${Math.round(45+(1-Math.min(1,Math.abs(meter-.81)/.81))*75)}%`;}
+  if(now-lastReadout>120){updateHUD();
+    simulation.wood.bark.roughness=.9-condition.moisture*.48;simulation.wood.end.roughness=.85-condition.moisture*.35;
+    simulation.wood.end.color.setHex(currentLog.color??0xffffff).multiplyScalar(1-condition.moisture*.15).lerp(frostColor,condition.frost*.45);
+    simulation.wood.bark.color.setRGB(1-condition.moisture*.25,1-condition.moisture*.23,1-condition.moisture*.2).lerp(frostColor,condition.frost*.75);
+    $('wood-condition').textContent=`Moisture ${Math.round(condition.moisture*100)}% · frost ${Math.round(condition.frost*100)}%`;
+    const material=physicalWeather();$('weather-effect').textContent=`${WEATHER[atmosphere.weather].label.split(' · ')[0]} · resistance +${Math.round((material.resistance-1)*100)}% · friction ${material.friction.toFixed(2)}`;$('speed').textContent=(simulation.running?simulation.preSpeed:simulation.impactSpeed).toFixed(1);$('time').value=atmosphere.hour;$('time-label').textContent=`${String(Math.floor(atmosphere.hour)).padStart(2,'0')}:${String(Math.floor(atmosphere.hour%1*60)).padStart(2,'0')}`;
+    if(now>feedbackUntil)$('hit-feedback').classList.remove('visible');if(resetConfirmUntil&&now>resetConfirmUntil){resetConfirmUntil=0;$('reset-progress').textContent='Reset saved progress';}
+    if(simulation.debugGroup.visible)selfCheck();lastReadout=now;}
+  if(!document.hidden){frameTime+=elapsed;frames++;qualityClock+=elapsed;}
+  if(frameTime>=3){fps=frames/frameTime;$('performance').textContent=`${qualityMode==='auto'?'Auto · ':''}${quality} · ${Math.round(fps)} FPS${postLoading?' · loading effects':''}`;
+    if(qualityMode==='auto'&&fps<27&&quality!=='low'&&qualityClock>4){setQuality(quality==='high'?'medium':'low');qualityClock=0;}frameTime=0;frames=0;}
+  if(now-lastSave>15000){game.save();lastSave=now;}
+  const shake=now<shakeUntil?shakeStrength*Math.min(1,(shakeUntil-now)/160):0;
+  camera.position.x+=Math.sin(now*.11)*shake;camera.position.y+=Math.cos(now*.14)*shake*.6;
+  if(composer)composer.render();else renderer.render(scene,camera);
+  camera.position.x-=Math.sin(now*.11)*shake;camera.position.y-=Math.cos(now*.14)*shake*.6;requestAnimationFrame(animate);
+}
+resetScene();setQuality('medium');$('reset-button').disabled=false;window.simulationReady=true;document.documentElement.dataset.simulation='ready';
+if(new URLSearchParams(location.search).has('debug')){simulation.setDebug(true);$('debug-physics').checked=true;console.assert(window.runPhysicsChecks().ok,'Continuous collision stress check failed');}
+requestAnimationFrame(animate);

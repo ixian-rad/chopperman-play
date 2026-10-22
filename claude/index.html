@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Backyard Log Splitter — a firewood RPG</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div id="loading-text">Loading physics engine…</div>
+  </div>
+
+  <!-- top-left: progression -->
+  <section id="stats" class="panel" aria-live="polite">
+    <div class="lvl">
+      <span class="badge" title="Level"><small>LV</small><b id="h-level">1</b></span>
+      <div class="xpwrap">
+        <div class="bar xp"><i id="h-xp"></i></div>
+        <small id="h-xptext">0 / 120 XP</small>
+      </div>
+    </div>
+    <div class="row big"><span>Score</span><b id="h-score">0</b></div>
+    <div class="row"><span>Combo</span><b id="h-combo" class="combo">—</b></div>
+    <div class="row"><span>Cash</span><b id="h-cash">$0</b></div>
+    <div class="bar stam" title="Stamina drains per swing and regenerates while you rest"><i id="h-stam"></i><span id="h-stamtext">Stamina</span></div>
+    <div class="row small"><span id="h-axe">Axe</span><b id="h-sharp">Edge —</b></div>
+    <div class="row small"><span>Woodpile</span><b id="h-pile">0 pieces</b></div>
+  </section>
+
+  <!-- top-right: current log + queue -->
+  <section id="logcard" class="panel">
+    <div class="row"><h2 id="h-logname">—</h2><small id="h-logsize"></small></div>
+    <div class="tags" id="h-logtags"></div>
+    <div class="row small"><span>Split energy (aimed line)</span><b id="h-req">—</b></div>
+    <div class="row small"><span>Your full-power blow</span><b id="h-best">—</b></div>
+    <div class="row small"><span>Hits on this round</span><b id="h-hits">0</b></div>
+    <div id="h-boss" class="bossbox hidden"><b id="h-bossname">Boss</b><div class="bar bosshp" title="Boss toughness left: every stuck strike on the same line wears it down"><i id="h-bosshp"></i></div></div>
+    <div class="queue-title">Up next on the lawn</div>
+    <div class="queue" id="h-queue"></div>
+  </section>
+
+  <!-- bottom-left: time, weather, quality -->
+  <section id="conditions" class="panel">
+    <div class="row"><b id="h-clock" class="clock">16:30</b><span id="h-weather">☀ Clear</span></div>
+    <div class="small dim" id="h-effects">—</div>
+    <div class="ctl">
+      <label>Weather
+        <select id="sel-weather" title="Weather (N cycles)">
+          <option value="auto">Auto (changes)</option>
+          <option value="clear">☀ Clear</option>
+          <option value="rain">🌧 Rain</option>
+          <option value="storm">⛈ Thunderstorm</option>
+          <option value="snow">❄ Snow</option>
+          <option value="frost">✱ Hard frost</option>
+          <option value="wind">🌬 Windy</option>
+          <option value="fog">🌫 Fog</option>
+        </select>
+      </label>
+      <button id="btn-time" title="Jump to the next time of day (T)">Time ⏭ <kbd>T</kbd></button>
+      <label class="chk"><input type="checkbox" id="chk-timeflow" checked /> clock runs</label>
+    </div>
+    <div class="ctl">
+      <label>Quality
+        <select id="sel-quality" title="Rendering quality (K cycles)">
+          <option value="auto">Auto</option>
+          <option value="potato">Potato</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="ultra">Ultra</option>
+        </select>
+      </label>
+      <span class="small dim"><b id="h-fps">—</b> FPS · <span id="h-qname">—</span></span>
+    </div>
+  </section>
+
+  <!-- bottom-right: actions -->
+  <section id="actions" class="panel">
+    <button id="btn-modes" class="primary" title="Campaign and challenges (O)">Modes <kbd>O</kbd></button>
+    <button id="btn-shop" class="primary" title="Upgrade shop (B)">Shop <kbd>B</kbd></button>
+    <button id="btn-sharpen" title="Sharpen the edge (G)">Sharpen <kbd>G</kbd></button>
+    <button id="btn-swing" title="Instant test swing (no meter)">Quick swing <kbd>X</kbd></button>
+    <button id="btn-reset" title="Reset the current log (R)">Reset log <kbd>R</kbd></button>
+    <button id="btn-help" title="Controls and rules (H)">Help <kbd>H</kbd></button>
+    <button id="btn-tele" title="Physics telemetry (F)">Physics <kbd>F</kbd></button>
+    <label class="chk"><input type="checkbox" id="chk-sound" checked /> Sound <kbd>M</kbd></label>
+    <label class="chk"><input type="checkbox" id="chk-slowmo" checked /> Impact slow-mo</label>
+  </section>
+
+  <!-- bottom-centre: timing / power meter -->
+  <div id="meter" class="idle">
+    <div class="track">
+      <div class="zone" id="m-zone"></div>
+      <div class="need" id="m-need" title="Power needed to split through this line"><span>split</span></div>
+      <div class="fill" id="m-fill"></div>
+      <div class="needle" id="m-needle"></div>
+    </div>
+    <div class="mlabels"><span id="m-hint">Click &amp; hold on the log (or Space) to charge</span><b id="m-val"></b></div>
+  </div>
+
+  <div id="hint" class="small">Mouse: aim on the log top · hold LMB to charge, drag ↔ to turn the blade, release to swing · right-drag orbit · wheel zoom</div>
+
+  <div id="modebar" class="panel hidden"><span id="mb-text"></span><button id="btn-quitmode" title="Quit to free play">Quit</button></div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="hitcard" class="hidden"></div>
+
+  <section id="telemetry" class="panel small hidden"></section>
+
+  <!-- shop modal -->
+  <div id="shop" class="modal hidden" role="dialog" aria-label="Shop">
+    <div class="sheet">
+      <header><h2>Hardware &amp; Skills</h2><span id="shop-cash" class="cash">$0</span><button class="close" data-close="shop">✕</button></header>
+      <nav class="tabs">
+        <button data-tab="axes" class="on">Axes</button>
+        <button data-tab="gear">Gear</button>
+        <button data-tab="skills">Skills <span id="shop-sp" class="pill">0</span></button>
+      </nav>
+      <div id="shop-body"></div>
+      <footer>
+        <button id="btn-resetprog" class="danger" title="Wipe saved progress">Reset progress</button>
+        <span class="small dim">Progress is saved in this browser (localStorage).</span>
+      </footer>
+    </div>
+  </div>
+
+  <!-- modes modal -->
+  <div id="modes" class="modal hidden" role="dialog" aria-label="Modes">
+    <div class="sheet">
+      <header><h2>Campaign &amp; Challenges</h2><button class="close" data-close="modes">✕</button></header>
+      <div id="modes-body"></div>
+    </div>
+  </div>
+
+  <!-- mode summary -->
+  <div id="modeend" class="modal hidden" role="dialog" aria-label="Results">
+    <div class="sheet narrow">
+      <header><h2 id="modeend-title">Results</h2><button class="close" data-close="modeend">✕</button></header>
+      <div id="modeend-body"></div>
+    </div>
+  </div>
+
+  <!-- help modal -->
+  <div id="help" class="modal hidden" role="dialog" aria-label="Help">
+    <div class="sheet">
+      <header><h2>How to split firewood</h2><button class="close" data-close="help">✕</button></header>
+      <div class="helpgrid">
+        <div>
+          <h3>Controls</h3>
+          <ul>
+            <li><b>Move the mouse</b> over the log top to place the strike point (reticle). The white line is the split plane.</li>
+            <li><b>Hold left button</b> to charge the meter; <b>drag left/right</b> while holding to turn the blade; <b>release</b> to swing.</li>
+            <li>Or <b>click</b> once to start the meter and <b>click again</b> (or <kbd>Space</kbd>) to stop it.</li>
+            <li><b>Right-drag</b> orbits the camera, <b>Shift+right-drag</b> pans, <b>wheel</b> zooms, <b>Shift+wheel</b> turns the blade.</li>
+            <li>Keyboard: <kbd>Space</kbd> start/stop meter · arrows nudge aim · <kbd>Q</kbd>/<kbd>E</kbd> turn blade · <kbd>R</kbd> reset log · <kbd>B</kbd> shop · <kbd>O</kbd> modes · <kbd>G</kbd> sharpen · <kbd>T</kbd> time · <kbd>N</kbd> weather · <kbd>K</kbd> quality · <kbd>C</kbd> camera · <kbd>F</kbd> physics · <kbd>M</kbd> sound · <kbd>X</kbd> quick swing</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Scoring</h3>
+          <ul>
+            <li><b>Bullseye</b> (within ~7% of the radius from the pith) ×1.5, <b>Clean</b> ×1.2, <b>Off-centre</b> ×0.8, <b>Slab</b> ×0.5.</li>
+            <li>Follow a radial <b>seasoning check</b> (dark crack in the end grain) for −28% split energy and +30% points.</li>
+            <li><b>Knots</b> (dark ovals) need up to 2× the energy; aim the split plane away from them for a bonus.</li>
+            <li>A rusty <b>nail head</b> on the bark means steel inside: keep the blade off that radial line or chip your edge. A grey <b>stone</b> in the bark is worse.</li>
+            <li><b>Variants</b>: ◉ knotty, ↻ twisted (+30% energy), Y forked (turn the blade along the branch, through the pith), ☁ punky heart (soft, crumbly, low value), 💧 waterlogged, ❄ ice-glazed (the glaze deflects light blows), ◆ stone, ⬤ huge (several strikes on one line).</li>
+            <li><b>Boss logs</b> (☠) are huge multi-variant rounds with a toughness bar; every stuck strike on the same line wears it down.</li>
+            <li>The <b>sweet zone</b> on the meter gives tight accuracy; overswinging past it scatters the blow.</li>
+            <li>Consecutive one-hit clean splits build a <b>combo</b> (+15% each). Glances, misses, nails and stuck axes break it.</li>
+            <li>Rain, storm, snow, frost, wind, fog and night all add a score bonus — and make it harder.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Weather &amp; physics</h3>
+          <ul>
+            <li><b>Rain</b>: wet bark glances more, wet wood needs ~18% more energy, wet handles slip (gloves help), puddles form.</li>
+            <li><b>Snow / frost</b>: frozen wood is brittle (−30% energy, more pieces) but icy bark and footing hurt accuracy.</li>
+            <li><b>Wind</b>: gusts sway your aim and blow chips around. <b>Fog</b>: you can't read the energy needed.</li>
+            <li>Stamina drains per swing (heavier axes cost more) and regenerates while resting; tired swings are weak and wobbly.</li>
+          </ul>
+        </div>
+      </div>
+      <footer><button class="primary" data-close="help">Start chopping</button></footer>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

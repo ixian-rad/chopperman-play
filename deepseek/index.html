@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#141810" />
+  <meta name="description" content="American Split — a browser woodchopping RPG set in an anonymous suburban New Jersey backyard. Aim, time the swing, read the grain, and split your way from pine to knotty hickory." />
+  <title>American Split — Backyard Chopping RPG</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161911'/%3E%3Cpath d='M38 8l13 11-7 8-13-11z' fill='%23d9d4c5'/%3E%3Cpath d='M28 23L12 52' stroke='%23b6814c' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./css/style.css" />
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="app">
+    <canvas id="scene" aria-label="Interactive 3D backyard where an anonymous woodcutter splits logs with an axe"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+    <div id="hitFlash" class="hit-flash" aria-hidden="true"></div>
+    <div id="shockPulse" class="shock-pulse" aria-hidden="true"><span>BRACE</span></div>
+
+    <!-- Compact top bar -------------------------------------------------->
+    <header class="topbar" aria-label="Game status">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M20 3l9 7.5-5 6L15 9z" fill="currentColor"/><path d="M15 12L6 29" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </span>
+        <div class="brand-copy">
+          <span class="eyebrow">Backyard chopping RPG</span>
+          <h1>American <i>Split</i></h1>
+        </div>
+      </div>
+
+      <div class="score-ribbon" aria-label="Score and combo">
+        <div class="stat score-stat">
+          <span class="stat-label">Score</span>
+          <strong id="scoreReadout">0</strong>
+        </div>
+        <div class="stat combo-stat" id="comboStat">
+          <span class="stat-label">Combo</span>
+          <strong id="comboReadout">×1</strong>
+          <small id="streakReadout">0 clean</small>
+        </div>
+        <div class="stat coin-stat">
+          <span class="stat-label">Coins</span>
+          <strong id="coinReadout">0</strong>
+        </div>
+      </div>
+
+      <div class="level-cluster" aria-label="Level and experience">
+        <div class="level-badge"><strong id="levelReadout">1</strong><span>LVL</span></div>
+        <div class="xp-block">
+          <div class="xp-label"><span>Experience</span><span id="xpReadout">0 / 300</span></div>
+          <div class="xp-bar"><i id="xpBar"></i></div>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button id="shopButton" class="top-button" type="button" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.4 11H5.4L4 8zM8 8V6a4 4 0 0 1 8 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Shop</span>
+        </button>
+        <button id="settingsButton" class="top-button icon-only" type="button" aria-label="Settings" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Challenge modes ------------------------------------------------->
+    <nav class="mode-strip" id="modeStrip" aria-label="Challenge mode">
+      <span class="mode-kicker">Run</span>
+      <button type="button" data-mode="free" class="active">Free</button>
+      <button type="button" data-mode="time">Time</button>
+      <button type="button" data-mode="precision" title="12 fixed rounds on a loaner bench; only pith-and-grain strikes bite">Precision</button>
+      <button type="button" data-mode="endless">Endless</button>
+      <button type="button" data-mode="daily" title="Same date-seeded deck, weather, time, and loaner axe for everyone today">Daily</button>
+      <button type="button" data-mode="trial" title="Three Twisted Colossus rounds with a loaner maul">Colossus</button>
+      <button type="button" data-mode="stump" title="Three Ancient Iron Stump rounds: hollow heart, stone in the rings, loaner maul">Stump</button>
+      <span class="run-score-chip" id="runScoreChip" hidden>0 pts</span>
+      <span class="run-timer" id="runTimer" hidden>75.0s</span>
+    </nav>
+
+    <!-- Environment / performance readout -------------------------------->
+    <aside class="atmosphere" aria-label="Atmosphere and performance">
+      <div class="atmosphere-row">
+        <span class="atmosphere-icon" id="timeIcon" aria-hidden="true">◐</span>
+        <div><strong id="timeReadout">Golden hour</strong><span id="weatherReadout">Clear · 18°C</span></div>
+      </div>
+      <div class="atmosphere-meta">
+        <span id="qualityReadout">Auto · Low</span>
+        <span><b id="fpsReadout">--</b> FPS</span>
+        <span><b id="fragmentReadout">0</b> pieces</span>
+      </div>
+    </aside>
+
+    <!-- Current log card ------------------------------------------------->
+    <section class="log-card" aria-label="Current log">
+      <div class="log-card-top">
+        <span class="log-eyebrow" id="logTier">Chapter 1 · The Woodpile</span>
+        <span class="log-difficulty" id="logDifficulty" aria-label="Difficulty">●○○○○</span>
+      </div>
+      <h2 id="logName">White Pine</h2>
+      <p id="logBlurb">Soft, straight grain. A forgiving first round.</p>
+      <div class="log-facts">
+        <span id="logKnots">Clean round</span>
+        <span id="logNext">Next: Paper Birch</span>
+      </div>
+      <div class="log-modifiers" id="logModifiers" hidden></div>
+      <div class="round-health" id="roundHealth">
+        <div class="round-health-head">
+          <span id="roundHealthLabel">Round integrity</span>
+          <span id="roundHealthValue">1 bite</span>
+        </div>
+        <div class="round-health-track"><i id="roundHealthBar"></i></div>
+      </div>
+      <button id="wedgeButton" class="wedge-button" type="button" hidden>Drive wedge</button>
+    </section>
+
+    <!-- Aim / swing guidance --------------------------------------------->
+    <div class="aim-chip" id="aimChip">
+      <span class="aim-dot" aria-hidden="true"></span>
+      <span id="aimReadout">Aim for the pith · hold to charge</span>
+    </div>
+
+    <!-- Bottom HUD ------------------------------------------------------->
+    <aside class="stamina-card" aria-label="Stamina and axe">
+      <div class="stamina-head">
+        <span>Stamina</span>
+        <strong id="staminaText">100 / 100</strong>
+      </div>
+      <div class="stamina-bar"><i id="staminaBar"></i></div>
+      <div class="axe-line">
+        <span class="axe-name" id="axeName">Yard Felling Axe</span>
+        <span class="axe-stats" id="axeStats">Sharp 1.00 · Weight 1.00</span>
+      </div>
+      <div class="stat-chips">
+        <span id="sharpnessChip">Edge 1.00</span>
+        <span id="weightChip">Head 1.00</span>
+        <span id="costChip">10.5 / swing</span>
+      </div>
+    </aside>
+
+    <section class="control-deck" aria-label="Swing controls">
+      <div class="power-panel">
+        <div class="power-head">
+          <span class="power-label" id="powerLabel">Swing power</span>
+          <div class="power-value"><output id="forceValue">0</output><span>%</span></div>
+        </div>
+        <div class="meter" id="powerMeter">
+          <div class="meter-track">
+            <div class="meter-sweet" aria-hidden="true"></div>
+            <div class="meter-perfect" aria-hidden="true"></div>
+            <i class="meter-fill" id="powerFill"></i>
+            <i class="meter-knob" id="powerKnob"></i>
+          </div>
+          <div class="meter-scale"><span>Light</span><span>Sweet spot</span><span>Full send</span></div>
+        </div>
+        <div class="power-caption">
+          <span id="timingReadout">Hold LMB or Space</span>
+          <span id="qualityBonus">Timing ×1.0</span>
+        </div>
+      </div>
+
+      <button id="swingButton" class="swing-button" type="button" aria-label="Hold to charge, release to swing">
+        <span class="swing-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M20 4l8 7-4 5-8-7z" fill="currentColor"/><path d="M16 13L6 28" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg>
+        </span>
+        <span class="swing-copy"><strong>SWING</strong><small>HOLD · RELEASE</small></span>
+      </button>
+
+      <div class="utility-buttons">
+        <button id="nextButton" class="util-btn" type="button" aria-label="Reset the current log">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M20 4v7h-7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>New log</span>
+        </button>
+        <button id="slowButton" class="util-btn toggle" type="button" aria-pressed="false" aria-label="Toggle slow motion">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 9v5l3 2M9 2h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span>Slow-mo</span>
+        </button>
+        <button id="debugButton" class="util-btn toggle" type="button" aria-pressed="false" aria-label="Toggle physics colliders">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          <span>Colliders</span>
+        </button>
+        <button id="soundButton" class="util-btn icon-only" type="button" aria-pressed="true" aria-label="Toggle sound">
+          <svg class="sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <svg class="sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M17 9l5 6M22 9l-5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <div class="keys-hint">
+      <span><kbd>LMB</kbd> hold / release</span><span><kbd>RMB</kbd> orbit</span><span><kbd>Space</kbd> swing</span><span><kbd>R</kbd> new log</span><span><kbd>F</kbd> wedge</span><span><kbd>Q</kbd><kbd>E</kbd> rotate</span><span class="grain-key"><i></i> gold check = rive</span>
+    </div>
+
+    <div id="popupLayer" class="popup-layer" aria-hidden="true"></div>
+    <div id="toastHost" class="toast-host" role="status" aria-live="polite"></div>
+
+    <!-- Challenge run summary -------------------------------------------->
+    <div id="runOverlay" class="run-overlay" role="dialog" aria-modal="true" aria-labelledby="runTitle" hidden>
+      <div class="run-summary">
+        <span class="eyebrow" id="runKicker">Run complete</span>
+        <h2 id="runTitle">Time Attack</h2>
+        <p id="runSub">The clock ran out.</p>
+        <div class="run-score" id="runScore">0 <small>run points</small></div>
+        <div class="run-stats" id="runStats"></div>
+        <p class="run-share" id="runHistory"></p>
+        <div class="run-actions">
+          <button id="runAgain" class="primary-button" type="button">Run again</button>
+          <button id="runCopy" class="top-button" type="button" hidden>Copy result</button>
+          <button id="runSeed" class="top-button" type="button" hidden>Copy seed link</button>
+          <button id="runRetrySeed" class="top-button" type="button" hidden>Retry seed</button>
+          <button id="runExit" class="top-button" type="button">Back to free chop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shop ------------------------------------------------------------->
+    <div id="shopModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="shopTitle" hidden>
+      <div class="modal-backdrop" data-close="shop"></div>
+      <div class="modal-panel shop-panel">
+        <header class="modal-head">
+          <div>
+            <span class="eyebrow">Sawdust &amp; steel</span>
+            <h2 id="shopTitle">The Axe Shed</h2>
+            <p>Buy axes, tune your edge, and spend the coins you split out of the round.</p>
+          </div>
+          <div class="wallet"><span>Coins</span><strong id="shopCoins">0</strong></div>
+          <button class="modal-close" type="button" data-close="shop" aria-label="Close shop">×</button>
+        </header>
+        <div class="shop-grid">
+          <section class="shop-section">
+            <div class="section-title"><span>Axes</span><small>Equip the right head for the wood</small></div>
+            <div id="axeList" class="axe-list"></div>
+          </section>
+          <section class="shop-section">
+            <div class="section-title"><span>Bench upgrades</span><small>Permanent improvements</small></div>
+            <div id="upgradeList" class="upgrade-list"></div>
+            <div class="hone-block">
+              <div class="hone-copy">
+                <strong>Whetstone</strong>
+                <span id="honeStatus">Edge 100% · no chips</span>
+              </div>
+              <button id="honeButton" class="buy-button" type="button">Hone · 26</button>
+            </div>
+            <div class="reset-block">
+              <div><strong>Reset progress</strong><span>Wipe levels, coins, axes, and upgrades. Settings stay.</span></div>
+              <button id="resetProgressButton" class="danger-button" type="button">Reset</button>
+            </div>
+          </section>
+        </div>
+        <footer class="modal-foot">
+          <span id="shopHint">A clean split earns more coins. Aim for the pith.</span>
+          <button class="primary-button" type="button" data-close="shop">Back to the block</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Settings --------------------------------------------------------->
+    <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+      <div class="modal-backdrop" data-close="settings"></div>
+      <div class="modal-panel settings-panel">
+        <header class="modal-head">
+          <div>
+            <span class="eyebrow">Rendering &amp; weather</span>
+            <h2 id="settingsTitle">Field Settings</h2>
+            <p>Quality controls shadows, grass density, pixel ratio, and post-processing.</p>
+          </div>
+          <button class="modal-close" type="button" data-close="settings" aria-label="Close settings">×</button>
+        </header>
+        <div class="settings-grid">
+          <section class="settings-section">
+            <div class="section-title"><span>Quality</span><small id="qualityDescription">Auto</small></div>
+            <label class="select-label" for="qualitySelect">Preset</label>
+            <select id="qualitySelect" class="select-input">
+              <option value="auto">Auto (recommended)</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="ultra">Ultra (SSAO + bloom)</option>
+            </select>
+            <p class="settings-note" id="rendererNote">Detecting renderer…</p>
+            <p class="settings-note" id="performanceNote">Auto-downgrades below 24 FPS.</p>
+          </section>
+
+          <section class="settings-section">
+            <div class="section-title"><span>Time of day</span><small id="timeLabel">Golden hour</small></div>
+            <div class="segmented" id="timeButtons">
+              <button type="button" data-time="dawn">Dawn</button>
+              <button type="button" data-time="noon">Noon</button>
+              <button type="button" data-time="golden">Golden</button>
+              <button type="button" data-time="night">Night</button>
+            </div>
+            <label class="toggle-label"><input id="autoTimeToggle" type="checkbox" /> <span>Let time drift</span></label>
+
+            <div class="section-title section-title-spaced"><span>Weather</span><small id="weatherLabel">Clear</small></div>
+            <div class="segmented weather-segmented" id="weatherButtons">
+              <button type="button" data-weather="clear">Clear</button>
+              <button type="button" data-weather="rain">Rain</button>
+              <button type="button" data-weather="snow">Snow</button>
+              <button type="button" data-weather="fog">Fog</button>
+              <button type="button" data-weather="wind">Wind</button>
+            </div>
+            <p class="settings-note" id="weatherNote">Weather changes friction, fracture behaviour, stamina drain, and aim sway.</p>
+          </section>
+        </div>
+        <footer class="modal-foot">
+          <span>Software renderer? Auto quality starts low and downgrades if FPS drops.</span>
+          <button class="primary-button" type="button" data-close="settings">Done</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Loading / error -------------------------------------------------->
+    <div id="loading" class="loading" role="status" aria-live="polite">
+      <div class="loading-mark">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M37 7l17 14-9 11-17-14z" fill="#d9d4c5"/><path d="M27 25L9 53" stroke="#b6814c" stroke-width="6" stroke-linecap="round"/></svg>
+      </div>
+      <div class="loading-copy">
+        <strong>Sharpening the axe</strong>
+        <span id="loadingStatus">Loading three.js &amp; Rapier physics…</span>
+      </div>
+      <div class="loading-bar"><i id="loadingBar"></i></div>
+    </div>
+
+    <div id="errorPanel" class="error-panel" role="alert" hidden>
+      <strong>Something jammed in the split.</strong>
+      <p id="errorMessage"></p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </div>
+  </main>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
