@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { prismFaces, centerHull } from './hulls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mesh, cylinder, standard, randomSource } from './environment.js';
 import { createAxeMesh } from './humanoid.js';
@@ -192,8 +193,7 @@ export class Simulation {
     for(const section of forkSections(this.settings.log)){
       const {cz,polygon,bottomPolygon,top,bottom}=section,cx=section.bodyCx,n=polygon.length,cy=section.bodyCy;
       const verts=[...bottomPolygon.map(([x,z])=>new CANNON.Vec3(x-cx,bottom-cy,z-cz)),...polygon.map(([x,z])=>new CANNON.Vec3(x-cx,top-cy,z-cz))];
-      const faces=[Array.from({length:n},(_,j)=>j),Array.from({length:n},(_,j)=>n*2-1-j)];
-      for(let j=0;j<n;j++){const k=(j+1)%n;faces.push([j,j+n,k+n,k]);}
+      const faces=prismFaces(n);
       const shape=new CANNON.ConvexPolyhedron({vertices:verts,faces});
       const body=new CANNON.Body({mass:0,material:this.woodMaterial,shape,position:new CANNON.Vec3(cx,cy,cz),linearDamping:.12,angularDamping:.2,sleepTimeLimit:1.6});
       const geometry=this.fragmentGeometry(verts,faces,n,polygon,cx,cz);
@@ -210,9 +210,11 @@ export class Simulation {
       const geometries=[];
       for(const polygon of polygons){
         const n=polygon.length,verts=[];for(const y of [-LOG_HEIGHT/2,LOG_HEIGHT/2])for(const [x,z]of polygon)verts.push(new CANNON.Vec3(x-cx,y,z-cz));
-        const faces=[Array.from({length:n},(_,j)=>j),Array.from({length:n},(_,j)=>n*2-1-j)];
-        for(let j=0;j<n;j++){const k=(j+1)%n;faces.push([j,j+n,k+n,k]);}
-        body.addShape(new CANNON.ConvexPolyhedron({vertices:verts,faces}));
+        const faces=prismFaces(n),local=centerHull(verts);
+        // Each wall's three convex subshapes need their own interior origin.
+        // Keep the wall COM and render vertices unchanged; only translate the
+        // shape coordinates and compensate with the exact addShape offset.
+        body.addShape(new CANNON.ConvexPolyhedron({vertices:local.vertices.map(v=>new CANNON.Vec3(v.x,v.y,v.z)),faces}),new CANNON.Vec3(local.offset.x,local.offset.y,local.offset.z));
         geometries.push(this.fragmentGeometry(verts,faces,n,polygon,cx,cz));
       }
       // Keep the three PBR materials to three draw calls per wall, even
@@ -252,7 +254,7 @@ export class Simulation {
     const sections=kerfSections(this.radius,this.fragmentCount,this.fractureYaw??this.settings.log.grain,this.fractureAnchor);
     for(const {polygon,cx,cz,massFraction,start,end} of sections){
       const n=polygon.length,verts=[];for(const y of [-LOG_HEIGHT/2,LOG_HEIGHT/2])for(const [x,z]of polygon)verts.push(new CANNON.Vec3(x-cx,y,z-cz));
-      const faces=[];faces.push(Array.from({length:n},(_,j)=>j));faces.push(Array.from({length:n},(_,j)=>n*2-1-j));for(let j=0;j<n;j++){const k=(j+1)%n;faces.push([j,j+n,k+n,k]);}
+      const faces=prismFaces(n);
       const shape=new CANNON.ConvexPolyhedron({vertices:verts,faces});
       const localOffset=new CANNON.Vec3(cx,0,cz),worldOffset=q.vmult(localOffset);
       const body=new CANNON.Body({mass:this.settings.log.mass*massFraction,material:this.woodMaterial,shape,position:pos.vadd(worldOffset),quaternion:q.clone(),linearDamping:.12,angularDamping:.2,sleepTimeLimit:1.6});
