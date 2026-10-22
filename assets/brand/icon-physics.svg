@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<title>Physics</title>
+<path d="M5 40 C12 12 30 6 43 22" stroke="#5CC8F2" stroke-width="2.5" stroke-dasharray="3 5"/>
+<path d="M43 22 L36 21 M43 22 L42 15" stroke="#5CC8F2" stroke-width="2.5"/>
+<circle cx="5" cy="40" r="3.5" fill="#E8C38A" stroke="none"/>
+<path d="M4 44 L44 44" stroke="#E8C38A" stroke-width="2.5"/>
+<path d="M14 30 L22 20" stroke="#F2862E" stroke-width="2.5"/><path d="M22 20 L16 21 M22 20 L21 26" stroke="#F2862E" stroke-width="2.5"/>
+</svg>

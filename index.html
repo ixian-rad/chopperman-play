@@ -1,10 +1,411 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chopperman — play</title>
-<style>body{font-family:system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 16px;background:#16130f;color:#eee}a{color:#f0b35a;font-size:1.2em}li{margin:14px 0}small{color:#aaa}</style></head>
-<body><h1>Chopperman</h1><p>Three backyard axe games, each built by a different AI coding harness. WebGL 2 required; best on desktop with a mouse.</p>
-<ul>
-<li><a href="codex/">Codex (gpt-6.1-sol) — Backyard: Find the grain</a><br><small>build e9b8992 · iter-9 (audio + music)</small></li>
-<li><a href="claude/">Claude Opus 5.5 — Backyard Log Splitter</a><br><small>build c150cb7 · iter-2 (audio + music)</small></li>
-<li><a href="deepseek/">DeepSeek Harness — American Split</a><br><small>build c1204da · iter-10</small></li>
-</ul></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chopperman: three AI-built backyard axe games</title>
+<meta name="description" content="Three backyard axe-chopping browser games, each built by a different AI coding harness from the same brief. Play all three, compare the scores, read the reviews.">
+<meta name="theme-color" content="#1A1410">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Chopperman: three AIs, one axe">
+<meta property="og:description" content="Three backyard axe-chopping browser games, each built by a different AI coding harness. Play them, compare the scores, read the reviews.">
+<meta property="og:image" content="assets/brand/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/web/SourceSans3-VariableFont_wght.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="assets/fonts/web/AlfaSlabOne-Regular.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="wrap topbar__inner">
+    <a class="brandlink" href="#top" aria-label="Chopperman, back to top">
+      <img src="assets/brand/logo-mark.svg" alt="" width="44" height="44">
+      <span>Chopperman</span>
+    </a>
+    <nav aria-label="Sections">
+      <ul class="nav">
+        <li><a href="#games">Games</a></li>
+        <li><a href="#classic">Classic</a></li>
+        <li><a href="#scores">Scores</a></li>
+        <li><a href="#reviews">Reviews</a></li>
+        <li><a href="#cost">Cost</a></li>
+        <li><a href="#about">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<!-- ============================== HERO ============================== -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <img class="hero__art" src="assets/brand/hero.svg" alt="" width="1920" height="1080">
+  <div class="hero__chips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="wrap hero__inner">
+    <div class="hero__copy">
+      <h1 id="hero-title" class="hero__logo"><img src="assets/brand/logo.svg" alt="Chopperman" width="1200" height="340"></h1>
+      <p class="hero__pitch">Three backyard axe-chopping games. One brief, three AI coding harnesses. Pick an axe and find the grain.</p>
+      <ul class="playrow" aria-label="Play the games">
+        <li><a class="btn btn--play" href="codex/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play </em><b>Codex </b><small>Backyard: Find the grain</small></span></a></li>
+        <li><a class="btn btn--play" href="claude/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play </em><b>Claude </b><small>Backyard Log Splitter</small></span></a></li>
+        <li><a class="btn btn--play" href="deepseek/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play </em><b>DeepSeek </b><small>American Split</small></span></a></li>
+      </ul>
+      <p class="hero__note"><img src="assets/brand/icon-sound.svg" alt="" width="28" height="28"> All three now have sound effects and an original procedural soundtrack. Click in the game to start audio. WebGL&nbsp;2 and a desktop mouse recommended.</p>
+    </div>
+  </div>
+</section>
+<div class="logedge" aria-hidden="true"></div>
+
+<!-- ============================== GAMES ============================== -->
+<section class="section" id="games" aria-labelledby="games-title">
+  <div class="wrap">
+    <p class="kicker">The lineup</p>
+    <h2 id="games-title">Three games, one brief</h2>
+    <p class="lede">Each harness was asked to build the same thing: a backyard log-splitting sim you play in the browser. Here is what each one shipped. Scores are from the Round Two video review.</p>
+
+    <div class="cards">
+      <article class="card" id="card-codex">
+        <a class="card__shot" href="codex/" tabindex="-1" aria-hidden="true"><img src="assets/shots/web/codex-latest.webp" alt="" width="960" height="600"></a>
+        <div class="card__body">
+          <div class="card__head">
+            <div>
+              <p class="card__who">Codex CLI · gpt-6.1-sol (high reasoning)</p>
+              <h3>Backyard: Find the grain</h3>
+            </div>
+            <div class="badge" style="--s:8" role="img" aria-label="Round Two review score: 8 out of 10, Great"><span class="badge__num">8</span><span class="badge__word">Great</span></div>
+          </div>
+          <p class="card__build">Live build <span class="mono" data-build="codex">loading…</span></p>
+          <blockquote class="card__verdict">“The comeback kid, and now the most complete game.”</blockquote>
+          <ul class="tags"><li><img src="assets/brand/icon-sound.svg" alt="" width="22" height="22">Sound effects + music</li><li>Round 1: 3.3 → 8</li></ul>
+          <p class="card__note">Reviewed at iteration 7 (<span class="mono">ca82b1f</span>). Later audio and legibility updates have not been reviewed.</p>
+          <div class="card__actions">
+            <a class="btn btn--primary" href="codex/">Play</a>
+            <a class="btn btn--ghost" href="#review-codex">Read review</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-claude">
+        <a class="card__shot" href="claude/" tabindex="-1" aria-hidden="true"><img src="assets/shots/web/claude-latest.webp" alt="" width="960" height="600"></a>
+        <div class="card__body">
+          <div class="card__head">
+            <div>
+              <p class="card__who">Claude Code · Claude Opus 5.5 (high effort)</p>
+              <h3>Backyard Log Splitter</h3>
+            </div>
+            <div class="badge" style="--s:7" role="img" aria-label="Round Two review score: 7 out of 10, Good"><span class="badge__num">7</span><span class="badge__word">Good</span></div>
+          </div>
+          <p class="card__build">Live build <span class="mono" data-build="claude">loading…</span></p>
+          <blockquote class="card__verdict">“It understands wood best, but it needs to let you have a good time.”</blockquote>
+          <ul class="tags"><li><img src="assets/brand/icon-sound.svg" alt="" width="22" height="22">Sound effects + music</li><li>Round 1: 7.0 → 7</li></ul>
+          <p class="card__note">Reviewed at iteration 1 (<span class="mono">1faf566</span>). Later audio and legibility updates have not been reviewed.</p>
+          <div class="card__actions">
+            <a class="btn btn--primary" href="claude/">Play</a>
+            <a class="btn btn--ghost" href="#review-claude">Read review</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-deepseek">
+        <a class="card__shot" href="deepseek/" tabindex="-1" aria-hidden="true"><img src="assets/shots/web/deepseek-latest.webp" alt="" width="960" height="600"></a>
+        <div class="card__body">
+          <div class="card__head">
+            <div>
+              <p class="card__who">DeepSeek Harness · deepseek-flash</p>
+              <h3>American Split</h3>
+            </div>
+            <div class="badge" style="--s:6" role="img" aria-label="Round Two review score: 6 out of 10, Okay"><span class="badge__num">6</span><span class="badge__word">Okay</span></div>
+          </div>
+          <p class="card__build">Live build <span class="mono" data-build="deepseek">loading…</span></p>
+          <blockquote class="card__verdict">“No more confetti, the most content, tripped by a soft lock.”</blockquote>
+          <ul class="tags"><li><img src="assets/brand/icon-sound.svg" alt="" width="22" height="22">Sound effects + music</li><li>Round 1: 5.3 → 6</li></ul>
+          <p class="card__note card__note--warn"><strong>Not yet re-reviewed.</strong> The score is for <span class="mono">c1204da</span> (iteration 10), before DeepSeek’s multi-agent parallel upgrade. The build you play here is the upgraded one.</p>
+          <div class="card__actions">
+            <a class="btn btn--primary" href="deepseek/">Play</a>
+            <a class="btn btn--ghost" href="#review-deepseek">Read review</a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CLASSIC ============================== -->
+<section class="section" id="classic" aria-labelledby="classic-title">
+  <div class="wrap">
+    <p class="kicker">Archive</p>
+    <h2 id="classic-title">Classic (pre-assets) builds</h2>
+    <p class="lede">These are the builds frozen before the 3D asset upgrade (Meshy / Higgsfield models), so you can compare like with like. Each one is tagged <span class="mono">pre-assets</span> in its repo and will not change. The main Play buttons above will pick up the asset upgrades later.</p>
+    <ul class="classic-list">
+      <li><a class="btn btn--ghost" href="classic/codex/">Classic Codex</a> <span class="card__build">Backyard: Find the grain · <span class="mono" data-build-classic="codex">loading…</span></span></li>
+      <li><a class="btn btn--ghost" href="classic/claude/">Classic Claude</a> <span class="card__build">Backyard Log Splitter · <span class="mono" data-build-classic="claude">loading…</span></span></li>
+      <li><a class="btn btn--ghost" href="classic/deepseek/">Classic DeepSeek</a> <span class="card__build">American Split · <span class="mono" data-build-classic="deepseek">loading…</span></span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================== SCORES ============================== -->
+<section class="section section--alt section--teeth" id="scores" aria-labelledby="scores-title">
+  <div class="wrap">
+    <p class="kicker">Side by side</p>
+    <h2 id="scores-title">The scoreboard</h2>
+    <p class="lede">Every score on this site, in one table. Review scores are out of 10; the end-of-run score adds gameplay, graphics and physics for a total out of 30. Cost rows load from <span class="mono">data/costs.json</span>.</p>
+
+    <div class="tablewrap">
+      <table class="scoreboard">
+        <caption class="sr-only">Scores and build cost for the three games</caption>
+        <colgroup><col class="col-metric"><col><col><col></colgroup>
+        <thead>
+          <tr>
+            <th scope="col"><span class="sr-only">Metric</span></th>
+            <th scope="col"><span class="sb-game">Codex</span><span class="sb-sub">gpt-6.1-sol</span></th>
+            <th scope="col"><span class="sb-game">Claude</span><span class="sb-sub">Opus 5.5</span></th>
+            <th scope="col"><span class="sb-game">DeepSeek</span><span class="sb-sub">deepseek-flash</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="sb-group"><th scope="rowgroup" colspan="4">Round 1 review (v1) · first builds, 2 minutes each</th></tr>
+          <tr><th scope="row">Gameplay</th><td data-v="2">2</td><td data-v="6">6</td><td data-v="4">4</td></tr>
+          <tr><th scope="row">Graphics</th><td data-v="6">6</td><td data-v="7">7</td><td data-v="7">7</td></tr>
+          <tr><th scope="row">Physics accuracy</th><td data-v="2">2</td><td data-v="8">8</td><td data-v="5">5</td></tr>
+          <tr class="sb-total"><th scope="row">Overall</th><td data-v="3.3">3.3</td><td data-v="7.0">7.0</td><td data-v="5.3">5.3</td></tr>
+        </tbody>
+        <tbody>
+          <tr class="sb-group"><th scope="rowgroup" colspan="4">Round 2 review (v2) · 5 minutes of play each</th></tr>
+          <tr><th scope="row">Gameplay</th><td data-v="8">8</td><td data-v="6">6</td><td data-v="7">7</td></tr>
+          <tr><th scope="row">Graphics</th><td data-v="7">7</td><td data-v="6">6</td><td data-v="7">7</td></tr>
+          <tr><th scope="row">Physics</th><td data-v="8">8</td><td data-v="9">9</td><td data-v="5">5</td></tr>
+          <tr class="sb-total"><th scope="row">Score</th><td data-v="8">8 <span class="word">Great</span></td><td data-v="7">7 <span class="word">Good</span></td><td data-v="6">6 <span class="word">Okay</span></td></tr>
+          <tr><th scope="row">Change from Round 1</th><td class="up">+4.7</td><td>±0</td><td class="up">+0.7</td></tr>
+          <tr><th scope="row">Build reviewed</th><td class="mono small">iter 7 · ca82b1f</td><td class="mono small">iter 1 · 1faf566</td><td class="mono small">iter 10 · c1204da</td></tr>
+        </tbody>
+        <tbody>
+          <tr class="sb-group"><th scope="rowgroup" colspan="4">End of the 6-hour build run · Oct 21, 2026</th></tr>
+          <tr><th scope="row">Gameplay</th><td data-v="8">8</td><td data-v="8">8</td><td data-v="7">7</td></tr>
+          <tr><th scope="row">Graphics</th><td data-v="8">8</td><td data-v="6">6</td><td data-v="7">7</td></tr>
+          <tr><th scope="row">Physics</th><td data-v="8">8</td><td data-v="9">9</td><td data-v="5">5</td></tr>
+          <tr class="sb-total"><th scope="row">Total</th><td data-v="24" data-max="30">24<span class="of">/30</span></td><td data-v="23" data-max="30">23<span class="of">/30</span></td><td data-v="19" data-max="30">19<span class="of">/30</span></td></tr>
+        </tbody>
+        <tbody id="sb-cost">
+          <tr class="sb-group"><th scope="rowgroup" colspan="4">What it cost to build</th></tr>
+          <tr><th scope="row">Cost (USD)</th><td data-cost="codex" data-k="cost_usd">…</td><td data-cost="claude" data-k="cost_usd">…</td><td data-cost="deepseek" data-k="cost_usd">…</td></tr>
+          <tr><th scope="row">Agent hours</th><td data-cost="codex" data-k="wall_h">…</td><td data-cost="claude" data-k="wall_h">…</td><td data-cost="deepseek" data-k="wall_h">…</td></tr>
+          <tr class="sb-total"><th scope="row">Cost per agent hour</th><td data-cost="codex" data-k="per_h">…</td><td data-cost="claude" data-k="per_h">…</td><td data-cost="deepseek" data-k="per_h">…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">Highlighted cells mark the best value in each row. Cost bases differ by harness; see <a href="#cost">the cost section</a> for what each number means.</p>
+  </div>
+</section>
+
+<!-- ============================== REVIEWS ============================== -->
+<section class="section section--rings" id="reviews" aria-labelledby="reviews-title">
+  <div class="wrap">
+    <p class="kicker">Grain &amp; Gravity · “Axe sims, split by the numbers.”</p>
+    <h2 id="reviews-title">Round Two: the review</h2>
+    <p class="lede">An IGN-style video review: about five minutes of play per game, scored on gameplay, graphics and physics. The text below condenses the review script.</p>
+
+    <div class="video">
+      <video controls preload="metadata" poster="assets/brand/poster-review-v2.jpg" width="960" height="540">
+        <source src="assets/video/chopperman-review-v2-small.mp4" type="video/mp4">
+        Your browser can’t play this video. <a href="assets/video/chopperman-review-v2-small.mp4">Download the MP4</a>.
+      </video>
+      <p class="video__cap">Chopperman, Round Two · 8:11 · 960×540. The music bed in the video is the channel’s, not the games’.</p>
+    </div>
+
+    <aside class="callout" aria-labelledby="snap-title">
+      <h3 id="snap-title"><img src="assets/brand/icon-gameplay.svg" alt="" width="32" height="32"> Snapshot builds: what was and wasn’t reviewed</h3>
+      <ul>
+        <li>Builds reviewed: Codex iteration 7 (<span class="mono">ca82b1f</span>), Claude iteration 1 (<span class="mono">1faf566</span>), DeepSeek iteration 10 (<span class="mono">c1204da</span>).</li>
+        <li><strong>DeepSeek was reviewed at <span class="mono">c1204da</span>, before its later multi-agent parallel upgrade</strong> (iteration 14 and later: energy/fracture physics, a campaign, graphics, audio and tests). The upgraded build on this site has not been re-reviewed.</li>
+        <li>Claude and Codex have since received audio and legibility updates. Those were not reviewed either.</li>
+      </ul>
+    </aside>
+
+    <details class="method">
+      <summary>Method and caveats</summary>
+      <ul>
+        <li>About 5 minutes of game time per game, with scripted mouse-driven play in headless Chrome on a virtual clock (software GL, Medium preset; one Codex clip on High).</li>
+        <li>Played on a CPU-only box with software GL. All three ran at 11–14 FPS on Medium, so no performance winner was called.</li>
+        <li>Dev hooks and late-game saves were used to reach late content.</li>
+        <li>Codex’s first test rounds were reset to clear weather by the test loader; weather in its second part is real.</li>
+        <li>No game audio was captured or reviewed. Music and sound effects arrived later and are not covered.</li>
+      </ul>
+    </details>
+
+    <!-- Codex review -->
+    <article class="review" id="review-codex" aria-labelledby="rv-codex">
+      <header class="review__head">
+        <div>
+          <p class="kicker">Codex CLI · gpt-6.1-sol · iteration 7 · <span class="mono">ca82b1f</span></p>
+          <h3 id="rv-codex">Backyard: Find the grain</h3>
+          <p class="review__verdict">The comeback kid. Codex goes from 3.3 to an 8: “Biggest glow-up I’ve ever reviewed.”</p>
+        </div>
+        <div class="bigscore" style="--s:8"><span class="bigscore__num">8</span><span class="bigscore__word">Great</span><span class="sr-only">out of 10</span></div>
+      </header>
+      <dl class="cats">
+        <div><dt><img src="assets/brand/icon-gameplay.svg" alt="" width="28" height="28">Gameplay</dt><dd><span class="bar" style="--v:8"></span><b>8</b></dd></div>
+        <div><dt><img src="assets/brand/icon-graphics.svg" alt="" width="28" height="28">Graphics</dt><dd><span class="bar" style="--v:7"></span><b>7</b></dd></div>
+        <div><dt><img src="assets/brand/icon-physics.svg" alt="" width="28" height="28">Physics</dt><dd><span class="bar" style="--v:8"></span><b>8</b></dd></div>
+      </dl>
+      <div class="review__grid">
+        <div class="prose">
+          <p>Iteration 7 ships an eighteen-log campaign over six chapters, and the axe stays in your hands. Edge speed sits around 10.5 m/s, roughly 100 joules: right where a real full swing lives. The first pull landed 24 cm off center, and the game was honest about it: a glance and a crack, no split.</p>
+          <p>Use the grain reader, line up on the pith, and the Big Pine boss falls in two pulls. A hollow oak sheds its walls one strike at a time, and the Iron Crown, three stone-bound sections at dusk, took nine strikes. You can drive a wedge into stubborn oak, buy a heavier head in the tool shed, watch slow-mo replays in the snow and chase points in Precision mode. Medium is clean low-poly autumn; High adds bloom and ambient occlusion.</p>
+          <p>Gripes: the side panels eat a third of the screen, auto-align makes the campaign a touch easy, and the console spams physics warnings on every fracture.</p>
+        </div>
+        <div class="proscons">
+          <div class="pros"><h4>Pros</h4><ul><li>Believable swing energy</li><li>A real campaign with distinct boss logs</li><li>Wedges and upgrades</li><li>A grain reader that teaches you wood</li></ul></div>
+          <div class="cons"><h4>Cons</h4><ul><li>Cluttered side panels</li><li>An easy difficulty curve</li><li>Noisy fracture warnings</li></ul></div>
+        </div>
+      </div>
+      <figure class="thennow">
+        <img src="assets/stills/then-vs-now-codex.webp" alt="Then versus now, Codex. Left, version 1: the axe leaves the lumberjack's hands at 29.7 m/s and the log does not split. Right, iteration 7: about 10.5 m/s, about 100 J, and the log splits on the grain." width="1280" height="720">
+        <figcaption><strong>Then vs now.</strong> Round 1 gave it 3.3: “Lovely yard. The axe left for orbit.” The axe flew off at up to 29.7 m/s and the log stayed intact for two full minutes. Now, the same swing splits the wood along the grain. “That’s not a patch. That’s a different game.”</figcaption>
+      </figure>
+    </article>
+
+    <!-- Claude review -->
+    <article class="review" id="review-claude" aria-labelledby="rv-claude">
+      <header class="review__head">
+        <div>
+          <p class="kicker">Claude Code · Claude Opus 5.5 · iteration 1 · <span class="mono">1faf566</span></p>
+          <h3 id="rv-claude">Backyard Log Splitter</h3>
+          <p class="review__verdict">Still the physics professor. Claude holds at a seven: smarter physics, but the new content added friction and a boss bug.</p>
+        </div>
+        <div class="bigscore" style="--s:7"><span class="bigscore__num">7</span><span class="bigscore__word">Good</span><span class="sr-only">out of 10</span></div>
+      </header>
+      <dl class="cats">
+        <div><dt><img src="assets/brand/icon-gameplay.svg" alt="" width="28" height="28">Gameplay</dt><dd><span class="bar" style="--v:6"></span><b>6</b></dd></div>
+        <div><dt><img src="assets/brand/icon-graphics.svg" alt="" width="28" height="28">Graphics</dt><dd><span class="bar" style="--v:6"></span><b>6</b></dd></div>
+        <div><dt><img src="assets/brand/icon-physics.svg" alt="" width="28" height="28">Physics</dt><dd><span class="bar" style="--v:9"></span><b>9</b></dd></div>
+      </dl>
+      <div class="review__grid">
+        <div class="prose">
+          <p>A pine bullseye at 16 m/s carries about 190 joules against the 107 it needs, and it pops. Swing soft into oak and the bit sticks, and the crack carries over to your next swing, just like real wood. A forked cherry fights you, and the energy needed drops with every crack: 600, 530, 425, then 313 J. Waterlogged ash in the rain broke into four; iced maple glanced off the glaze. In Time Attack a maul swings slower, about 10 m/s, but hits 260 J. Heavier and slower. Correct.</p>
+          <p>The trouble is the fun. Fifty-two swings in five minutes, thirty-four of them stuck. The boss, the Old Elm, showed zero toughness left after four hits and still refused to split after nine, asking for up to 2,300 J. That’s a bug. Visuals are decent but blocky, a lamp post parks in front of the action, and in fog and frost the lumberjack turns into a wooden mannequin.</p>
+        </div>
+        <div class="proscons">
+          <div class="pros"><h4>Pros</h4><ul><li>The most truthful wood physics here</li><li>Stuck bits and crack memory</li><li>Knots, ice and weather</li><li>A telemetry panel</li></ul></div>
+          <div class="cons"><h4>Cons</h4><ul><li>Lots of stuck swings, even allowing that the reviewer ran stamina into the ground</li><li>A boss that won’t split</li><li>Odd materials in bad weather</li></ul></div>
+        </div>
+      </div>
+      <div class="thennow thennow--text">
+        <p><strong>Then vs now.</strong> Round 1 gave it 7.0: “Bites, sticks, and splits like real oak.” That review was won over by a clean 11 m/s split at 182 J, 105% of what the log needed. Iteration 1 keeps the same honest energy model and adds weather, knots and ice. “Deeper, yes. Friendlier, not so much.”</p>
+      </div>
+    </article>
+
+    <!-- DeepSeek review -->
+    <article class="review" id="review-deepseek" aria-labelledby="rv-deepseek">
+      <header class="review__head">
+        <div>
+          <p class="kicker">DeepSeek Harness · deepseek-flash · iteration 10 · <span class="mono">c1204da</span></p>
+          <h3 id="rv-deepseek">American Split</h3>
+          <p class="review__verdict">Confetti, cancelled. DeepSeek climbs from 5.3 to a six: big improvements, held back by a stuck round.</p>
+        </div>
+        <div class="bigscore" style="--s:6"><span class="bigscore__num">6</span><span class="bigscore__word">Okay</span><span class="sr-only">out of 10</span></div>
+      </header>
+      <p class="flag"><strong>Reviewed at <span class="mono">c1204da</span>.</strong> Since then DeepSeek has had a multi-agent parallel upgrade (energy/fracture physics, a campaign, graphics, audio, tests). The build you can play here is that upgraded version, and it has not been re-reviewed.</p>
+      <dl class="cats">
+        <div><dt><img src="assets/brand/icon-gameplay.svg" alt="" width="28" height="28">Gameplay</dt><dd><span class="bar" style="--v:7"></span><b>7</b></dd></div>
+        <div><dt><img src="assets/brand/icon-graphics.svg" alt="" width="28" height="28">Graphics</dt><dd><span class="bar" style="--v:7"></span><b>7</b></dd></div>
+        <div><dt><img src="assets/brand/icon-physics.svg" alt="" width="28" height="28">Physics</dt><dd><span class="bar" style="--v:5"></span><b>5</b></dd></div>
+      </dl>
+      <div class="review__grid">
+        <div class="prose">
+          <p>The confetti is gone. Pine and birch open clean into two to four billets, the way straight grain should. Spruce shows a golden riving check to aim for, a hollow elm caves in on one blow, and hardwoods take several bites. The boss, a knotty hickory in the snow, makes you find the heartwood seam, flips to Phase Two, and a clean finish paid 3,425 points.</p>
+          <p>The Ancient Iron Stump trial at night is the best set piece here: notch three roots, the stump goes unstable, the hollow collapses, and it splits. A Twisted Colossus trial in the rain takes six honest swings a round. Medium looks cozy and warm, though the auto Low preset gets pixelated and the HUD type is heavy.</p>
+          <p>The bad news: ironwood in the wind glanced five of six centered hits. In Time Attack, in fog, a red spruce reached 0.05 bites left, then sat there for seven more hits and never split. That’s a soft lock. And underneath, the physics is still a bite counter in a lumberjack’s shirt.</p>
+        </div>
+        <div class="proscons">
+          <div class="pros"><h4>Pros</h4><ul><li>The most modes and set pieces</li><li>Sensible piece counts</li><li>The Iron Stump trial</li><li>A boss with real phases</li></ul></div>
+          <div class="cons"><h4>Cons</h4><ul><li>A Time Attack soft lock</li><li>Glancy ironwood</li><li>Physics that counts bites instead of joules</li></ul></div>
+        </div>
+      </div>
+      <figure class="thennow">
+        <img src="assets/stills/then-vs-now-deepseek.webp" alt="Then versus now, DeepSeek. Left, version 1: a light tap bursts the round into more than 40 wedges. Right, iteration 10 at c1204da: a clean split into 2 to 4 billets." width="1280" height="720">
+        <figcaption><strong>Then vs now.</strong> Round 1 gave it 5.3: “Gorgeous yard. Every log is a grenade.” A gentle tap detonated the round into forty-some wedges. At iteration 10, a clean split and a few honest billets. “Better behaved, even if the math is still a counter.”</figcaption>
+      </figure>
+    </article>
+
+    <figure class="final-card">
+      <img src="assets/stills/final-scorecard.webp" alt="Round Two final scores card. Codex: Round 1 3.3, gameplay 8, graphics 7, physics 8, score 8 Great. Claude: 7.0, 6, 6, 9, score 7 Good. DeepSeek: 5.3, 7, 7, 5, score 6 Okay." width="1280" height="720">
+      <figcaption>The verdict: Codex, the comeback kid and now the most complete game. Claude understands wood best but needs to let you have a good time. DeepSeek: no more confetti, the most content, tripped by a soft lock.</figcaption>
+    </figure>
+
+    <details class="round1" id="round1">
+      <summary><span class="kicker">Round 1 review</span> “Chopperman: Three AIs, One Axe”: first builds, 2 minutes each</summary>
+      <div class="round1__body">
+        <p class="prose-w">The first video review played the first committed build of each game for two minutes on a CPU-only box. No in-game audio was captured. Its verdict: Claude’s splitter was the keeper, at a seven.</p>
+        <div class="r1grid">
+          <section class="r1" aria-labelledby="r1-claude">
+            <h3 id="r1-claude">Claude · <span class="r1score">7.0</span></h3>
+            <p class="r1line">“Bites, sticks, and splits like real oak.”</p>
+            <p class="small-meta">Gameplay 6 · Graphics 7 · Physics accuracy 8 · build <span class="mono">614efc7</span></p>
+            <p>At 11 m/s the panel read 182 J, 105% of what was needed, and the round popped into two clean halves. A lazy 7 m/s swing stuck fast with a 29% crack, and the next hit needed less energy. Gripes: the woodsman chops from off to the side, and the chips come out a little too tidy.</p>
+          </section>
+          <section class="r1" aria-labelledby="r1-deepseek">
+            <h3 id="r1-deepseek">DeepSeek · <span class="r1score">5.3</span></h3>
+            <p class="r1line">“Gorgeous yard. Every log is a grenade.”</p>
+            <p class="small-meta">Gameplay 4 · Graphics 7 · Physics accuracy 5 · build <span class="mono">de03d47</span></p>
+            <p>A golden-hour yard with a proper overhead swing, but a full swing burst the round into 40+ wedges, and even at 15% force it still blew apart. The chips tumble and settle with honest weight; there was no grain to read and no aim to master.</p>
+          </section>
+          <section class="r1" aria-labelledby="r1-codex">
+            <h3 id="r1-codex">Codex · <span class="r1score">3.3</span></h3>
+            <p class="r1line">“Lovely yard. The axe left for orbit.”</p>
+            <p class="small-meta">Gameplay 2 · Graphics 6 · Physics accuracy 2 · build <span class="mono">ae18255</span></p>
+            <p>Then titled <em>Backyard: A Study in Momentum</em>. Best-dressed of the bunch, but the axe flew off at up to 29.7 m/s with no impact, every swing read “glancing”, and the log stayed intact for two full minutes.</p>
+          </section>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ============================== COST ============================== -->
+<section class="section section--alt section--teeth" id="cost" aria-labelledby="cost-title">
+  <div class="wrap">
+    <p class="kicker"><img src="assets/brand/icon-cost.svg" alt="" width="28" height="28"> The bill</p>
+    <h2 id="cost-title">What it cost to build each game</h2>
+    <p class="lede" id="cost-lede">Loaded from the usage log in <span class="mono">data/costs.json</span>.</p>
+    <div class="perhour" id="cost-perhour" aria-live="polite"></div>
+    <div class="tablewrap">
+      <table class="costs" id="cost-table">
+        <caption class="sr-only">Build cost by harness</caption>
+        <thead>
+          <tr><th scope="col">Harness</th><th scope="col">Runs</th><th scope="col">Agent hours</th><th scope="col">Tokens in, uncached</th><th scope="col">Tokens in, cached</th><th scope="col">Tokens out</th><th scope="col">Cost (USD)</th><th scope="col">Per agent hour</th></tr>
+        </thead>
+        <tbody><tr><td colspan="8">Loading cost data…</td></tr></tbody>
+      </table>
+    </div>
+    <h3 class="h-small">How each number was measured</h3>
+    <dl class="basis" id="cost-basis"></dl>
+    <p class="fine" id="cost-generated"></p>
+  </div>
+</section>
+</main>
+
+<!-- ============================== FOOTER ============================== -->
+<footer class="footer" id="about">
+  <div class="wrap footer__inner">
+    <div class="footer__brand">
+      <img src="assets/brand/logo-mark.svg" alt="" width="96" height="96">
+    </div>
+    <div class="prose">
+      <h2 class="h-small">What is this?</h2>
+      <p>Chopperman is an experiment comparing AI coding harnesses. Codex CLI, Claude Code and the DeepSeek Harness each got the same brief: build a backyard axe-chopping game for the browser. The three results live side by side here, with their scores, reviews and build costs.</p>
+      <p>The games need <strong>WebGL 2</strong>. A desktop browser with a mouse is recommended. Click inside a game to start its audio.</p>
+      <p class="fine">Reviews by the Grain &amp; Gravity channel (“Axe sims, split by the numbers.”). Logo, illustrations and site design by Claude. Screenshots and stills are captures of the games themselves.</p>
+    </div>
+    <ul class="footer__play" aria-label="Play the games">
+      <li><a class="btn btn--ghost" href="codex/">Play Codex</a></li>
+      <li><a class="btn btn--ghost" href="claude/">Play Claude</a></li>
+      <li><a class="btn btn--ghost" href="deepseek/">Play DeepSeek</a></li>
+    </ul>
+  </div>
+</footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

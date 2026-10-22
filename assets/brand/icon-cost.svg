@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<title>Cost</title>
+<ellipse cx="24" cy="12" rx="15" ry="6" stroke="#E8C38A" stroke-width="2.5"/>
+<path d="M9 12 L9 22 C9 25.5 15.7 28 24 28 C32.3 28 39 25.5 39 22 L39 12" stroke="#E8C38A" stroke-width="2.5"/>
+<path d="M9 22 L9 32 C9 35.5 15.7 38 24 38 C32.3 38 39 35.5 39 32 L39 22" stroke="#B5652B" stroke-width="2.5"/>
+<ellipse cx="24" cy="12" rx="7" ry="2.5" stroke="#F2862E" stroke-width="2"/>
+</svg>

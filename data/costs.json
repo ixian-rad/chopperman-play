@@ -1,0 +1,34 @@
+{
+ "generated": "2026-10-22 13:07 EDT",
+ "harness": {
+  "deepseek": {
+   "runs": 45,
+   "wall_h": 23.97,
+   "input_uncached": 5313190,
+   "input_cached": 690306686,
+   "output": 2932994,
+   "cost_usd": 6.7
+  },
+  "codex": {
+   "runs": 14,
+   "wall_h": 7.04,
+   "input_uncached": 1153691,
+   "input_cached": 24277120,
+   "output": 356848,
+   "cost_usd": 8.3
+  },
+  "claude": {
+   "runs": 8,
+   "wall_h": 7.6,
+   "input_uncached": 734,
+   "input_cached": 73925652,
+   "output": 816258,
+   "cost_usd": 45.43
+  }
+ },
+ "basis": {
+  "deepseek": "estimate: measured tokens x DeepSeek list price (deepseek-flash; peak hours 2x)",
+  "codex": "ChatGPT plan (subscription-included); API-equivalent estimate at gpt-6.1-sol list price",
+  "claude": "total_cost_usd reported by Claude Code (list-price basis; may be subscription-covered)"
+ }
+}

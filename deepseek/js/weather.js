@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, damp } from './utils.js';
+import { clamp, damp, mulberry32 } from './utils.js';
 
 const TAU = Math.PI * 2;
 
@@ -202,6 +202,7 @@ export class WeatherSystem {
     this._sunDir = new THREE.Vector3();
     this._wind = new THREE.Vector2();
     this._ambientTint = new THREE.Color(0xffffff);
+    this._applyKey = '';
     this._buildParticles();
     this._buildSkyExtras();
     if (env?.setWind) env.setWind(this.getWindStrength());
@@ -214,7 +215,9 @@ export class WeatherSystem {
 
     // Rain is drawn as a single LineSegments batch: crisp, cheap, and much more
     // legible than textured point sprites on a software rasteriser.
-    const rainCount = Math.max(380, this.quality.rainParticles || 620);
+    // Allocate the maximum preset count once; setQuality only changes the draw
+    // range, so switching low -> high does not leave the storm half-populated.
+    const rainCount = 2100;
     const rainPositions = new Float32Array(rainCount * 6);
     for (let i = 0; i < rainCount; i++) {
       const x = (this.random() - 0.5) * 22;
@@ -255,7 +258,7 @@ export class WeatherSystem {
       fog: true,
     });
     this.snow = makePointCloud(
-      this.quality.snowParticles,
+      1900,
       new THREE.Vector3(18, 13, 16),
       this.random,
       snowMat,
@@ -263,7 +266,7 @@ export class WeatherSystem {
     this.snow.geometry.setDrawRange(0, 0);
     this.snow.visible = false;
     this.scene.add(this.snow);
-    this.snowPhase = new Float32Array(this.quality.snowParticles);
+    this.snowPhase = new Float32Array(1900);
 
     // Warm fireflies for clear nights.
     this.fireflyMat = new THREE.PointsMaterial({
@@ -301,6 +304,37 @@ export class WeatherSystem {
     );
     this.sunGlow.scale.set(9, 9, 1);
     this.scene.add(this.sunGlow);
+
+    // Rain hits the ground: one cheap point batch, only drawn while raining.
+    const splashCount = 72;
+    const splashPositions = new Float32Array(splashCount * 3);
+    this.splashPhase = new Float32Array(splashCount);
+    const splashRandom = mulberry32(0x51a5);
+    for (let i = 0; i < splashCount; i++) {
+      splashPositions[i * 3] = (splashRandom() - 0.5) * 7;
+      splashPositions[i * 3 + 1] = 0.03;
+      splashPositions[i * 3 + 2] = (splashRandom() - 0.5) * 5.5 - 0.8;
+      this.splashPhase[i] = splashRandom();
+    }
+    const splashGeo = new THREE.BufferGeometry();
+    splashGeo.setAttribute('position', new THREE.BufferAttribute(splashPositions, 3));
+    this.splashes = new THREE.Points(
+      splashGeo,
+      new THREE.PointsMaterial({
+        map: this.flakeTex,
+        color: 0xbcd6e6,
+        size: 0.12,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+        sizeAttenuation: true,
+        fog: true,
+      }),
+    );
+    this.splashes.frustumCulled = false;
+    this.splashes.visible = false;
+    this.scene.add(this.splashes);
   }
 
   _buildSkyExtras() {
@@ -321,7 +355,7 @@ export class WeatherSystem {
       geo,
       new THREE.PointsMaterial({
         color: 0xcfd8ff,
-        size: 0.36,
+        size: 0.9,
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -333,6 +367,23 @@ export class WeatherSystem {
     this.stars.frustumCulled = false;
     this.stars.renderOrder = -90;
     this.scene.add(this.stars);
+
+    // A soft moon disc opposite the sun. One sprite, only visible at night.
+    this.moonSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: this.flakeTex,
+        color: 0xdde7ff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        toneMapped: false,
+      }),
+    );
+    this.moonSprite.scale.set(7, 7, 1);
+    this.moonSprite.renderOrder = -90;
+    this.scene.add(this.moonSprite);
 
     // Low-poly god-ray cards behind the tree line.
     this.shafts = new THREE.Group();
@@ -367,7 +418,7 @@ export class WeatherSystem {
     this.snow.material.size = preset.snowSize ?? 0.17;
     if (this.rain.visible) this.rain.geometry.setDrawRange(0, rainCount * 2);
     if (this.snow.visible) this.snow.geometry.setDrawRange(0, snowCount);
-    this.stars.visible = preset.motes > 0 || true;
+    // Visibility is driven by applyTime (day/night); do not force it on here.
   }
 
   setWeather(name) {
@@ -380,6 +431,7 @@ export class WeatherSystem {
     if (!(name in TIME_PRESETS)) return this.timePreset;
     this.timePreset = name;
     this.phase = TIME_PRESETS[name];
+    this._applyKey = '';
     this.applyTime(this.phase, true);
     return this.timePreset;
   }
@@ -387,6 +439,7 @@ export class WeatherSystem {
   setPhase(phase) {
     this.phase = ((Number(phase) || 0) % 1 + 1) % 1;
     this.timePreset = this.labelForPhase(this.phase);
+    this._applyKey = '';
     this.applyTime(this.phase, false);
     return this.phase;
   }
@@ -433,6 +486,27 @@ export class WeatherSystem {
     return base * (0.6 + 0.4 * this.weatherIntensity[this.weather]);
   }
 
+  /** World direction toward the sun (used by the screen-space god-ray pass). */
+  getSunDirection() {
+    return this._sunDir;
+  }
+
+  /** 0..1 strength for the crepuscular-ray pass: strongest at golden hour. */
+  getSunShaftStrength() {
+    const rain = this.weatherIntensity.rain;
+    const snow = this.weatherIntensity.snow;
+    const fog = this.weatherIntensity.fog;
+    return clamp(
+      (this.goldenFactor * 1.05 + this.dayFactor * 0.14) *
+        (1 - this.nightFactor * 0.85) *
+        (1 - rain * 0.7) *
+        (1 - snow * 0.55) *
+        (1 - fog * 0.8),
+      0,
+      1,
+    );
+  }
+
   getModifiers() {
     const base = WEATHER_MODIFIERS[this.weather] || WEATHER_MODIFIERS.clear;
     return { ...base, weather: this.weather };
@@ -472,7 +546,9 @@ export class WeatherSystem {
     const wind = this.weatherIntensity.wind;
     const stormDim = clamp(rain * 0.45 + snow * 0.28, 0, 0.6);
 
-    const az = phase * TAU + 2.3;
+    // Put the low golden-hour sun in the default camera's view so the sky glow,
+    // world shafts and screen-space god rays read as a direction, not just a tint.
+    const az = phase * TAU + 1.05;
     const alt = Math.asin(clamp(elev, -0.95, 0.95));
     this._sunDir.set(
       Math.cos(az) * Math.cos(alt),
@@ -527,7 +603,7 @@ export class WeatherSystem {
       }
     }
     if (env.moon) {
-      env.moon.intensity = night * 0.42 * (1 - stormDim * 0.6);
+      env.moon.intensity = night * 0.55 * (1 - stormDim * 0.6);
       env.moon.position.set(-this._sunDir.x * 12, 9, -this._sunDir.z * 12);
       env.moon.color.set(0x9fb6e0);
     }
@@ -589,9 +665,22 @@ export class WeatherSystem {
 
     this.stars.material.opacity = night * (1 - rain * 0.8) * (1 - snow * 0.7) * (1 - fog * 0.9);
     this.stars.visible = this.stars.material.opacity > 0.01;
+    if (this.moonSprite) {
+      const moonOpacity = night * (1 - rain * 0.85) * (1 - snow * 0.6) * (1 - fog * 0.9);
+      this.moonSprite.material.opacity = moonOpacity * 0.9;
+      this.moonSprite.visible = moonOpacity > 0.01;
+      const mx = -this._sunDir.x;
+      const my = Math.max(0.12, -this._sunDir.y);
+      const mz = -this._sunDir.z;
+      this.moonSprite.position.set(mx * 70, my * 70, mz * 70);
+    }
     this.fireflies.visible = night > 0.55 && rain < 0.3 && snow < 0.5;
     this.fireflyMat.opacity = night * 0.8 * (1 - rain);
-    this.shafts.visible = golden > 0.04 && rain < 0.4 && snow < 0.5;
+    // The world-space shaft cards are four large additive quads. Keep them for
+    // Medium+; Low's budget goes to the sky glow and contact shadows instead.
+    this.shafts.visible =
+      (this.quality?.envDetail ?? 1) >= 0.7 &&
+      golden > 0.04 && rain < 0.4 && snow < 0.5;
     for (const shaft of this.shafts.children) {
       shaft.material.opacity = golden * 0.17 * (1 - stormDim * 0.7);
     }
@@ -601,6 +690,7 @@ export class WeatherSystem {
       for (const lantern of env.lanterns) {
         if (lantern.light) lantern.light.intensity = lanternOn * (lantern.intensity || 2.4);
         if (lantern.glow) lantern.glow.material.opacity = lanternOn * 0.82;
+        if (lantern.pool) lantern.pool.material.opacity = lanternOn * 0.34;
         if (lantern.bulb) {
           lantern.bulb.material.emissiveIntensity = 0.3 + lanternOn * 2.2;
         }
@@ -630,10 +720,10 @@ export class WeatherSystem {
     // sun, golden hour, night, and weather without another full PBR pass.
     const ambient = this._ambientTint.set(0xffffff);
     ambient.lerp(new THREE.Color(0xffcf95), golden * 0.85);
-    ambient.lerp(new THREE.Color(0x53688f), night * 0.9);
+    ambient.lerp(new THREE.Color(0x687ea8), night * 0.9);
     ambient.lerp(new THREE.Color(0xaebcc8), rain * 0.35);
     ambient.lerp(new THREE.Color(0xe7f0ff), snow * 0.35);
-    const ambientStrength = 0.42 + day * 0.6 - rain * 0.08 + snow * 0.08 + golden * 0.03;
+    const ambientStrength = 0.42 + day * 0.6 - rain * 0.08 + snow * 0.08 + golden * 0.03 + night * 0.22;
     env.setAmbientLight?.(ambient, ambientStrength);
     env.onAmbient?.(ambient, ambientStrength);
 
@@ -658,7 +748,14 @@ export class WeatherSystem {
       this.phase = (this.phase + dt / 210) % 1;
       this.timePreset = this.labelForPhase(this.phase);
     }
-    this.applyTime(this.phase, false);
+    // applyTime allocates a handful of colours and touches every light. The
+    // lighting only changes while the clock moves or a weather transition is
+    // still damping, so skip the whole pass once the state is stable.
+    const applyKey = `${this.phase.toFixed(4)}:${this.weatherIntensity.rain.toFixed(3)}:${this.weatherIntensity.snow.toFixed(3)}:${this.weatherIntensity.fog.toFixed(3)}:${this.weatherIntensity.wind.toFixed(3)}`;
+    if (applyKey !== this._applyKey) {
+      this._applyKey = applyKey;
+      this.applyTime(this.phase, false);
+    }
 
     const rainI = this.weatherIntensity.rain;
     const snowI = this.weatherIntensity.snow;
@@ -688,6 +785,19 @@ export class WeatherSystem {
         }
         pos.setXYZ(index, x, y, z);
         pos.setXYZ(index + 1, x + 0.08 + wind.x * 0.04, y - 0.52, z + wind.z * 0.04);
+      }
+      pos.needsUpdate = true;
+    }
+
+    // Rain splashes: 72 sprites bouncing just above the ground around the
+    // block. One points batch, no per-particle material, only alive in rain.
+    this.splashes.visible = rainI > 0.05;
+    if (this.splashes.visible) {
+      this.splashes.material.opacity = rainI * 0.55;
+      const pos = this.splashes.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const phase = (elapsed * 1.9 + this.splashPhase[i] * 7.3) % 1;
+        pos.setY(i, 0.025 + Math.sin(phase * Math.PI) * 0.075);
       }
       pos.needsUpdate = true;
     }

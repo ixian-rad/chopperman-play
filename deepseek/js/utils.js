@@ -1,21 +1,13 @@
 import * as THREE from 'three';
+import { mulberry32 } from './mechanics.js';
 
 /* ------------------------------------------------------------------ *
  *  Small deterministic helpers
  * ------------------------------------------------------------------ */
 
-export function mulberry32(seed = 1) {
-  let a = seed >>> 0;
-  return function random() {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-export const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+// Node-safe primitives live in mechanics.js so the test suite can import them
+// without Three.js; keep the public utils.js re-export for existing callers.
+export { clamp, mulberry32 } from './mechanics.js';
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const invLerp = (a, b, v) => (v - a) / (b - a);
 export const easeInOutCubic = (t) =>
@@ -163,24 +155,55 @@ export function createBarkTexture(seed = 8, repeatX = 3, repeatY = 1.5) {
     512,
     (ctx, size) => {
       const random = mulberry32(seed);
-      ctx.fillStyle = '#5b452e';
+      // Mid-tone base: the old #5b452e albedo went almost black under ACES at
+      // Low (no shadows, ambient-only). Keep the ridges dark but give the
+      // plates enough value to read as bark from the gameplay camera.
+      const base = ctx.createLinearGradient(0, 0, size * 0.35, size);
+      base.addColorStop(0, '#7b6142');
+      base.addColorStop(0.45, '#6e563b');
+      base.addColorStop(1, '#7d6546');
+      ctx.fillStyle = base;
       ctx.fillRect(0, 0, size, size);
-      for (let i = 0; i < 260; i++) {
+
+      // Broad, soft lichen / weather patches underneath the ridges.
+      for (let i = 0; i < 70; i++) {
         const x = random() * size;
         const y = random() * size;
-        const w = 2 + random() * 7;
-        const h = 14 + random() * 100;
+        const r = 8 + random() * 30;
+        const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+        const grey = random() > 0.55;
+        g.addColorStop(0, grey ? 'rgba(178,175,158,0.14)' : 'rgba(93,105,70,0.12)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Flattened vertical plates: dark grooves with a lit lip on one side.
+      for (let i = 0; i < 300; i++) {
+        const x = random() * size;
+        const y = random() * size;
+        const w = 2 + random() * 8;
+        const h = 16 + random() * 110;
         ctx.fillStyle =
-          random() > 0.5
-            ? `rgba(31,24,16,${0.12 + random() * 0.35})`
-            : `rgba(138,115,81,${0.12 + random() * 0.28})`;
+          random() > 0.52
+            ? `rgba(38,29,18,${0.16 + random() * 0.34})`
+            : `rgba(184,158,116,${0.1 + random() * 0.26})`;
         ctx.beginPath();
         ctx.roundRect(x, y, w, h, w * 0.5);
         ctx.fill();
+        // A thin highlight on the windward edge of the plate.
+        if (w > 4) {
+          ctx.fillStyle = `rgba(206,186,146,${0.08 + random() * 0.14})`;
+          ctx.fillRect(x + 0.4, y + 2, 1, h - 4);
+        }
       }
-      for (let i = 0; i < 90; i++) {
-        ctx.strokeStyle = `rgba(22,17,11,${0.14 + random() * 0.2})`;
-        ctx.lineWidth = 1 + random() * 1.5;
+
+      // Deep checks and lenticels. These also drive the derived normal map.
+      for (let i = 0; i < 110; i++) {
+        ctx.strokeStyle = `rgba(24,18,11,${0.16 + random() * 0.24})`;
+        ctx.lineWidth = 1 + random() * 1.8;
         const x = random() * size;
         const y = random() * size;
         ctx.beginPath();
@@ -195,10 +218,105 @@ export function createBarkTexture(seed = 8, repeatX = 3, repeatY = 1.5) {
         );
         ctx.stroke();
       }
-      fillNoise(ctx, size, random, 650, ['rgba(20,17,10,.12)', 'rgba(157,142,105,.1)'], 1.4);
+      fillNoise(ctx, size, random, 650, ['rgba(20,17,10,.12)', 'rgba(190,171,132,.12)'], 1.4);
     },
     { repeatX, repeatY },
   );
+}
+
+const surfaceMapCache = new Map();
+
+/**
+ * Derive a tangent-space normal map and a monochrome roughness map from an
+ * existing procedural colour canvas. This is the cheap way to give bark and
+ * end grain real PBR relief without a second canvas draw pass: the colour map
+ * already contains the ridges and growth rings, so its luminance doubles as a
+ * height field. Results are cached per texture and kept at 256² because the
+ * wood fills a small part of the screen even at High.
+ */
+export function createSurfaceMaps(
+  texture,
+  { normalStrength = 2, roughnessBase = 0.82, roughnessContrast = 0.2 } = {},
+) {
+  if (!texture?.image || typeof document === 'undefined') return null;
+  const key = `${texture.uuid}:${normalStrength}:${roughnessBase}:${roughnessContrast}`;
+  if (surfaceMapCache.has(key)) return surfaceMapCache.get(key);
+  const src = texture.image;
+  const S = 256;
+  const sample = document.createElement('canvas');
+  sample.width = S;
+  sample.height = S;
+  const sctx = sample.getContext('2d', { willReadFrequently: true });
+  sctx.drawImage(src, 0, 0, S, S);
+  const data = sctx.getImageData(0, 0, S, S).data;
+  const heights = new Float32Array(S * S);
+  for (let i = 0; i < S * S; i++) {
+    heights[i] =
+      (data[i * 4] * 0.3 + data[i * 4 + 1] * 0.55 + data[i * 4 + 2] * 0.15) / 255;
+  }
+  const at = (x, y) => heights[((y + S) % S) * S + ((x + S) % S)];
+
+  const normalCanvas = document.createElement('canvas');
+  normalCanvas.width = S;
+  normalCanvas.height = S;
+  const nctx = normalCanvas.getContext('2d');
+  const nimg = nctx.createImageData(S, S);
+  const nd = nimg.data;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const dx =
+        at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) -
+        (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
+      const dy =
+        at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) -
+        (at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1));
+      let nx = -dx * normalStrength;
+      let ny = dy * normalStrength;
+      let nz = 1;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      const i = (y * S + x) * 4;
+      nd[i] = ((nx / len) * 0.5 + 0.5) * 255;
+      nd[i + 1] = ((ny / len) * 0.5 + 0.5) * 255;
+      nd[i + 2] = ((nz / len) * 0.5 + 0.5) * 255;
+      nd[i + 3] = 255;
+    }
+  }
+  nctx.putImageData(nimg, 0, 0);
+  const normalMap = new THREE.CanvasTexture(normalCanvas);
+  normalMap.colorSpace = THREE.NoColorSpace;
+  normalMap.wrapS = texture.wrapS;
+  normalMap.wrapT = texture.wrapT;
+  normalMap.repeat.copy(texture.repeat);
+  normalMap.anisotropy = Math.min(4, texture.anisotropy || 1);
+
+  const roughCanvas = document.createElement('canvas');
+  roughCanvas.width = S;
+  roughCanvas.height = S;
+  const rctx = roughCanvas.getContext('2d');
+  const rimg = rctx.createImageData(S, S);
+  const rd = rimg.data;
+  for (let i = 0; i < S * S; i++) {
+    // Grooves (dark pixels) read rougher; raised ridges catch a little more light.
+    const value = Math.max(
+      0,
+      Math.min(1, roughnessBase + (0.5 - heights[i]) * roughnessContrast * 2),
+    );
+    rd[i * 4] = value * 255;
+    rd[i * 4 + 1] = value * 255;
+    rd[i * 4 + 2] = value * 255;
+    rd[i * 4 + 3] = 255;
+  }
+  rctx.putImageData(rimg, 0, 0);
+  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+  roughnessMap.colorSpace = THREE.NoColorSpace;
+  roughnessMap.wrapS = texture.wrapS;
+  roughnessMap.wrapT = texture.wrapT;
+  roughnessMap.repeat.copy(texture.repeat);
+  roughnessMap.anisotropy = Math.min(4, texture.anisotropy || 1);
+
+  const maps = { normalMap, roughnessMap };
+  surfaceMapCache.set(key, maps);
+  return maps;
 }
 
 export function createGrassTexture(seed = 21) {
@@ -348,7 +466,19 @@ export function createEndGrainTexture(seed = 11, size = 512) {
     size,
     (ctx, s) => {
       const random = mulberry32(seed);
-      ctx.fillStyle = '#c49b61';
+      // Heartwood -> sapwood -> weathered rim. The radial ramp gives the cut
+      // face a real material read before the growth rings are drawn on top.
+      const heartRamp = ctx.createRadialGradient(
+        s * 0.51, s * 0.49, 1,
+        s * 0.51, s * 0.49, s * 0.52,
+      );
+      heartRamp.addColorStop(0, '#a87945');
+      heartRamp.addColorStop(0.32, '#b98d55');
+      heartRamp.addColorStop(0.62, '#cda568');
+      heartRamp.addColorStop(0.82, '#d8b578');
+      heartRamp.addColorStop(0.94, '#b98f5b');
+      heartRamp.addColorStop(1, '#93714a');
+      ctx.fillStyle = heartRamp;
       ctx.fillRect(0, 0, s, s);
       const cx = s * 0.51;
       const cy = s * 0.49;

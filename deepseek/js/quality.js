@@ -13,22 +13,30 @@ export const QUALITY_PRESETS = Object.freeze({
   low: Object.freeze({
     name: 'Low',
     pixelRatio: 1,
-    maxDpr: 0.4,
+    // Software rasterisers are fill-rate bound. Measured on SwiftShader at
+    // 1280x800, 0.36 DPR held ~25 FPS and 0.46 DPR ~17 FPS, so 0.46 x 0.72
+    // starts at a readable 0.33 DPR and the governor can still fall back to
+    // 0.19. That is ~2.3x the linear detail of the old 0.14 DPR default.
+    maxDpr: 0.46,
+    startScale: 0.72,
+    minScale: 0.42,
     shadowSize: 512,
     shadows: false,
     simpleMaterials: true,
     simpleGround: true,
     softShadows: false,
     shadowRadius: 2,
-    grass: 900,
-    weeds: 80,
+    grass: 640,
+    weeds: 60,
     motes: 0,
-    fogFar: 38,
+    fogFar: 34,
     bloom: false,
     bloomStrength: 0,
+    bloomThreshold: 0.9,
+    godrays: false,
     ssao: false,
-    rainParticles: 620,
-    snowParticles: 700,
+    rainParticles: 520,
+    snowParticles: 620,
     rainSize: 0.5,
     snowSize: 0.25,
     dustScale: 0.45,
@@ -53,6 +61,8 @@ export const QUALITY_PRESETS = Object.freeze({
     fogFar: 46,
     bloom: true,
     bloomStrength: 0.26,
+    bloomThreshold: 0.9,
+    godrays: false,
     ssao: false,
     rainParticles: 1000,
     snowParticles: 950,
@@ -80,6 +90,8 @@ export const QUALITY_PRESETS = Object.freeze({
     fogFar: 52,
     bloom: true,
     bloomStrength: 0.34,
+    bloomThreshold: 0.82,
+    godrays: true,
     ssao: false,
     rainParticles: 1600,
     snowParticles: 1400,
@@ -107,6 +119,8 @@ export const QUALITY_PRESETS = Object.freeze({
     fogFar: 58,
     bloom: true,
     bloomStrength: 0.4,
+    bloomThreshold: 0.78,
+    godrays: true,
     ssao: true,
     rainParticles: 2100,
     snowParticles: 1900,
@@ -121,6 +135,9 @@ export const QUALITY_PRESETS = Object.freeze({
 });
 
 export function detectRendererClass(renderer) {
+  if (renderer?.isFallbackRenderer) {
+    return { name: 'No WebGL (compatibility mode)', software: true, webgl: false };
+  }
   try {
     const gl = renderer.getContext();
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
@@ -128,9 +145,9 @@ export function detectRendererClass(renderer) {
       ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '')
       : String(gl.getParameter(gl.RENDERER) || '');
     const software = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
-    return { name: name || 'unknown', software };
+    return { name: name || 'unknown', software, webgl: true };
   } catch {
-    return { name: 'unknown', software: false };
+    return { name: 'unknown', software: false, webgl: true };
   }
 }
 
@@ -142,7 +159,7 @@ export class QualityManager {
   constructor({ onChange = null, onNotice = null } = {}) {
     this.onChange = onChange;
     this.onNotice = onNotice;
-    this.rendererInfo = { name: 'unknown', software: false };
+    this.rendererInfo = { name: 'unknown', software: false, webgl: true };
     this.current = 'high';
     this.mode = 'auto';
     this.auto = true;
@@ -274,6 +291,6 @@ export class QualityManager {
   describe() {
     const p = this.preset;
     const label = this.auto ? `Auto · ${p.name}` : p.name;
-    return `${label} — ${p.shadows ? `${p.shadowSize}² shadows` : 'baked shadows'}, ${p.grass.toLocaleString()} grass, ${p.maxDpr}× max DPR${p.bloom ? ', bloom' : ''}${p.ssao ? ', SSAO' : ''}`;
+    return `${label} — ${p.shadows ? `${p.shadowSize}² shadows` : 'baked shadows'}, ${p.grass.toLocaleString()} grass, ${p.maxDpr}× max DPR${p.bloom ? ', bloom' : ''}${p.godrays ? ', god rays' : ''}${p.ssao ? ', SSAO' : ''}`;
   }
 }

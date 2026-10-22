@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<title>Chopperman</title>
+<circle cx="32" cy="32" r="31" fill="#1A1410" stroke="#B5652B" stroke-width="2"/>
+<path d="M12 37 L12 50 A20 8 0 0 0 52 50 L52 37 Z" fill="#5A2F17"/>
+<ellipse cx="32" cy="37" rx="20" ry="8.5" fill="#E8C38A" stroke="#3B1E0E" stroke-width="2"/>
+<ellipse cx="31" cy="37.5" rx="12" ry="5" fill="none" stroke="#B5652B" stroke-width="1.6"/>
+<ellipse cx="30.5" cy="37.8" rx="5" ry="2" fill="none" stroke="#B5652B" stroke-width="1.6"/>
+<path d="M33 31 L52 9" stroke="#C47F45" stroke-width="5" stroke-linecap="round"/>
+<path d="M27 25 L33 20 L44 34 L36 38 L26 33 Z" fill="#C9D1D8" stroke="#3A4148" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M17 21 l4 -3 l3 3 l-4 3 Z" fill="#F2862E"/>
+</svg>

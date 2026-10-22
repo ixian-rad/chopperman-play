@@ -8,6 +8,7 @@
   <title>American Split — Backyard Chopping RPG</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161911'/%3E%3Cpath d='M38 8l13 11-7 8-13-11z' fill='%23d9d4c5'/%3E%3Cpath d='M28 23L12 52' stroke='%23b6814c' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./css/style.css" />
+  <link rel="stylesheet" href="./css/audio-settings.css" />
 
   <script type="importmap">
     {
@@ -78,14 +79,32 @@
     <nav class="mode-strip" id="modeStrip" aria-label="Challenge mode">
       <span class="mode-kicker">Run</span>
       <button type="button" data-mode="free" class="active">Free</button>
+      <button type="button" data-mode="campaign" title="Six chapters, 18 logs: two ordinary rounds and one boss each, ending at The Iron Crown">Campaign</button>
       <button type="button" data-mode="time">Time</button>
       <button type="button" data-mode="precision" title="12 fixed rounds on a loaner bench; only pith-and-grain strikes bite">Precision</button>
       <button type="button" data-mode="endless">Endless</button>
       <button type="button" data-mode="daily" title="Same date-seeded deck, weather, time, and loaner axe for everyone today">Daily</button>
       <button type="button" data-mode="trial" title="Three Twisted Colossus rounds with a loaner maul">Colossus</button>
       <button type="button" data-mode="stump" title="Three Ancient Iron Stump rounds: hollow heart, stone in the rings, loaner maul">Stump</button>
+      <span class="mode-sep" aria-hidden="true"></span>
+      <span class="mode-kicker chapter-kicker">Ch.</span>
+      <button type="button" data-chapter="1" class="chapter-chip" title="Chapter 1 — First Firewood">1</button>
+      <button type="button" data-chapter="2" class="chapter-chip" title="Chapter 2 — Standing Grain">2</button>
+      <button type="button" data-chapter="3" class="chapter-chip" title="Chapter 3 — Hollow Heart">3</button>
+      <button type="button" data-chapter="4" class="chapter-chip" title="Chapter 4 — Hidden Steel">4</button>
+      <button type="button" data-chapter="5" class="chapter-chip" title="Chapter 5 — Twisted Elm">5</button>
+      <button type="button" data-chapter="6" class="chapter-chip" title="Chapter 6 — The Iron Crown">6</button>
       <span class="run-score-chip" id="runScoreChip" hidden>0 pts</span>
       <span class="run-timer" id="runTimer" hidden>75.0s</span>
+    </nav>
+
+    <!-- Seeded challenge contracts ---------------------------------------->
+    <nav class="contract-strip" id="contractStrip" aria-label="Challenge contracts">
+      <span class="mode-kicker">Contracts</span>
+      <button type="button" data-contract="sprint" title="90-second seeded sprint on a fixed nine-log deck">90s Sprint</button>
+      <button type="button" data-contract="route" title="Six-log daily route; same UTC seed for everyone">Daily Route</button>
+      <button type="button" data-contract="precision6" title="Six marked targets, twelve strikes, graded 55% aim / 30% grain / 15% power">Precision Six</button>
+      <span class="contract-status" id="contractStatus">Seeded challenges · separate medals</span>
     </nav>
 
     <!-- Environment / performance readout -------------------------------->
@@ -99,6 +118,17 @@
         <span><b id="fpsReadout">--</b> FPS</span>
         <span><b id="fragmentReadout">0</b> pieces</span>
       </div>
+    </aside>
+
+    <!-- Live impact telemetry --------------------------------------------->
+    <aside class="telemetry" id="telemetry" aria-label="Live impact telemetry">
+      <span class="telemetry-title">Impact telemetry</span>
+      <div class="telemetry-row"><span>Edge speed</span><b id="telemetrySpeed">0.0 m/s</b></div>
+      <div class="telemetry-row"><span>Impact</span><b id="telemetryEnergy">0 J</b></div>
+      <div class="telemetry-row"><span>Grain</span><b id="telemetryGrain">0% grain</b></div>
+      <div class="telemetry-row telemetry-fracture"><span>Fracture</span><b id="telemetryFracture">Ready</b></div>
+      <span class="telemetry-blade" id="telemetryBlade">Blade 0° · Q/E turn</span>
+      <canvas class="grain-reader" id="grainReader" width="192" height="192" aria-label="End grain reader"></canvas>
     </aside>
 
     <!-- Current log card ------------------------------------------------->
@@ -122,6 +152,7 @@
         <div class="round-health-track"><i id="roundHealthBar"></i></div>
       </div>
       <button id="wedgeButton" class="wedge-button" type="button" hidden>Drive wedge</button>
+      <button id="pullWedgeButton" class="wedge-button wedge-pull" type="button" hidden>Pull wedge</button>
     </section>
 
     <!-- Aim / swing guidance --------------------------------------------->
@@ -155,9 +186,10 @@
           <div class="power-value"><output id="forceValue">0</output><span>%</span></div>
         </div>
         <div class="meter" id="powerMeter">
-          <div class="meter-track">
+          <div class="meter-track" id="powerTrack">
             <div class="meter-sweet" aria-hidden="true"></div>
             <div class="meter-perfect" aria-hidden="true"></div>
+            <div class="meter-core" id="meterCore" aria-hidden="true"></div>
             <i class="meter-fill" id="powerFill"></i>
             <i class="meter-knob" id="powerKnob"></i>
           </div>
@@ -197,7 +229,7 @@
     </section>
 
     <div class="keys-hint">
-      <span><kbd>LMB</kbd> hold / release</span><span><kbd>RMB</kbd> orbit</span><span><kbd>Space</kbd> swing</span><span><kbd>R</kbd> new log</span><span><kbd>F</kbd> wedge</span><span><kbd>Q</kbd><kbd>E</kbd> rotate</span><span class="grain-key"><i></i> gold check = rive</span>
+      <span><kbd>LMB</kbd> hold / release</span><span><kbd>RMB</kbd> orbit</span><span><kbd>Space</kbd> swing</span><span><kbd>R</kbd> new log</span><span><kbd>F</kbd> wedge</span><span><kbd>Shift</kbd>+<kbd>F</kbd> pull wedge</span><span><kbd>Q</kbd><kbd>E</kbd> rotate</span><span class="grain-key"><i></i> gold check = rive</span><span class="ring-key"><i></i> pale ring = loose ring</span>
     </div>
 
     <div id="popupLayer" class="popup-layer" aria-hidden="true"></div>
@@ -269,7 +301,7 @@
       <div class="modal-panel settings-panel">
         <header class="modal-head">
           <div>
-            <span class="eyebrow">Rendering &amp; weather</span>
+            <span class="eyebrow">Rendering, weather &amp; sound</span>
             <h2 id="settingsTitle">Field Settings</h2>
             <p>Quality controls shadows, grass density, pixel ratio, and post-processing.</p>
           </div>
@@ -309,6 +341,25 @@
               <button type="button" data-weather="wind">Wind</button>
             </div>
             <p class="settings-note" id="weatherNote">Weather changes friction, fracture behaviour, stamina drain, and aim sway.</p>
+          </section>
+
+          <section class="settings-section audio-settings" aria-labelledby="audioTitle">
+            <div class="section-title"><span id="audioTitle">Sound</span><small id="audioStatus">Music on · SFX on</small></div>
+            <div class="audio-control">
+              <label for="musicVolume">Music <b id="musicVolumeValue">35%</b></label>
+              <div class="audio-control-row">
+                <input id="musicVolume" type="range" min="0" max="100" step="1" value="35" aria-label="Music volume" />
+                <button id="musicToggle" class="audio-toggle" type="button" aria-pressed="true">On</button>
+              </div>
+            </div>
+            <div class="audio-control">
+              <label for="sfxVolume">Effects <b id="sfxVolumeValue">80%</b></label>
+              <div class="audio-control-row">
+                <input id="sfxVolume" type="range" min="0" max="100" step="1" value="80" aria-label="Sound effects volume" />
+                <button id="sfxToggle" class="audio-toggle" type="button" aria-pressed="true">On</button>
+              </div>
+            </div>
+            <p class="settings-note" id="audioNote">Original procedural folk soundtrack and foley — no samples, no downloads. Music starts on your first tap or keypress.</p>
           </section>
         </div>
         <footer class="modal-foot">

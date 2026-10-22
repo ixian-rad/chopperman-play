@@ -2,8 +2,11 @@ import * as THREE from 'three';
 import {
   createBarkTexture,
   createEndGrainTexture,
+  createSurfaceMaps,
+  createWoodTexture,
   mulberry32,
 } from './utils.js';
+import { planFracture } from './mechanics.js';
 
 const TAU = Math.PI * 2;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -44,8 +47,12 @@ function createWedge(a0, a1, radius, height, segments = 4, seed = 1, lift = 0) {
 
   const cut = { positions: [], normals: [], uvs: [] };
   const bark = { positions: [], normals: [], uvs: [] };
+  const grain = { positions: [], normals: [], uvs: [] };
   const uv = (v) => new THREE.Vector2(v.x / (radius * 2) + 0.5, v.z / (radius * 2) + 0.5);
   const uvSide = (v, a) => new THREE.Vector2(a / TAU, v.y / height + 0.5);
+  // Split faces run along the grain: U follows the log height so the fibre
+  // texture reads vertically, V wraps the angular face.
+  const uvGrain = (v, a) => new THREE.Vector2(v.y / height + 0.5, a / TAU);
 
   for (let i = 0; i < segments; i++) {
     addTriangle(cut, topCenter, top[i + 1], top[i], uv(topCenter), uv(top[i + 1]), uv(top[i]));
@@ -53,11 +60,12 @@ function createWedge(a0, a1, radius, height, segments = 4, seed = 1, lift = 0) {
   for (let i = 0; i < segments; i++) {
     addTriangle(cut, bottomCenter, bottom[i], bottom[i + 1], uv(bottomCenter), uv(bottom[i]), uv(bottom[i + 1]));
   }
-  // Radial split faces.
-  addTriangle(cut, topCenter, top[0], bottom[0], uvSide(topCenter, a0), uvSide(top[0], a0), uvSide(bottom[0], a0));
-  addTriangle(cut, topCenter, bottom[0], bottomCenter, uvSide(topCenter, a0), uvSide(bottom[0], a0), uvSide(bottomCenter, a0));
-  addTriangle(cut, topCenter, bottom[segments], top[segments], uvSide(topCenter, a1), uvSide(bottom[segments], a1), uvSide(top[segments], a1));
-  addTriangle(cut, topCenter, bottomCenter, bottom[segments], uvSide(topCenter, a1), uvSide(bottomCenter, a1), uvSide(bottom[segments], a1));
+  // Radial split faces: a separate material group so they can use the fresh,
+  // bright fibre texture instead of the weathered end-grain disc.
+  addTriangle(grain, topCenter, top[0], bottom[0], uvGrain(topCenter, a0), uvGrain(top[0], a0), uvGrain(bottom[0], a0));
+  addTriangle(grain, topCenter, bottom[0], bottomCenter, uvGrain(topCenter, a0), uvGrain(bottom[0], a0), uvGrain(bottomCenter, a0));
+  addTriangle(grain, topCenter, bottom[segments], top[segments], uvGrain(topCenter, a1), uvGrain(bottom[segments], a1), uvGrain(top[segments], a1));
+  addTriangle(grain, topCenter, bottomCenter, bottom[segments], uvGrain(topCenter, a1), uvGrain(bottomCenter, a1), uvGrain(bottom[segments], a1));
 
   for (let i = 0; i < segments; i++) {
     const a = a0 + (a1 - a0) * (i / segments);
@@ -65,15 +73,20 @@ function createWedge(a0, a1, radius, height, segments = 4, seed = 1, lift = 0) {
     addTriangle(bark, top[i], bottom[i + 1], bottom[i], uvSide(top[i], a), uvSide(bottom[i + 1], a), uvSide(bottom[i], a));
   }
 
-  const positions = [...cut.positions, ...bark.positions];
-  const normals = [...cut.normals, ...bark.normals];
-  const uvs = [...cut.uvs, ...bark.uvs];
+  const positions = [...cut.positions, ...bark.positions, ...grain.positions];
+  const normals = [...cut.normals, ...bark.normals, ...grain.normals];
+  const uvs = [...cut.uvs, ...bark.uvs, ...grain.uvs];
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.addGroup(0, cut.positions.length / 3, 0);
   geometry.addGroup(cut.positions.length / 3, bark.positions.length / 3, 1);
+  geometry.addGroup(
+    (cut.positions.length + bark.positions.length) / 3,
+    grain.positions.length / 3,
+    2,
+  );
   geometry.computeBoundingSphere();
 
   const centroid = new THREE.Vector3();
@@ -91,6 +104,51 @@ function createWedge(a0, a1, radius, height, segments = 4, seed = 1, lift = 0) {
   return {
     geometry,
     hullPoints: new Float32Array(hullPoints),
+    centroid,
+    fallbackHalf: new THREE.Vector3(
+      Math.max(0.015, size.x / 2),
+      Math.max(0.015, size.y / 2),
+      Math.max(0.015, size.z / 2),
+    ),
+  };
+}
+
+/**
+ * A short annular sector: one physical shard of a separated growth ring.
+ * Extruded flat (Y up) and centred on its own centroid so Rapier's convex hull
+ * and the visual mesh share an origin.
+ */
+function createRingSector(a0, a1, inner, outer, thickness, segments = 5) {
+  const shape = new THREE.Shape();
+  shape.absarc(0, 0, outer, a0, a1, false);
+  shape.absarc(0, 0, inner, a1, a0, true);
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: false,
+    curveSegments: segments,
+    steps: 1,
+  });
+  geometry.rotateX(-Math.PI / 2);
+  const pos = geometry.attributes.position;
+  const points = [];
+  for (let i = 0; i < pos.count; i++) {
+    points.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+  }
+  const centroid = new THREE.Vector3();
+  for (const point of points) centroid.add(point);
+  centroid.divideScalar(Math.max(1, points.length));
+  geometry.translate(-centroid.x, -centroid.y, -centroid.z);
+  const hull = [];
+  for (const point of points) {
+    hull.push(point.x - centroid.x, point.y - centroid.y, point.z - centroid.z);
+  }
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  const bounds = new THREE.Box3().setFromBufferAttribute(geometry.attributes.position);
+  const size = bounds.getSize(new THREE.Vector3());
+  return {
+    geometry,
+    hullPoints: new Float32Array(hull),
     centroid,
     fallbackHalf: new THREE.Vector3(
       Math.max(0.015, size.x / 2),
@@ -353,6 +411,31 @@ export class DebrisSystem {
     this.masterCheckLine = null;
     this.masterCheckGlint = null;
     this.masterCheckPulse = 0;
+    this.masterCheckGroup = null;
+    this.masterSeamBase = null;
+    this.masterShiftCount = 0;
+    // A ring-shaken round has a pale loose-ring arc near the bark. Striking the
+    // arc frees the ring; striking the bound core only jams the bit. The arc
+    // rotates after every cut so the second read is never the first pixel.
+    this.ringShakeActive = false;
+    this.ringShakeAngle = 0;
+    this.ringShakeCuts = 0;
+    this.ringShakeLoose = false;
+    this.ringShakeGroup = null;
+    this.ringShakeGlints = [];
+    this.ringShakePulse = 0;
+    // A full-force, perfectly timed blow on the bound core cracks it open:
+    // half a bite now, a chipped edge, and only one loose-ring cut to spring it.
+    this.coreCracked = false;
+    this.coreCrackPulse = 0;
+    this.coreDisk = null;
+    this.coreFissure = null;
+    this.coreMarker = null;
+    this.ringPieceMats = new Map();
+    this.lastRingLook = '';
+    this.lastRingShellSurface = null;
+    this.ringShellPieces = 0;
+    this.corePlugDropped = false;
     this.shock = 0;
     this.shockCount = 0;
     this.shockRing = null;
@@ -432,6 +515,145 @@ export class DebrisSystem {
       this.weatherDrying = 0;
     }
     this.setWetness(this.wetness);
+    this.refreshRingArc();
+  }
+
+  /**
+   * Rebuild the visible loose-ring arc to the current weather width. Called
+   * when the sky/surface flips, so the frozen arc the player sees is the arc
+   * the hit test actually uses.
+   */
+  refreshRingArc() {
+    if (!this.ringShakeGroup || !this.ringArcLine) return;
+    const rr = this.ringBandRadius;
+    const y = this.height / 2;
+    const half = this.ringArcHalfWidth;
+    this.ringVisualHalfWidth = half;
+    const segments = 18;
+    const pts = [];
+    for (let i = 0; i <= segments; i++) {
+      const a = -half + (i / segments) * half * 2;
+      const wob = Math.sin(a * 11 + (this.log.seed || 1)) * this.radius * 0.006;
+      pts.push(Math.cos(a) * (rr + wob), y + 0.008, Math.sin(a) * (rr + wob));
+    }
+    const positions = new Float32Array(pts);
+    this.ringArcLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.ringArcLine.geometry.computeBoundingSphere();
+    if (this.ringArcBand) {
+      const old = this.ringArcBand.geometry;
+      const bandGeo = new THREE.RingGeometry(
+        rr - this.radius * 0.045,
+        rr + this.radius * 0.045,
+        32,
+        1,
+        -half,
+        half * 2,
+      );
+      this.ringArcBand.geometry = bandGeo;
+      old?.dispose?.();
+      this.intactDisposables = this.intactDisposables.filter((d) => d !== old);
+      this.intactDisposables.push(bandGeo);
+    }
+    this.applyRingWeatherLook();
+  }
+
+  /**
+   * A jagged star of dark fracture lines for the bound heart, built in the XZ
+   * plane around the pith. The same helper is used for the persistent end-grain
+   * fissure and for the top of the freed core plug.
+   */
+  makeCoreFissureGeometry(radius) {
+    const random = mulberry32((this.log?.seed || 1) * 71 + 17);
+    const positions = [];
+    const rays = 5;
+    for (let i = 0; i < rays; i++) {
+      const baseAngle = (i / rays) * TAU + (random() - 0.5) * 0.55;
+      let prev = { x: Math.cos(baseAngle) * radius * 0.03, z: Math.sin(baseAngle) * radius * 0.03 };
+      const steps = 3;
+      for (let step = 1; step <= steps; step++) {
+        const rr = radius * 1.02 * (step / steps);
+        const a = baseAngle + (random() - 0.5) * 0.46;
+        const x = Math.cos(a) * rr;
+        const z = Math.sin(a) * rr;
+        positions.push(prev.x, 0, prev.z, x, 0, z);
+        prev = { x, z };
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    return geometry;
+  }
+
+  /** Weather-tinted cut/bark material for the ring shards and the core plug. */
+  ringPieceMaterial(kind, surface) {
+    const key = `${this.log.id}:${kind}:${surface || 'dry'}`;
+    if (this.ringPieceMats.has(key)) return this.ringPieceMats.get(key);
+    const base = this.materialCache.get(`${this.log.id}:${kind === 'bark' ? 'bark' : 'cut'}`);
+    if (!base) return this.splinterMat;
+    if (!surface) {
+      this.ringPieceMats.set(key, base);
+      return base;
+    }
+    const material = base.clone();
+    if (surface === 'wet') {
+      material.color.multiplyScalar(0.76);
+      material.roughness = 0.5;
+      material.metalness = 0.03;
+      material.emissive = new THREE.Color(0x061012);
+      material.emissiveIntensity = 0.18;
+    } else {
+      material.color.lerp(new THREE.Color(kind === 'bark' ? 0xbfd3d8 : 0xd8ebf1), 0.4);
+      material.roughness = 0.64;
+      material.emissive = new THREE.Color(0x0a161a);
+      material.emissiveIntensity = 0.22;
+    }
+    this.ringPieceMats.set(key, material);
+    return material;
+  }
+
+  /**
+   * The pale loose-ring arc should read the surface it lives in. Rain turns it a
+   * slick steel-blue; frost packs it pale and bright. A cracked core also makes
+   * the remaining arc hotter, because it is the only thing left holding the ring.
+   */
+  applyRingWeatherLook() {
+    if (!this.ringArcLine) return;
+    const surface = this.surfaceState;
+    const cracked = Boolean(this.coreCracked);
+    let lineColor = 0xbdeee0;
+    let bandColor = 0x9fdcca;
+    let lineOpacity = 0.86;
+    let bandOpacity = 0.16;
+    let glintColor = 0xc8f4e8;
+    if (surface === 'snow') {
+      lineColor = 0xe6f8ff;
+      bandColor = 0xd2ecf6;
+      lineOpacity = 0.97;
+      bandOpacity = 0.26;
+      glintColor = 0xf0fcff;
+    } else if (surface === 'wet') {
+      lineColor = 0x8fc8d8;
+      bandColor = 0x6fb6c8;
+      lineOpacity = 0.76;
+      bandOpacity = 0.2;
+      glintColor = 0xa8deea;
+    } else if (cracked) {
+      lineColor = 0xe2fff6;
+      bandColor = 0xc2f4e4;
+      lineOpacity = 0.97;
+      bandOpacity = 0.25;
+      glintColor = 0xe8fff9;
+    }
+    this.ringArcLine.material.color.setHex(lineColor);
+    this.ringArcLine.material.opacity = lineOpacity;
+    if (this.ringArcBandMat) {
+      this.ringArcBandMat.color.setHex(bandColor);
+      this.ringArcBandMat.opacity = bandOpacity;
+    }
+    for (const glint of this.ringShakeGlints || []) {
+      glint.material.color.setHex(glintColor);
+    }
+    this.lastRingLook = `${surface || 'clear'}|${cracked ? 'cracked' : 'bound'}`;
   }
 
   /** Frost still packed in the end grain, independent of the current sky. */
@@ -462,11 +684,24 @@ export class DebrisSystem {
   }
 
   applyWetnessMaterials() {
+    const wet = this.wetness;
+    // Rain darkens raw wood and drops its roughness; the colour shift is what
+    // makes a wet round readable at a glance, not only in the specular.
+    const wetDarken = 1 - wet * 0.16;
     for (const mat of this.materialCache.values()) {
+      let dry = mat.userData.dryColor;
+      if (!dry?.isColor && mat.color) {
+        // Recover from a cloned material whose userData lost the Color type.
+        dry = mat.color.clone();
+        mat.userData.dryColor = dry;
+      }
+      if (dry?.isColor && mat.color) mat.color.copy(dry).multiplyScalar(wetDarken);
       if (mat.userData.kind === 'cut') {
-        mat.roughness = 0.72 + (1 - this.wetness) * 0.16;
+        mat.roughness = 0.68 + (1 - wet) * 0.16;
+      } else if (mat.userData.kind === 'grain') {
+        mat.roughness = 0.74 + (1 - wet) * 0.14;
       } else if (mat.userData.kind === 'bark') {
-        mat.roughness = 0.86 + (1 - this.wetness) * 0.14;
+        mat.roughness = 0.84 + (1 - wet) * 0.14;
       }
     }
   }
@@ -527,6 +762,20 @@ export class DebrisSystem {
         surface.drips.visible = visible;
         surface.drips.material.opacity = visible ? 0.34 * (0.05 + this.wetness * 0.85) : 0;
       }
+    }
+    // A live thaw can cross the frost line without a preset change. Rebuild the
+    // arc only when the width actually changes, so the visible target matches
+    // the hit test without churning geometry every frame.
+    if (
+      this.ringArcLine &&
+      !this.ringShakeLoose &&
+      Math.abs((this.ringVisualHalfWidth ?? 0) - this.ringArcHalfWidth) > 0.01
+    ) {
+      this.refreshRingArc();
+    }
+    const ringLook = `${this.surfaceState || 'clear'}|${this.coreCracked ? 'cracked' : 'bound'}`;
+    if (this.ringArcLine && !this.ringShakeLoose && ringLook !== this.lastRingLook) {
+      this.applyRingWeatherLook();
     }
     // The visuals should settle before the HUD label starts flickering.
     if (snowBefore !== this.snowLoad) this.weatherAge = Math.max(this.weatherAge, 0.01);
@@ -596,6 +845,26 @@ export class DebrisSystem {
     this.lastRiveAngle = null;
     this.masterCheckLine = null;
     this.masterCheckGlint = null;
+    this.masterCheckGroup = null;
+    this.masterSeamBase = null;
+    this.masterShiftCount = 0;
+    this.ringShakeActive = Boolean(this.log.ringShake && !this.log.boss);
+    this.ringShakeCuts = 0;
+    this.ringShakeLoose = false;
+    this.ringShakeGroup = null;
+    this.ringShakeGlints = [];
+    this.ringShakePulse = 0;
+    this.coreCracked = false;
+    this.coreCrackPulse = 0;
+    this.coreDisk = null;
+    this.coreFissure = null;
+    this.coreMarker = null;
+    this.lastRingLook = '';
+    this.lastRingShellSurface = null;
+    this.ringShellPieces = 0;
+    this.corePlugDropped = false;
+    const ringRandom = mulberry32((this.log.seed || 1) * 59 + 41);
+    this.ringShakeAngle = ringRandom() * TAU;
     this.shock = 0;
     this.shockCount = 0;
     this.shockRing = null;
@@ -668,6 +937,10 @@ export class DebrisSystem {
     rimTear = false,
     riving = false,
     rivingAngle = null,
+    crossedGrain = false,
+    ringBound = false,
+    corePunch = false,
+    energyGain = null,
   } = {}) {
     if (this.active) return { split: false, progress: this.strikesDone, left: 0 };
     // A set wedge keeps the kerf open, so a clean axe blow finishes more of the
@@ -731,15 +1004,71 @@ export class DebrisSystem {
       this.rivingStreak = 0;
       this.lastRiveAngle = null;
     }
-    const bite = hazardHit
-      ? 0.2
-      : glancing
-        ? 0.35
-        : weakHit
-          ? this.weakBiteBonus
-          : clean
-            ? 1 + wedgeBonus + hollowBonus + rimBonus + rootBonus + rivingBonus
-            : 0.5 + hollowBonus * 0.5 + rimBonus * 0.5;
+    // A bite that lands just beside the golden check catches the grain. It is
+    // still a chop, but the bit drags, the streak is lost, and the check moves
+    // so the next rive has to be read again.
+    const crossedPenalty = crossedGrain && clean && !glancing && !hazardHit ? 0.18 : 0;
+    if (crossedGrain) {
+      this.rivingStreak = 0;
+      this.lastRiveAngle = null;
+    }
+    // Once the loose ring has sprung, the freed heart splits under a normal
+    // blow instead of jamming the bit.
+    // A freed heart always splits on the next clean centre bite. If the core
+    // was punched open, the stored spring energy is higher and the bite lands
+    // past the sliver a half-bite core punch leaves behind.
+    const ringSpringBonus =
+      clean && !glancing && !hazardHit && this.log?.ringShake && this.ringShakeLoose
+        ? this.coreCracked
+          ? 0.62
+          : 0.45
+        : 0;
+    // A perfect full-force blow can punch the bound core. It pays half a bite
+    // now and rolls the edge, but the cracked core only needs one loose-ring cut.
+    const corePunchGain =
+      corePunch && clean && !glancing && !hazardHit && !this.coreCracked ? 0.5 : 0;
+    if (corePunchGain > 0) {
+      this.coreCracked = true;
+      this.coreCrackPulse = 1;
+      if (this.coreFissure) {
+        this.coreFissure.visible = true;
+        this.coreFissure.scale.setScalar(0.2);
+        this.coreFissure.material.opacity = 1;
+      }
+      if (this.coreDisk?.userData?.boundRing) {
+        this.coreDisk.userData.boundRing.material.opacity = 0.82;
+      }
+      if (this.coreMarker) this.coreMarker.visible = false;
+      this.applyRingWeatherLook();
+    }
+    const bite = corePunchGain > 0
+      ? corePunchGain
+      : hazardHit
+        ? 0.2
+        : glancing || ringBound
+          ? ringBound
+            ? this.coreCracked
+              ? 0.5
+              : 0.35
+            : Math.max(
+                0.05,
+                Math.min(0.35, Number.isFinite(energyGain) ? energyGain : 0.35),
+              )
+          : weakHit
+            ? this.weakBiteBonus
+            : clean
+              ? Math.max(
+                  0.15,
+                  (Number.isFinite(energyGain) ? Math.max(0.1, energyGain) : 1) +
+                    wedgeBonus +
+                    hollowBonus +
+                    rimBonus +
+                    rootBonus +
+                    rivingBonus +
+                    ringSpringBonus -
+                    crossedPenalty,
+                )
+              : 0.5 + hollowBonus * 0.5 + rimBonus * 0.5;
     if (hollowBonus > 0) {
       this.hollowCollapsed = true;
       this.collapseHollowVisual();
@@ -761,6 +1090,10 @@ export class DebrisSystem {
     const split =
       !preventSplit &&
       (this.strikesRequired <= 1 || this.strikesDone >= this.strikesRequired - 1e-6);
+    // A grain lock that does not finish the round still moves the check: the
+    // next bite is a new read, not a third press on the same pixel. A crossed
+    // strike moves it immediately as the bit drags out of the check.
+    if (crossedGrain || (grainLock && !split)) this.advanceMasterCheck();
     return {
       split,
       progress: this.strikesDone,
@@ -782,8 +1115,17 @@ export class DebrisSystem {
       riving: rivingLive,
       rivingBonus,
       grainLock,
+      crossedGrain,
+      crossedPenalty,
       rivingStreak: this.rivingStreak,
       rivingAngle: this.lastRiveAngle,
+      ringBound,
+      corePunch: corePunchGain > 0,
+      corePunchGain,
+      coreCracked: Boolean(this.coreCracked),
+      ringCutsNeeded: this.ringCutsNeeded,
+      ringSpringBonus,
+      ringLoose: Boolean(this.ringShakeLoose),
       phase: this.bossPhase,
       phaseChanged: this.bossPhase !== phaseBefore,
     };
@@ -1049,6 +1391,56 @@ export class DebrisSystem {
     return this.wedgeSlots.reduce((sum, slot) => sum + (slot.homed ? 1 : 0), 0);
   }
 
+  /** A seated wedge can be pulled back out, at a cost set by depth and grip. */
+  canPullWedge() {
+    if (this.active) return { ok: false, reason: 'The round is already split' };
+    if (!this.wedges || !this.wedgeSlots.length) {
+      return { ok: false, reason: 'No wedge in the check' };
+    }
+    return {
+      ok: true,
+      wedges: this.wedges,
+      slot: this.wedgeSlots[this.wedgeSlots.length - 1],
+    };
+  }
+
+  /**
+   * Pull the most recently seated wedge. A shallow wedge comes free easily; a
+   * home wedge grips hard, and frost / wet grain adds friction. The stored kerf
+   * work is lost, so pulling is a recovery move, not a free reroll.
+   */
+  pullWedge() {
+    const check = this.canPullWedge();
+    if (!check.ok) return check;
+    const slot = this.wedgeSlots.pop();
+    const depth = Math.max(0, Math.min(1, slot.depth || 0));
+    const frozen = Boolean(this.weather?.frozen) || this.snowLoad > 0.45;
+    const grip =
+      0.55 + depth * 1.25 + (slot.homed ? 0.35 : 0) + (frozen ? 0.25 : this.wetness > 0.2 ? 0.15 : 0);
+    this.wedges = Math.max(0, this.wedges - 1);
+    this.strikesDone = Math.max(0, this.strikesDone - (0.1 + depth * 0.16));
+    if (this.intactGroup) {
+      this.intactGroup.remove(slot.mesh, slot.ring, slot.glint);
+    }
+    slot.mesh?.geometry?.dispose();
+    slot.ring?.geometry?.dispose();
+    slot.ring?.material?.dispose();
+    slot.glint?.geometry?.dispose();
+    slot.glint?.material?.dispose();
+    this.wedgeMeshes = this.wedgeMeshes.filter((mesh) => mesh !== slot.mesh);
+    this.updateKerf();
+    this.updateWeakVisualState();
+    return {
+      ok: true,
+      depth: Number(depth.toFixed(2)),
+      grip: Number(grip.toFixed(2)),
+      wedges: this.wedges,
+      max: this.maxWedges,
+      left: this.strikesLeft,
+      progress: this.strikesDone,
+    };
+  }
+
   /**
    * A seated wedge is a physical strike target. Aim the axe at it and swing to
    * drive it deeper: the kerf opens, progress advances, and once it is home the
@@ -1300,9 +1692,62 @@ export class DebrisSystem {
       }
     }
     this.masterSeam = this.seams[masterIndex] ?? null;
+    this.masterSeamBase = this.masterSeam;
     this.masterSeamIndex = masterIndex;
+    this.masterShiftCount = 0;
     this.rivingStreak = 0;
     this.lastRiveAngle = null;
+  }
+
+  /**
+   * The golden check is a read, not a memorised pixel. After a grain lock (if
+   * the round survives) or after a bite deliberately crosses the check, the
+   * master seam jumps to a different natural check. The next rive has to be
+   * re-read on the end grain.
+   */
+  advanceMasterCheck() {
+    if (this.masterSeam == null || !this.seams?.length) return null;
+    const hazardAngles = (this.hazards || []).map((hazard) => Math.atan2(hazard.z, hazard.x));
+    const step = 2 + Math.floor(((this.masterShiftCount + 1) * 1.7) % Math.max(1, this.seams.length - 1));
+    for (let attempt = 0; attempt < this.seams.length; attempt++) {
+      const index = (this.masterSeamIndex + step + attempt) % this.seams.length;
+      const candidate = this.seams[index];
+      const blocked = hazardAngles.some((hazardAngle) => {
+        const delta = Math.abs(((candidate - hazardAngle + Math.PI * 3) % TAU) - Math.PI);
+        return delta < 0.32;
+      });
+      if (!blocked) {
+        this.masterSeamIndex = index;
+        this.masterSeam = candidate;
+        this.masterShiftCount += 1;
+        if (this.masterCheckGroup) {
+          this.masterCheckGroup.rotation.y = this.masterSeamBase - this.masterSeam;
+        }
+        return candidate;
+      }
+    }
+    return this.masterSeam;
+  }
+
+  /** A clean bite that lands just beside the golden check crosses the grain. */
+  masterCheckMissAt(x, z) {
+    if (this.masterSeam == null || this.log?.boss || this.log?.stump || this.log?.hollow) {
+      return null;
+    }
+    if (this.log?.ringShake) return null;
+    const distance = Math.hypot(x, z);
+    if (distance < this.radius * 0.26 || distance > this.radius * 0.76) return null;
+    const angle = Math.atan2(z, x) - this.grainWarpAt(distance);
+    const delta = Math.abs(((angle - this.masterSeam + Math.PI * 3) % TAU) - Math.PI);
+    if (delta <= 0.2 || delta > 0.48) return null;
+    if (this.knotAt(x, z) || this.hazardAt(x, z)) return null;
+    return {
+      angle: this.masterSeam,
+      delta: Number(delta.toFixed(3)),
+      quality: 1 - (delta - 0.2) / 0.28,
+      x,
+      z,
+    };
   }
 
   /**
@@ -1313,7 +1758,13 @@ export class DebrisSystem {
     // Hollow rounds, bosses, and the stump already have their own signature
     // targets. Keeping riving off them avoids a golden line that cannot be hit
     // without triggering the rim tear / seam / root rule instead.
-    if (this.masterSeam == null || this.log?.boss || this.log?.stump || this.log?.hollow) {
+    if (
+      this.masterSeam == null ||
+      this.log?.boss ||
+      this.log?.stump ||
+      this.log?.hollow ||
+      this.log?.ringShake
+    ) {
       return null;
     }
     const distance = Math.hypot(x, z);
@@ -1329,6 +1780,118 @@ export class DebrisSystem {
       radius: distance,
       x,
       z,
+    };
+  }
+
+  /** Centre radius of the pale loose-ring arc. */
+  get ringBandRadius() {
+    return this.radius * (this.log?.ringShakeRadius ?? 0.63);
+  }
+
+  /**
+   * Angular half-width of the strikeable arc. Weather changes the read:
+   * frost widens the shake (brittle, chattery rings), rain narrows it into a
+   * slick, hard-to-find seam. The visible arc is rebuilt to match.
+   */
+  get ringArcHalfWidth() {
+    if (this.surfaceFrozen) return 0.54;
+    if (this.surfaceWet) return 0.34;
+    return 0.42;
+  }
+
+  /** How many loose-ring cuts are still needed to spring the round. */
+  get ringCutsNeeded() {
+    return this.coreCracked ? 1 : 2;
+  }
+
+  /** Progress bonus from the surface: frozen rings tear, wet rings slip. */
+  get ringWeatherGain() {
+    if (this.surfaceFrozen) return 0.07;
+    if (this.surfaceWet) return -0.06;
+    return 0;
+  }
+
+  /**
+   * The strikeable part of a ring shake: a short arc on the loose growth ring.
+   * The arc moves after every ring cut, so the second strike is a fresh read.
+   */
+  ringAt(x, z) {
+    if (!this.ringShakeActive || this.ringShakeLoose) return null;
+    const distance = Math.hypot(x, z);
+    const ringRadius = this.ringBandRadius;
+    const halfWidth = this.radius * 0.14;
+    if (Math.abs(distance - ringRadius) > halfWidth) return null;
+    const angle = Math.atan2(z, x);
+    const arcHalf = this.ringArcHalfWidth;
+    let delta = Math.abs(((angle - this.ringShakeAngle + Math.PI * 3) % TAU) - Math.PI);
+    // The arc is wide enough to aim at, narrow enough that the moving target is
+    // a real read. Frost widens it; rain narrows it.
+    if (delta > arcHalf) return null;
+    if (this.knotAt(x, z) || this.hazardAt(x, z)) return null;
+    return {
+      angle,
+      targetAngle: this.ringShakeAngle,
+      delta: Number(delta.toFixed(3)),
+      arcHalf,
+      quality: 1 - delta / arcHalf,
+      radius: distance,
+      x,
+      z,
+    };
+  }
+
+  /** The bound heart of a ring-shaken round: a clean strike here only jams. */
+  boundAt(x, z) {
+    if (!this.ringShakeActive || this.ringShakeLoose) return null;
+    const distance = Math.hypot(x, z);
+    const radius = this.radius * 0.33;
+    if (distance > radius) return null;
+    return { distance, radius, x, z };
+  }
+
+  /**
+   * Cut the loose ring arc instead of taking a normal axe bite. The first cut
+   * rotates the arc; the second springs the ring and frees the bound heart.
+   */
+  cutRing({ power = 0.8 } = {}) {
+    if (!this.ringShakeActive || this.ringShakeLoose) {
+      return { ok: false, split: false, progress: this.strikesDone, left: this.strikesLeft };
+    }
+    this.ringShakeCuts += 1;
+    const second = this.ringShakeCuts >= this.ringCutsNeeded;
+    const weatherGain = this.ringWeatherGain;
+    const gain = second
+      ? 0.96 + Math.min(1, Math.max(0, power)) * 0.08 + weatherGain
+      : 0.62 + Math.min(1, Math.max(0, power)) * 0.1 + weatherGain;
+    // The widening kerf points at the arc the player just cut, not at the pith.
+    this.lastCrackAngle = this.ringShakeAngle;
+    this.strikesDone = Math.min(this.strikesRequired - 0.05, this.strikesDone + gain);
+    if (second) {
+      this.ringShakeLoose = true;
+      if (this.ringShakeGroup) this.ringShakeGroup.visible = false;
+    } else {
+      // The loose ring visibly rotates. Frozen rings snap further around;
+      // rain-slick rings shift a little less. Either way the player must re-read.
+      const weatherShift = this.surfaceFrozen ? 0.24 : this.surfaceWet ? -0.14 : 0;
+      this.ringShakeAngle =
+        (this.ringShakeAngle + 1.35 + weatherShift + (this.log.seed || 1) % 5 * 0.11) % TAU;
+      if (this.ringShakeGroup) {
+        this.ringShakeGroup.rotation.y = -this.ringShakeAngle;
+      }
+    }
+    this.updateKerf();
+    this.updateWeakVisualState();
+    return {
+      ok: true,
+      ringCut: true,
+      split: false,
+      gain: Number(gain.toFixed(2)),
+      ringCuts: this.ringShakeCuts,
+      ringLoose: this.ringShakeLoose,
+      ringAngle: this.ringShakeAngle,
+      progress: this.strikesDone,
+      left: this.strikesLeft,
+      damage: Math.min(1, gain / Math.max(1, this.strikesRequired)),
     };
   }
 
@@ -1461,32 +2024,84 @@ export class DebrisSystem {
     }
     const barkTex = createBarkTexture(log.seed, 1.8, 2.4);
     const endTex = createEndGrainTexture(log.seed + 1, 512);
+    const grainTex = createWoodTexture({
+      base: '#c9a875',
+      dark: '#8b653c',
+      light: '#e8cea0',
+      grain: 150,
+      seed: log.seed + 7,
+      repeatX: 1,
+      repeatY: 1,
+    });
+    const barkMaps = createSurfaceMaps(barkTex, {
+      // A gentler normal than round 1: the strong 2.4 map flipped some
+      // tangent-space normals away from every light on SwiftShader, producing
+      // pure-black bark pixels. 1.6 keeps the ridges but reads as lit bark.
+      normalStrength: 1.6,
+      roughnessBase: 0.9,
+      roughnessContrast: 0.14,
+    });
+    const cutMaps = createSurfaceMaps(endTex, {
+      normalStrength: 0.75,
+      roughnessBase: 0.72,
+      roughnessContrast: 0.24,
+    });
+    const grainMaps = createSurfaceMaps(grainTex, {
+      normalStrength: 0.9,
+      roughnessBase: 0.76,
+      roughnessContrast: 0.2,
+    });
     const bark = new THREE.MeshStandardMaterial({
       map: barkTex,
-      color: log.barkTint,
-      roughness: 0.95,
-      bumpMap: barkTex,
-      bumpScale: 0.012,
+      // Lift the albedo a touch: the procedural bark map is mid-dark and the
+      // gameplay camera mostly sees the shaded side of the round.
+      color: new THREE.Color(log.barkTint).multiplyScalar(1.18),
+      roughness: 0.96,
+      normalMap: barkMaps?.normalMap || null,
+      roughnessMap: barkMaps?.roughnessMap || null,
       metalness: 0,
     });
+    if (barkMaps) bark.normalScale.set(0.9, 0.9);
     bark.userData.kind = 'bark';
+    bark.userData.dryColor = bark.color.clone();
     const cut = new THREE.MeshStandardMaterial({
       map: endTex,
       color: log.cutTint,
-      roughness: 0.82,
-      bumpMap: endTex,
-      bumpScale: 0.006,
+      roughness: 1,
+      normalMap: cutMaps?.normalMap || null,
+      roughnessMap: cutMaps?.roughnessMap || null,
       metalness: 0,
     });
+    if (cutMaps) cut.normalScale.set(0.6, 0.6);
     cut.userData.kind = 'cut';
+    cut.userData.dryColor = cut.color.clone();
+    // Freshly split faces are brighter and more fibrous than the weathered
+    // end-grain disc: that contrast is what sells "just cleaved".
+    const grain = new THREE.MeshStandardMaterial({
+      map: grainTex,
+      color: new THREE.Color(log.cutTint).multiplyScalar(1.12),
+      roughness: 1,
+      normalMap: grainMaps?.normalMap || null,
+      roughnessMap: grainMaps?.roughnessMap || null,
+      metalness: 0,
+    });
+    if (grainMaps) grain.normalScale.set(0.8, 0.8);
+    grain.userData.kind = 'grain';
+    grain.userData.dryColor = grain.color.clone();
     const barkSide = bark.clone();
     barkSide.color = new THREE.Color(log.barkTint).multiplyScalar(0.92);
+    // Material.clone() JSON-round-trips userData, which turns a THREE.Color
+    // into a plain hex number. applyWetnessMaterials then copied that number
+    // into barkSide.color and produced NaNs (a pitch-black intact round).
+    // Restore the typed colour so wet/dry shading stays valid.
+    barkSide.userData.dryColor = barkSide.color.clone();
     const ridge = new THREE.MeshStandardMaterial({
       color: new THREE.Color(log.barkColor || log.barkTint).multiplyScalar(0.55),
       roughness: 1,
     });
     this.materialCache.set(key + ':bark', bark);
     this.materialCache.set(key + ':cut', cut);
+    this.materialCache.set(key + ':grain', grain);
     this.materialCache.set(key + ':side', barkSide);
     this.materialCache.set(key + ':ridge', ridge);
     return bark;
@@ -1498,6 +2113,7 @@ export class DebrisSystem {
     return {
       bark: this.materialCache.get(log.id + ':bark'),
       cut: this.materialCache.get(log.id + ':cut'),
+      grain: this.materialCache.get(log.id + ':grain'),
       side: this.materialCache.get(log.id + ':side'),
       ridge: this.materialCache.get(log.id + ':ridge'),
     };
@@ -1792,7 +2408,19 @@ export class DebrisSystem {
     // stump keep their own targets and deliberately omit it.
     this.masterCheckLine = null;
     this.masterCheckGlint = null;
-    if (this.masterSeam != null && !this.log.boss && !this.log.stump && !this.log.hollow) {
+    this.masterCheckGroup = null;
+    if (
+      this.masterSeam != null &&
+      !this.log.boss &&
+      !this.log.stump &&
+      !this.log.hollow &&
+      !this.log.ringShake
+    ) {
+      // The line and glint live under one group so advanceMasterCheck() can
+      // rotate the whole target to another natural check without rebuilding.
+      const masterGroup = new THREE.Group();
+      this.masterCheckGroup = masterGroup;
+      group.add(masterGroup);
       const masterPoints = [];
       const inner = this.radius * 0.2;
       const outer = this.radius * 0.78;
@@ -1820,7 +2448,7 @@ export class DebrisSystem {
       });
       this.masterCheckLine = new THREE.LineSegments(masterGeo, masterMat);
       this.masterCheckLine.renderOrder = 4;
-      group.add(this.masterCheckLine);
+      masterGroup.add(this.masterCheckLine);
       this.intactDisposables.push(masterGeo, masterMat);
 
       const glintR = this.radius * 0.58;
@@ -1840,8 +2468,203 @@ export class DebrisSystem {
         Math.sin(glintAngle) * glintR,
       );
       this.masterCheckGlint.renderOrder = 6;
-      group.add(this.masterCheckGlint);
+      masterGroup.add(this.masterCheckGlint);
       this.intactDisposables.push(glintGeo, glintMat);
+    }
+
+    // The pale loose-ring arc of a ring-shaken round. A faint full ring shows
+    // the separated growth ring; the bright arc and its floating glints are the
+    // strikeable target. The whole target group rotates after every cut.
+    this.ringShakeGroup = null;
+    this.ringShakeGlints = [];
+    if (this.ringShakeActive) {
+      const ringGroup = new THREE.Group();
+      this.ringShakeGroup = ringGroup;
+      const rr = this.ringBandRadius;
+      const y = this.height / 2;
+      const arcSegments = 18;
+      const arcHalf = this.ringArcHalfWidth;
+      const arcPoints = [];
+      for (let i = 0; i <= arcSegments; i++) {
+        const a = -arcHalf + (i / arcSegments) * arcHalf * 2;
+        const wob = Math.sin(a * 11 + (this.log.seed || 1)) * this.radius * 0.006;
+        arcPoints.push(
+          Math.cos(a) * (rr + wob),
+          y + 0.008,
+          Math.sin(a) * (rr + wob),
+        );
+      }
+      const arcGeo = new THREE.BufferGeometry();
+      arcGeo.setAttribute('position', new THREE.Float32BufferAttribute(arcPoints, 3));
+      const arcMat = new THREE.LineBasicMaterial({
+        color: 0xbdeee0,
+        transparent: true,
+        opacity: 0.86,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const arc = new THREE.Line(arcGeo, arcMat);
+      arc.renderOrder = 5;
+      ringGroup.add(arc);
+      this.intactDisposables.push(arcGeo, arcMat);
+
+      // A thin translucent band under the line gives the target some width at
+      // the low camera angle without adding a new render pass.
+      const bandGeo = new THREE.RingGeometry(
+        rr - this.radius * 0.045,
+        rr + this.radius * 0.045,
+        32,
+        1,
+        -arcHalf,
+        arcHalf * 2,
+      );
+      const bandMat = new THREE.MeshBasicMaterial({
+        color: 0x9fdcca,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const band = new THREE.Mesh(bandGeo, bandMat);
+      band.rotation.x = -Math.PI / 2;
+      band.position.y = y + 0.004;
+      ringGroup.add(band);
+      this.intactDisposables.push(bandGeo, bandMat);
+      this.ringArcLine = arc;
+      this.ringArcBand = band;
+      this.ringArcBandMat = bandMat;
+      this.ringVisualHalfWidth = arcHalf;
+
+      // A faint vertical beam over the arc centre lifts the moving target off
+      // the dark walnut end grain, where the flat arc is nearly edge-on at the
+      // low gameplay camera.
+      const beamGeo = new THREE.CylinderGeometry(
+        this.radius * 0.012,
+        this.radius * 0.032,
+        0.26,
+        6,
+        1,
+        true,
+      );
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xbdeee0,
+        transparent: true,
+        opacity: 0.2,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(rr, y + 0.15, 0);
+      beam.renderOrder = 4;
+      ringGroup.add(beam);
+      this.intactDisposables.push(beamGeo, beamMat);
+
+      for (const localAngle of [-0.26, 0, 0.26]) {
+        const glintGeo = new THREE.OctahedronGeometry(Math.max(0.018, this.radius * 0.09), 0);
+        const glintMat = new THREE.MeshBasicMaterial({
+          color: 0xc8f4e8,
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        const glint = new THREE.Mesh(glintGeo, glintMat);
+        glint.position.set(
+          Math.cos(localAngle) * rr,
+          y + 0.15,
+          Math.sin(localAngle) * rr,
+        );
+        glint.renderOrder = 6;
+        ringGroup.add(glint);
+        this.intactDisposables.push(glintGeo, glintMat);
+        this.ringShakeGlints.push(glint);
+      }
+      ringGroup.rotation.y = -this.ringShakeAngle;
+      group.add(ringGroup);
+      this.applyRingWeatherLook();
+    }
+
+    // The bound heart is a real visual object now, not just an invisible hit
+    // circle. A pale heartwood disk and a dark shake ring sit under the moveable
+    // loose-ring arc; a full-force core punch opens a persistent star fissure.
+    this.coreDisk = null;
+    this.coreFissure = null;
+    this.coreMarker = null;
+    if (this.ringShakeActive) {
+      const coreRadius = this.radius * 0.33;
+      const coreY = this.height / 2 + 0.011;
+      const diskGeo = new THREE.CircleGeometry(coreRadius, 22);
+      const diskMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(this.log.cutTint || 0xcba46c).multiplyScalar(0.84),
+        roughness: 0.82,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.46,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+      });
+      const disk = new THREE.Mesh(diskGeo, diskMat);
+      disk.rotation.x = -Math.PI / 2;
+      disk.position.y = coreY;
+      disk.renderOrder = 2;
+      group.add(disk);
+      this.intactDisposables.push(diskGeo, diskMat);
+      this.coreDisk = disk;
+
+      const boundRingGeo = new THREE.RingGeometry(coreRadius * 0.96, coreRadius * 1.1, 26);
+      const boundRingMat = new THREE.MeshBasicMaterial({
+        color: 0x2c1a0e,
+        transparent: true,
+        opacity: 0.58,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const boundRing = new THREE.Mesh(boundRingGeo, boundRingMat);
+      boundRing.rotation.x = -Math.PI / 2;
+      boundRing.position.y = coreY + 0.001;
+      boundRing.renderOrder = 3;
+      group.add(boundRing);
+      this.intactDisposables.push(boundRingGeo, boundRingMat);
+      this.coreDisk.userData.boundRing = boundRing;
+
+      const fissureGeo = this.makeCoreFissureGeometry(coreRadius);
+      const fissureMat = new THREE.LineBasicMaterial({
+        color: 0x1b0d05,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const fissure = new THREE.LineSegments(fissureGeo, fissureMat);
+      fissure.position.y = coreY + 0.004;
+      fissure.scale.setScalar(0.2);
+      fissure.visible = false;
+      fissure.renderOrder = 5;
+      group.add(fissure);
+      this.intactDisposables.push(fissureGeo, fissureMat);
+      this.coreFissure = fissure;
+
+      // One warm floating marker over the bound heart. The core disk is nearly
+      // edge-on at the low camera; the marker keeps the deliberate target
+      // findable until the punch cracks it and the fissure takes over.
+      const markerGeo = new THREE.OctahedronGeometry(Math.max(0.016, this.radius * 0.078), 0);
+      const markerMat = new THREE.MeshBasicMaterial({
+        color: 0xffc98a,
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const marker = new THREE.Mesh(markerGeo, markerMat);
+      marker.position.set(0, this.height / 2 + 0.17, 0);
+      marker.renderOrder = 6;
+      group.add(marker);
+      this.intactDisposables.push(markerGeo, markerMat);
+      this.coreMarker = marker;
     }
 
     // A widening dark kerf. It starts hidden and grows with every bite/wedge,
@@ -2727,40 +3550,23 @@ export class DebrisSystem {
     weakHit = false,
   } = {}) {
     const mods = this.weather || { split: 1, splinter: 0, friction: 1, frozen: false };
-    const toughness = this.log.toughness || 0.6;
-    const effective = (energy * (0.72 + center * 0.28) * (0.7 + grain * 0.3)) / toughness;
-    // Striking the exposed boss seam is an intentional off-pith target, so it
-    // must not be treated like a wild rim hit.
-    const glancing =
-      center < (weakHit ? 0.12 : 0.3) ||
-      effective < 0.62 ||
-      (knotHit && !knotPrecise && effective < 1.05 && !weakHit);
-    const maxPieces = this.log.huge ? 5 : 4;
-    let mainPieces = this.log.huge ? 3 : 2;
-    if (effective >= 0.98) mainPieces = this.log.huge ? 4 : 3;
-    if (effective >= 1.32 && grain >= 0.48) mainPieces = maxPieces;
-    if (knotHit && knotPrecise) mainPieces = Math.min(maxPieces, mainPieces + 1);
-    if (glancing) mainPieces = this.log.huge ? 3 : 2;
-    if (mods.frozen && effective > 1.2) mainPieces = Math.min(maxPieces, mainPieces + 1);
-    const splinterBase =
-      2 +
-      Math.round(effective * 2.6) +
-      Math.round((mods.splinter || 0) * 5) +
-      (glancing ? 2 : 0) +
-      (this.log.knots || 0) +
-      (this.log.huge ? 2 : 0);
-    const splinterCount = THREE.MathUtils.clamp(splinterBase, 2, this.quality?.name === 'Low' ? 8 : 14);
-    return {
-      glancing,
-      mainPieces: THREE.MathUtils.clamp(mainPieces, 2, maxPieces),
-      splinterCount,
-      effective: Number(effective.toFixed(3)),
-      penetration: Number((0.016 + effective * 0.035).toFixed(3)),
-      energy: Number(energy.toFixed(3)),
+    // The glance threshold and piece-count maths is pure and unit-tested in
+    // mechanics.js; this method only supplies the live round's wood/weather.
+    return planFracture({
+      energy,
+      center,
+      grain,
       power,
+      toughness: this.log.toughness || 0.6,
       knotHit,
       knotPrecise,
-    };
+      weakHit,
+      huge: Boolean(this.log.huge),
+      knots: this.log.knots || 0,
+      frozen: Boolean(mods.frozen),
+      splinter: mods.splinter || 0,
+      qualityLow: this.quality?.name === 'Low',
+    });
   }
 
   /**
@@ -2846,7 +3652,7 @@ export class DebrisSystem {
         (this.log.seed || 1) + i * 31,
       );
       this.disposable.add(def.geometry);
-      const mesh = new THREE.Mesh(def.geometry, [mats.cut, mats.bark]);
+      const mesh = new THREE.Mesh(def.geometry, [mats.cut, mats.bark, mats.grain]);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       const origin = center.clone().add(def.centroid);
@@ -2901,6 +3707,146 @@ export class DebrisSystem {
         true,
       );
       this.pieces.push({ mesh, body, kind: 'wedge', mass });
+    }
+
+    // A sprung ring is a real fracture, not a reskinned radial fan: the loose
+    // growth ring breaks into curved shards that peel off the rim, and the
+    // freed bound core drops as its own plug.
+    this.ringShellPieces = 0;
+    this.corePlugDropped = false;
+    this.lastRingShellSurface = null;
+    if (this.log?.ringShake && this.ringShakeLoose) {
+      const shardCount = this.quality?.name === 'Low' ? 3 : 5;
+      const inner = this.radius * 0.4;
+      const outer = this.radius * 0.88;
+      const thickness = Math.max(0.035, this.height * 0.24);
+      const arcStart = this.ringShakeAngle;
+      const span = 1.9;
+      const gap = 0.07;
+      const ringSurface = this.surfaceState;
+      const shardCut = this.ringPieceMaterial('cut', ringSurface);
+      const shardBark = this.ringPieceMaterial('bark', ringSurface);
+      const wetShards = ringSurface === 'wet';
+      const frozenShards = ringSurface === 'snow';
+      this.lastRingShellSurface = ringSurface;
+      for (let i = 0; i < shardCount; i++) {
+        const a0 = arcStart + (span / shardCount) * i + gap * 0.5;
+        const a1 = arcStart + (span / shardCount) * (i + 1) - gap * 0.5;
+        const def = createRingSector(a0, a1, inner, outer, thickness, 4);
+        this.disposable.add(def.geometry);
+        const mesh = new THREE.Mesh(def.geometry, [shardCut, shardBark]);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        const origin = center.clone().add(def.centroid);
+        origin.y += this.height * 0.32;
+        mesh.position.copy(origin);
+        this.scene.add(mesh);
+        const body = this.world.createRigidBody(
+          RAPIER.RigidBodyDesc.dynamic()
+            .setTranslation(origin.x, origin.y, origin.z)
+            .setLinearDamping(frozenShards ? 0.08 : wetShards ? 0.12 : 0.2)
+            .setAngularDamping(wetShards ? 0.16 : 0.24)
+            .setCcdEnabled(true),
+        );
+        let colliderDesc = RAPIER.ColliderDesc.convexHull(def.hullPoints);
+        if (!colliderDesc) {
+          colliderDesc = RAPIER.ColliderDesc.cuboid(
+            def.fallbackHalf.x,
+            def.fallbackHalf.y,
+            def.fallbackHalf.z,
+          );
+        }
+        const shardFriction = wetShards
+          ? THREE.MathUtils.clamp(0.5 * (mods.friction || 1), 0.24, 0.7)
+          : frozenShards
+            ? THREE.MathUtils.clamp(0.92 * (mods.friction || 1), 0.4, 0.98)
+            : THREE.MathUtils.clamp(0.78 * (mods.friction || 1), 0.35, 0.95);
+        colliderDesc
+          .setDensity((this.log.density || 600) * (frozenShards ? 1.03 : wetShards ? 0.94 : 0.95))
+          .setFriction(shardFriction)
+          .setRestitution(frozenShards ? 0.2 : wetShards ? 0.02 : 0.05)
+          .setCollisionGroups(debrisGroups)
+          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+        this.world.createCollider(colliderDesc, body);
+        const mid = (a0 + a1) / 2;
+        const radial = new THREE.Vector3(Math.cos(mid), 0, Math.sin(mid));
+        const mass = body.mass();
+        const speedScale = wetShards ? 1.18 : frozenShards ? 1.08 : 1;
+        body.applyImpulse(
+          {
+            x: radial.x * mass * (0.55 + spring * 0.55) * speedScale,
+            y: mass * (0.3 + spring * 0.35) * (wetShards ? 0.82 : 1),
+            z: radial.z * mass * (0.55 + spring * 0.55) * speedScale,
+          },
+          true,
+        );
+        body.setAngvel(
+          {
+            x: (this.random() - 0.5) * (frozenShards ? 6.4 : 5),
+            y: (this.random() - 0.5) * (wetShards ? 3.4 : 2.4),
+            z: (this.random() - 0.5) * (frozenShards ? 6.4 : 5),
+          },
+          true,
+        );
+        this.pieces.push({ mesh, body, kind: 'ring', mass, surface: ringSurface });
+        this.ringShellPieces += 1;
+      }
+      const plugR = this.radius * 0.3;
+      const plugH = this.height * 0.78;
+      const plugGeo = new THREE.CylinderGeometry(plugR, plugR * 0.94, plugH, 14, 1);
+      this.disposable.add(plugGeo);
+      const plugCut = this.ringPieceMaterial('cut', ringSurface);
+      const plugBark = this.ringPieceMaterial('bark', ringSurface);
+      const plugMesh = new THREE.Mesh(plugGeo, [plugBark, plugCut, plugCut]);
+      plugMesh.castShadow = true;
+      plugMesh.receiveShadow = true;
+      const plugOrigin = center.clone();
+      plugOrigin.y += this.height * 0.06;
+      plugMesh.position.copy(plugOrigin);
+      if (this.coreCracked) {
+        // The freed core keeps the punch's star fissure on its top face.
+        const fissureGeo = this.makeCoreFissureGeometry(plugR);
+        const fissureMat = new THREE.LineBasicMaterial({
+          color: 0x1b0d05,
+          transparent: true,
+          opacity: 0.96,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        const fissure = new THREE.LineSegments(fissureGeo, fissureMat);
+        fissure.position.y = plugH / 2 + 0.002;
+        fissure.renderOrder = 5;
+        plugMesh.add(fissure);
+        this.disposable.add(fissureGeo);
+      }
+      this.scene.add(plugMesh);
+      const plugBody = this.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(plugOrigin.x, plugOrigin.y, plugOrigin.z)
+          .setLinearDamping(0.24)
+          .setAngularDamping(0.32)
+          .setCcdEnabled(true),
+      );
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(plugH / 2, plugR)
+          .setDensity(this.log.density || 600)
+          .setFriction(THREE.MathUtils.clamp(0.8 * (mods.friction || 1), 0.35, 0.95))
+          .setRestitution(0.04)
+          .setCollisionGroups(debrisGroups)
+          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+        plugBody,
+      );
+      const plugMass = plugBody.mass();
+      plugBody.applyImpulse(
+        {
+          x: (this.random() - 0.5) * plugMass * 0.35,
+          y: plugMass * (0.22 + spring * 0.28),
+          z: plugMass * 0.12,
+        },
+        true,
+      );
+      this.pieces.push({ mesh: plugMesh, body: plugBody, kind: 'core', mass: plugMass });
+      this.corePlugDropped = true;
     }
 
     // Splinters: fewer, longer and more believable than the v1 chip shower.
@@ -3005,6 +3951,9 @@ export class DebrisSystem {
       speed,
       plan: planData,
       grainLock,
+      ringShellPieces: this.ringShellPieces || 0,
+      ringShellSurface: this.lastRingShellSurface || null,
+      corePlugDropped: Boolean(this.corePlugDropped),
     };
   }
 
@@ -3045,6 +3994,31 @@ export class DebrisSystem {
           0.9 + Math.sin(this.rootGlintPulse * 3.1 + notch.z * 13) * 0.12,
         );
       }
+    }
+    if (this.ringShakeActive && !this.ringShakeLoose && this.ringShakeGlints?.length) {
+      this.ringShakePulse += dt;
+      for (let i = 0; i < this.ringShakeGlints.length; i++) {
+        const glint = this.ringShakeGlints[i];
+        glint.rotation.y += dt * 1.5;
+        glint.position.y =
+          this.height / 2 + 0.15 + Math.sin(this.ringShakePulse * 2.8 + i * 1.9) * 0.011;
+        glint.scale.setScalar(0.92 + Math.sin(this.ringShakePulse * 3.2 + i) * 0.12);
+      }
+    }
+    if (this.coreMarker?.visible) {
+      this.coreMarkerPulse = (this.coreMarkerPulse || 0) + dt;
+      this.coreMarker.rotation.y += dt * 1.2;
+      this.coreMarker.position.y =
+        this.height / 2 + 0.17 + Math.sin(this.coreMarkerPulse * 2.4) * 0.008;
+      this.coreMarker.scale.setScalar(0.94 + Math.sin(this.coreMarkerPulse * 2.9) * 0.1);
+    }
+    // The core fissure spreads open over ~0.4 s, then stays dark and visible for
+    // the rest of the round so the cracked state lives on the wood, not in a toast.
+    if (this.coreFissure?.visible) {
+      this.coreCrackPulse = Math.max(0, this.coreCrackPulse - dt * 2.6);
+      const t = 1 - this.coreCrackPulse;
+      this.coreFissure.scale.setScalar(0.32 + t * 0.68);
+      this.coreFissure.material.opacity = 0.6 + this.coreCrackPulse * 0.4;
     }
     const wind = this.wind;
     if (this.wedgeSlots.length) {
@@ -3145,6 +4119,17 @@ export class DebrisSystem {
       const r = item.body.rotation();
       item.mesh.position.set(p.x, p.y, p.z);
       item.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      // Landing foley hook: report each airborne piece once when it comes down.
+      if (!item.airborne && p.y > 0.62) {
+        item.airborne = true;
+      } else if (item.airborne && !item.landed && p.y < 0.42) {
+        item.landed = true;
+        const v = item.body.linvel?.();
+        const speed = v ? Math.hypot(v.x, v.y, v.z) : 1;
+        if (speed > 0.3 && typeof this.onFragmentLand === 'function') {
+          this.onFragmentLand({ kind: item.kind, mass: item.mass, speed });
+        }
+      }
     }
     for (let i = this.dust.length - 1; i >= 0; i--) {
       if (!this.dust[i].update(dt)) this.dust.splice(i, 1);
@@ -3196,6 +4181,17 @@ export class DebrisSystem {
     this.hollowHoleRadius = 0;
     this.masterCheckLine = null;
     this.masterCheckGlint = null;
+    this.masterCheckGroup = null;
+    this.masterSeamBase = null;
+    this.ringShakeGroup = null;
+    this.ringShakeGlints = [];
+    this.ringArcLine = null;
+    this.ringArcBand = null;
+    this.ringArcBandMat = null;
+    this.ringVisualHalfWidth = 0;
+    this.coreDisk = null;
+    this.coreFissure = null;
+    this.coreMarker = null;
     this.shockRing = null;
   }
 

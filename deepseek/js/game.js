@@ -1,4 +1,10 @@
-import { clamp, mulberry32 } from './utils.js';
+import { clamp, mulberry32, scoreCut } from './mechanics.js';
+import {
+  CAMPAIGN_LENGTH,
+  campaignMeta,
+  campaignRound,
+  campaignUnlockedChapter,
+} from './campaign.js';
 
 /**
  * Game rules, progression and persistence for American Split.
@@ -213,6 +219,32 @@ export const LOG_TYPES = Object.freeze([
     seed: 293,
   }),
   Object.freeze({
+    id: 'ringShakeWalnut',
+    name: 'Ring-Shaken Walnut',
+    short: 'RING WALNUT',
+    blurb:
+      'A loose growth ring has separated from the heart. The bound core fights the bit; chase the pale loose-ring arc as it shifts, then split the freed heart.',
+    tier: 5,
+    difficulty: 4.1,
+    toughness: 1.24,
+    density: 900,
+    radius: 0.199,
+    height: 0.52,
+    strikes: 3,
+    knots: 1,
+    hazards: 1,
+    ringShake: true,
+    ringShakeRadius: 0.63,
+    unlockLevel: 9,
+    basePoints: 330,
+    barkColor: 0x5a4a38,
+    barkTint: 0x7a6750,
+    cutColor: 0xd6b07a,
+    cutTint: 0xe0c08a,
+    ringColor: 0x7a5432,
+    seed: 347,
+  }),
+  Object.freeze({
     id: 'ironwood',
     name: 'Ironwood',
     short: 'IRONWOOD',
@@ -346,6 +378,16 @@ export const RUN_MODES = Object.freeze([
     time: 0,
     target: 0,
     scoreScale: 1,
+  }),
+  Object.freeze({
+    id: 'campaign',
+    name: 'Campaign',
+    short: 'STORY',
+    desc: 'Six chapters, 18 logs: two ordinary rounds and one boss each. The Iron Crown closes the yard.',
+    time: 0,
+    target: CAMPAIGN_LENGTH,
+    scoreScale: 1.08,
+    campaign: true,
   }),
   Object.freeze({
     id: 'time',
@@ -663,7 +705,7 @@ function finite(value, fallback) {
 
 function defaultState() {
   return {
-    version: 4,
+    version: 5,
     score: 0,
     coins: 0,
     xp: 0,
@@ -683,9 +725,13 @@ function defaultState() {
     edgeWear: 0,
     honed: 0,
     wedges: 0,
+    wedgesPulled: 0,
     campaignComplete: false,
-    records: { time: 0, precision: 0, endless: 0, daily: 0, trial: 0, stump: 0, dailyDate: '' },
-    history: { time: [], precision: [], endless: [], daily: [], trial: [], stump: [] },
+    // Highest chapter available from the Campaign chapter row. Persisted so a
+    // later session can continue the story at the chapter it reached.
+    campaignChapter: 1,
+    records: { time: 0, precision: 0, endless: 0, daily: 0, trial: 0, stump: 0, campaign: 0, dailyDate: '' },
+    history: { time: [], precision: [], endless: [], daily: [], trial: [], stump: [], campaign: [] },
     lastHit: null,
     settings: {
       quality: 'auto',
@@ -694,6 +740,9 @@ function defaultState() {
       weather: 'clear',
       autoTime: false,
       sound: true,
+      music: true,
+      musicVolume: 0.35,
+      sfxVolume: 0.8,
     },
     createdAt: Date.now(),
   };
@@ -725,6 +774,10 @@ function makeRunState(overrides = {}) {
     logId: '',
     deck: null,
     loadout: null,
+    // A contract is a seeded overlay on an existing mode; it never replaces the
+    // mode's normal rules. Only session state, so quitting drops the contract.
+    contractId: '',
+    contractSeed: 0,
     ...overrides,
   };
 }
@@ -756,7 +809,22 @@ export class GameState {
     return () => this.listeners.delete(listener);
   }
 
+  /** The authored campaign round currently on the block, or null. */
+  get campaignPlan() {
+    if (!this.run || !this.run.active || this.run.mode !== 'campaign') return null;
+    return campaignRound(this.run.splits, LOG_TYPES);
+  }
+
+  get campaignMeta() {
+    if (!this.run || !this.run.active || this.run.mode !== 'campaign') return null;
+    return campaignMeta(this.run.splits, LOG_TYPES);
+  }
+
   get species() {
+    // The authored campaign is its own 18-round deck. It deliberately ignores
+    // the free-chop ladder position so a new profile can play the story.
+    const campaign = this.campaignPlan;
+    if (campaign) return campaign;
     // Trial (and any future scripted run) can force a species without touching
     // the player's saved ladder position. Daily/Precision step through a fixed
     // deck keyed to the number of clean splits, so every profile meets the same
@@ -834,7 +902,13 @@ export class GameState {
 
   /** Boss cadence is run-relative so a challenge always starts at wave 1. */
   get bossEvery() {
+    if (this.run.mode === 'campaign') return 3;
     return this.run.mode === 'endless' ? ENDLESS_BOSS_EVERY : BOSS_EVERY;
+  }
+
+  /** Campaign bosses close every third round (2 ordinary + 1 boss). */
+  get campaignBossReady() {
+    return this.run.mode === 'campaign' && this.run.splits % 3 === 2;
   }
 
   get runCleanSplits() {
@@ -856,6 +930,11 @@ export class GameState {
   /** Start a fresh challenge run. Progression and gear are preserved. */
   startMode(modeId = 'free', options = {}) {
     const def = modeFor(modeId);
+    // Campaign chapter select: start the run at the first round of a chapter.
+    // Other modes ignore this and always start from the top of their deck.
+    const campaignStart = def.campaign
+      ? clamp(Math.round(finite(options.startRound, 0)), 0, Math.max(0, def.target - 1))
+      : 0;
     if (def.id === 'free') {
       this.run.mode = 'free';
       this.run.active = false;
@@ -897,6 +976,7 @@ export class GameState {
       timeLeft: def.time || 0,
       target: def.target || 0,
       startedAt: this.now(),
+      splits: campaignStart,
       dailySeed: dateSeed,
       dailyDate: def.daily ? date : '',
       customSeed: Boolean(sharedDate),
@@ -909,7 +989,7 @@ export class GameState {
     // the species getter overrides it while the run is active, and quitting or
     // reloading returns to the same free-chop round.
     this.state.combo = 0;
-    if (!def.fixedLogId && !deck) this.state.logIndex = 0;
+    if (!def.fixedLogId && !deck && !def.campaign) this.state.logIndex = 0;
     this.state.edgeWear = 0;
     this.refillStamina();
     this.state.lastHit = null;
@@ -922,6 +1002,7 @@ export class GameState {
   endRun(reason = 'time', record = true) {
     if (!this.run.active) return null;
     const def = modeFor(this.run.mode);
+    if (def.campaign && this.run.splits >= def.target) this.state.campaignComplete = true;
     this.run.active = false;
     this.run.endedAt = this.now();
     this.run.lastEndReason = reason;
@@ -963,6 +1044,10 @@ export class GameState {
       newBest: record && recordsThisRun && this.run.score > previousBest,
       customSeed: Boolean(this.run.customSeed),
       reason,
+      campaign: Boolean(def.campaign),
+      campaignComplete: Boolean(this.state.campaignComplete),
+      contractId: this.run.contractId || '',
+      contractSeed: this.run.contractSeed || 0,
       dailyDate: this.run.dailyDate,
       dailySeed: this.run.dailySeed,
       timeLeft: Math.max(0, this.run.timeLeft),
@@ -1136,7 +1221,13 @@ export class GameState {
     merged.edgeWear = clamp(finite(merged.edgeWear, 0), 0, 0.92);
     merged.honed = Math.max(0, Math.round(finite(merged.honed, 0)));
     merged.wedges = Math.max(0, Math.round(finite(merged.wedges, 0)));
+    merged.wedgesPulled = Math.max(0, Math.round(finite(merged.wedgesPulled, 0)));
     merged.campaignComplete = Boolean(merged.campaignComplete);
+    merged.campaignChapter = clamp(
+      Math.round(finite(merged.campaignChapter, 1)),
+      1,
+      Math.max(1, Math.ceil(CAMPAIGN_LENGTH / 3)),
+    );
     const savedRecords = saved.records && typeof saved.records === 'object' ? saved.records : {};
     merged.records = {
       ...base.records,
@@ -1146,6 +1237,7 @@ export class GameState {
       daily: Math.max(0, Math.round(finite(savedRecords.daily, 0))),
       trial: Math.max(0, Math.round(finite(savedRecords.trial, 0))),
       stump: Math.max(0, Math.round(finite(savedRecords.stump, 0))),
+      campaign: Math.max(0, Math.round(finite(savedRecords.campaign, 0))),
       dailyDate: typeof savedRecords.dailyDate === 'string' ? savedRecords.dailyDate : '',
     };
     // Keep the last five runs per mode. Old saves simply start with empty lists.
@@ -1176,8 +1268,14 @@ export class GameState {
       const oldIndex = Math.round(finite(merged.logIndex, 0));
       merged.logIndex = Math.min(LOG_TYPES.length - 1, oldIndex + (oldIndex >= 6 ? 1 : 0));
     }
+    // Ring-Shaken Walnut was inserted at index 9 in save version 5, so a version
+    // 4 save at or above Ironwood shifts up one rung and keeps its species.
+    if (savedVersion < 5) {
+      const oldIndex = Math.round(finite(merged.logIndex, 0));
+      merged.logIndex = Math.min(LOG_TYPES.length - 1, oldIndex + (oldIndex >= 9 ? 1 : 0));
+    }
     merged.logIndex = clamp(Math.round(finite(merged.logIndex, 0)), 0, LOG_TYPES.length - 1);
-    merged.version = 4;
+    merged.version = 5;
     for (const key of Object.keys(base.upgrades)) {
       merged.upgrades[key] = clamp(
         Math.round(finite(merged.upgrades[key], 0)),
@@ -1196,6 +1294,12 @@ export class GameState {
     merged.settings.autoQuality = merged.settings.quality === 'auto';
     if (!TIME_OPTIONS.includes(merged.settings.timeOfDay)) merged.settings.timeOfDay = 'golden';
     if (!WEATHER_OPTIONS.includes(merged.settings.weather)) merged.settings.weather = 'clear';
+    // Audio settings persist independently: the topbar speaker is the SFX mute,
+    // while the Settings panel has separate music/SFX volumes and mutes.
+    merged.settings.sound = merged.settings.sound !== false;
+    merged.settings.music = merged.settings.music !== false;
+    merged.settings.musicVolume = clamp(finite(merged.settings.musicVolume, 0.35), 0, 1);
+    merged.settings.sfxVolume = clamp(finite(merged.settings.sfxVolume, 0.8), 0, 1);
     merged.stamina = clamp(finite(merged.stamina, 100), 0, 200);
     merged.lastHit =
       merged.lastHit && typeof merged.lastHit === 'object' ? merged.lastHit : null;
@@ -1289,16 +1393,27 @@ export class GameState {
     const rootRingBroken = Boolean(report.rootRingBroken);
     const riving = Boolean(report.riving);
     const grainLock = Boolean(report.grainLock);
+    const crossedGrain = Boolean(report.crossedGrain);
     const rivingBonus = clamp(finite(report.rivingBonus, 0), 0, 1);
+    const ringCut = Boolean(report.ringCut);
+    const ringLoose = Boolean(report.ringLoose);
+    const corePunch = Boolean(report.corePunch);
+    const coreCracked = Boolean(report.coreCracked);
 
     const control = clamp(center * 0.54 + grain * 0.27 + timing * 0.19, 0, 1);
     // A boss seam is an intentional off-pith target: control still affects the
     // payout, but it should not turn a precise seam strike into a "ROUGH" hit.
     // A wedge strike is likewise a deliberate steel target, not a wild chop.
-    const clean = !glancing && energy >= 0.58 && (weakHit || wedgeHit || control >= 0.56);
+    const clean =
+      !glancing &&
+      energy >= 0.58 &&
+      (weakHit || wedgeHit || ringCut || control >= 0.56);
     const partial = Boolean(report.partial);
     const boss = Boolean(report.boss || species.boss);
     const hazardHit = Boolean(report.hazardHit);
+    // The fracture model knows how much edge a nail/stone actually took; fall
+    // back to the old flat chip for callers that predate the energy ledger.
+    const sharpLoss = clamp(finite(report.sharpLoss, 0.13), 0, 0.4);
     const hollowHit = Boolean(report.hollowHit);
     const hollowCollapse = Boolean(report.hollowCollapse);
     const hollowRimTear = Boolean(report.hollowRimTear);
@@ -1312,58 +1427,50 @@ export class GameState {
     );
     const damage = clamp(finite(report.damage, partial ? 0.5 : 1), 0, 1);
 
-    let base =
-      species.basePoints +
-      center * 150 +
-      grain * 95 +
-      timing * 125 +
-      Math.min(1.4, energy) * 55 +
-      species.toughness * 45;
-    if (perfect) base += 70;
-    if (knotPrecise) base += 55;
-    if (weakHit) base += 110;
-    if (hollowCollapse) base += 85;
-    if (hollowRimTear) base += 25;
-    if (wedgeHit) base += wedgeHomed ? 70 : wedgeBounced ? 10 : 45;
-    if (undercut) base += 55;
-    if (rootRingBroken) base += 90;
-    if (riving) base += 28;
-    if (grainLock) base += 52 + rivingBonus * 30;
-    if (boss) base *= 2.15;
-    if (this.run.active) base *= modeFor(this.run.mode).scoreScale || 1;
-
-    let penalty = 0;
-    if (glancing) {
-      base *= 0.24;
-      penalty += 45;
-    } else if (!clean) {
-      penalty += 20;
-    }
-    if (knotHit && !knotPrecise) {
-      penalty += 22 + species.knots * 9;
-    }
-    if (hazardHit) {
-      penalty += 28;
-      this.dullEdge(0.13);
-    }
-    if (center < 0.42) penalty += Math.round((0.42 - center) * 90);
-
     const comboBefore = this.state.combo;
-    const comboMultiplier = clean ? 1 + Math.min(comboBefore, 10) * 0.18 : 0;
-
-    // A partial strike is a real bite, but it is not a split. Pay for the cut,
-    // not the round: a fifth of the points and a fraction of the XP.
-    let points;
-    if (partial) {
-      const bite = base * (0.12 + damage * 0.1);
-      points = Math.max(3, Math.round(bite * (1 + Math.min(comboBefore, 10) * 0.05)));
-    } else {
-      points = Math.max(0, Math.round(base * comboMultiplier - penalty));
-    }
-    const partialPenalty = partial ? Math.round(penalty * 0.45) : 0;
-    const scoreDelta = partial
-      ? Math.max(0, points - partialPenalty)
-      : Math.max(-40, points - penalty);
+    // Pure scoring maths lives in mechanics.js so the node tests and the game
+    // cannot drift apart. A partial strike is a real bite, but it is not a
+    // split: it pays a fraction of the points and XP.
+    const cut = scoreCut({
+      speciesBasePoints: species.basePoints,
+      speciesToughness: species.toughness,
+      center,
+      grain,
+      timing,
+      energy,
+      perfect,
+      knotPrecise,
+      weakHit,
+      hollowCollapse,
+      hollowRimTear,
+      wedgeHit,
+      wedgeHomed,
+      wedgeBounced,
+      undercut,
+      rootRingBroken,
+      riving,
+      grainLock,
+      rivingBonus,
+      crossedGrain,
+      ringCut,
+      ringLoose,
+      corePunch,
+      boss,
+      modeScale: this.run.active ? modeFor(this.run.mode).scoreScale || 1 : 1,
+      glancing,
+      knotHit,
+      knotCount: species.knots,
+      hazardHit,
+      partial,
+      damage,
+      comboBefore,
+      clean,
+    });
+    const points = cut.points;
+    const penalty = cut.penalty;
+    const scoreDelta = cut.scoreDelta;
+    const comboMultiplier = cut.comboMultiplier;
+    if (hazardHit) this.dullEdge(sharpLoss);
     this.state.score = Math.max(0, this.state.score + scoreDelta);
     this.state.totalScore += Math.max(0, scoreDelta);
     if (this.run.active) {
@@ -1425,17 +1532,35 @@ export class GameState {
       );
     }
 
+    const campaignRunComplete =
+      this.run.active &&
+      this.run.mode === 'campaign' &&
+      this.run.splits >= modeFor('campaign').target;
     const campaignJustCompleted =
-      !this.run.active &&
-      !this.state.campaignComplete &&
-      this.state.cleanSplits >= CAMPAIGN_SPLITS;
+      campaignRunComplete ||
+      (!this.run.active &&
+        !this.state.campaignComplete &&
+        this.state.cleanSplits >= CAMPAIGN_SPLITS);
     if (campaignJustCompleted) this.state.campaignComplete = true;
+    // Unlock the next chapter as soon as a chapter boss falls, so quitting after
+    // a boss does not throw the player back to Chapter 1 next session.
+    if (this.run.active && this.run.mode === 'campaign' && !partial) {
+      this.state.campaignChapter = Math.max(
+        this.state.campaignChapter || 1,
+        campaignUnlockedChapter(this.run.splits),
+      );
+    }
 
     // Advance the log ladder only after a clean, controlled split. A forced-log
     // run (Trial) and a fixed-deck run (Daily/Precision) must not overwrite the
-    // player's saved ladder position.
+    // player's saved ladder position. The campaign has its own deck.
     let nextLog = this.species;
-    if (!partial && !this.run.logId && !(this.run.deck && this.run.deck.length)) {
+    if (
+      !partial &&
+      !this.run.logId &&
+      !(this.run.deck && this.run.deck.length) &&
+      this.run.mode !== 'campaign'
+    ) {
       if (clean) {
         const best = this.bestUnlockedLogIndex;
         const target = Math.min(this.state.logIndex + 1, best, LOG_TYPES.length - 1);
@@ -1472,6 +1597,11 @@ export class GameState {
       boss,
       weakHit,
       hazardHit,
+      sharpLoss: Number(sharpLoss.toFixed(3)),
+      fractureOutcome: report.fractureOutcome || null,
+      crackWork: Number(clamp(finite(report.crackWork, 0), 0, 1).toFixed(3)),
+      energyDelivered: Number(finite(report.energyDelivered, 0).toFixed(1)),
+      energyRequired: Number(finite(report.energyRequired, 0).toFixed(1)),
       hollowHit,
       hollowCollapse,
       hollowRimTear,
@@ -1486,14 +1616,22 @@ export class GameState {
       rootBonus: Number(finite(report.rootBonus, 0).toFixed(2)),
       riving,
       grainLock,
+      crossedGrain,
       rivingBonus: Number(rivingBonus.toFixed(2)),
       rivingStreak: Math.max(0, Math.round(finite(report.rivingStreak, 0))),
+      ringCut,
+      ringCuts: Math.max(0, Math.round(finite(report.ringCuts, 0))),
+      ringLoose,
+      ringBound: Boolean(report.ringBound),
+      corePunch,
+      coreCracked,
+      ringCutsNeeded: Math.max(1, Math.round(finite(report.ringCutsNeeded, 2))),
       strikesRequired,
       strikesLeft,
       strikesLeftExact: Number(finite(report.strikesLeft, strikesLeft).toFixed(2)),
       damage: Number(damage.toFixed(2)),
       points: scoreDelta,
-      basePoints: Math.round(base),
+      basePoints: Math.round(cut.base),
       penalty,
       xp: xpGain,
       coins: coinGain,
@@ -1511,6 +1649,11 @@ export class GameState {
       aimZ: Number(finite(report.aimZ, 0).toFixed(3)),
       logType: species.name,
       logId: species.id,
+      campaignChapter: species.campaignChapter || null,
+      campaignChapterName: species.campaignChapterName || null,
+      campaignRound: species.campaignRound || null,
+      campaignBoss: Boolean(species.boss),
+      contractId: this.run.contractId || '',
       levelsGained,
       level: this.state.level,
       edgeIntegrity: Number(this.edgeIntegrity.toFixed(2)),
@@ -1530,7 +1673,7 @@ export class GameState {
         unlocked: LOG_TYPES.filter((t) => t.unlockLevel === this.state.level),
       });
     }
-    if (campaignJustCompleted) {
+    if (campaignJustCompleted && !this.run.active) {
       this.emit('campaign', {
         cleanSplits: this.state.cleanSplits,
         score: this.state.score,
@@ -1675,6 +1818,21 @@ export class GameState {
       chapter: chapterFor(this.state.cleanSplits),
       chapterName: chapterFor(this.state.cleanSplits).name,
       chapterIndex: chapterFor(this.state.cleanSplits).index,
+      campaign: this.campaignMeta,
+      campaignPlan: this.campaignPlan
+        ? {
+            round: this.campaignPlan.campaignRound,
+            chapter: this.campaignPlan.campaignChapter,
+            chapterName: this.campaignPlan.campaignChapterName,
+            boss: Boolean(this.campaignPlan.boss),
+            finalBoss: Boolean(this.campaignPlan.finalBoss),
+            crownSections: this.campaignPlan.crownSections || 0,
+          }
+        : null,
+      campaignProgress: this.run.mode === 'campaign' ? this.run.splits : 0,
+      campaignLength: CAMPAIGN_LENGTH,
+      contractId: this.run.contractId || '',
+      contractSeed: this.run.contractSeed || 0,
       edgeIntegrity: Number(this.edgeIntegrity.toFixed(2)),
       edgeWear: Number(this.state.edgeWear.toFixed(2)),
       honeCost: this.honeCost,
@@ -1703,6 +1861,12 @@ export class GameState {
       dailySeed: this.run.dailySeed,
       dailyDate: this.run.dailyDate,
       campaignComplete: Boolean(this.state.campaignComplete),
+      campaignChapter: clamp(
+        Math.round(finite(this.state.campaignChapter, 1)),
+        1,
+        Math.max(1, Math.ceil(CAMPAIGN_LENGTH / 3)),
+      ),
+      campaignChapters: Math.max(1, Math.ceil(CAMPAIGN_LENGTH / 3)),
       bossIndex: this.bossIndex,
       bossEvery: this.bossEvery,
       strikes: this.species.strikes || 1,

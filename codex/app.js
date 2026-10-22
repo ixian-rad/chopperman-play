@@ -118,6 +118,7 @@ function updateResults(){
   for(const run of contract.history){const item=document.createElement('li');item.textContent=`${run.mode==='daily'?run.seed:run.mode==='precision'?'Precision':'Sprint'} · ${run.medal} · ${run.score} pts · ${Number(run.elapsed).toFixed(1)}s · ${run.misses} misses`;list.appendChild(item);}
 }
 function updateHUD(){
+  $('control-panel').dataset.mode=contract?.mode??'campaign';
   const locked=!!contract?.finished;
   audio.setGameState({combo:contract?.mode==='precision'?contract.precisionCombo:game.combo,boss:!!currentLog.boss&&!simulation.split,menu:!!contract?.finished||!!$('help-dialog').open});
   updateResults();
@@ -141,7 +142,7 @@ function updateHUD(){
   $('extract-wedge').textContent=`Pull wedge · ${simulation.extractionCost} stamina [X]`;
   $('aim-label').textContent=Math.hypot(aim.x,aim.z)<.035?'CENTER AIM':`${Math.round(Math.hypot(aim.x,aim.z)*1000)} mm OFF CENTER`;
   $('angle-label').textContent=`GRAIN ${Math.round((yaw-grainAt(simulation.materialLog,aim.x,aim.z))*180/Math.PI)}°`;
-  document.querySelectorAll('[data-upgrade]').forEach(button=>{const stat=button.dataset.upgrade,maxed=game.upgrades[stat]>=5;button.disabled=!!contract||simulation.running||maxed||game.coins<game.price(stat);button.querySelector('b').textContent=maxed?'MAX':`${game.price(stat)} ¢`;button.title=`Rank ${game.upgrades[stat]} / 5`;});
+  document.querySelectorAll('[data-upgrade]').forEach(button=>{const stat=button.dataset.upgrade,maxed=game.upgrades[stat]>=5;button.disabled=!!contract||simulation.running||maxed||game.coins<game.price(stat);button.querySelector('b').textContent=maxed?'MAX':`${game.price(stat)} ¢`;button.dataset.tooltip=`Rank ${game.upgrades[stat]} / 5`;button.setAttribute('aria-description',button.dataset.tooltip);});
   $('save-state').textContent=contract?'Contract scores are separate. Campaign progress is preserved.':storage&&game.storageAvailable!==false?'Progress saves locally.':'Storage unavailable · session progress only.';
   const button=$('swing-button');button.disabled=locked||simulation.running||game.stamina<game.cost;
   button.querySelector('span').textContent=locked?'Contract finished':simulation.running?'Swinging…':game.stamina<game.cost?'Catching your breath…':pointer?'Release pull to chop':armed?'Stop in the green zone':simulation.split?'Next log · start meter':'Start your swing';
@@ -234,7 +235,8 @@ function previewPull(e){
   const line=$('pull-line');for(const [key,value]of Object.entries({x1:p.x,y1:p.y,x2:e.clientX,y2:e.clientY}))line.setAttribute(key,value);
   $('pull-guide').dataset.aligned=align>=85&&!danger?'true':'false';
   const label=$('pull-label');label.textContent=`${Math.round(pull.power)}% power · ${align}% grain${danger?` · ${danger.kind.toUpperCase()}!`:currentLog.precisionTarget?` · target ${currentLog.precisionTarget.power}%`:''}`;
-  label.style.left=`${Math.max(8,Math.min(innerWidth-330,e.clientX+15))}px`;label.style.top=`${Math.max(8,Math.min(innerHeight-76,e.clientY-64))}px`;
+  const labelBounds=label.getBoundingClientRect();
+  label.style.left=`${Math.max(8,Math.min(innerWidth-labelBounds.width-8,e.clientX+15))}px`;label.style.top=`${Math.max(8,Math.min(innerHeight-labelBounds.height-8,e.clientY-labelBounds.height-8))}px`;
   $('timing-label').textContent='Release to chop';$('timing-value').textContent=`${Math.round(pull.power)}% pull`;
 }
 function drawGrainReader(){

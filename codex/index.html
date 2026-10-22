@@ -24,9 +24,19 @@
       <div class="xp-cell"><div><strong id="level">LV 1</strong><span id="xp-label">0 / 100 XP</span></div><progress id="xp" max="100" value="0" aria-label="Experience to next level"></progress></div>
       <div class="stamina-cell"><div><span>STAMINA</span><output id="stamina-label">100</output></div><progress id="stamina" max="100" value="100" aria-label="Stamina"></progress></div>
     </section>
-    <section id="control-panel" class="control-panel panel" aria-label="Chopping controls">
+    <section id="control-panel" class="control-panel panel" data-mode="campaign" aria-label="Chopping controls">
       <div class="eyebrow">YOUR NEXT GOOD SPLIT</div><h1>Find the grain.</h1>
       <div class="campaign"><span id="campaign-label">CHAPTER 1 / 6 · First firewood</span><progress id="campaign-progress" value="0" max="18" aria-label="Campaign logs cleared"></progress></div>
+      <div class="log-heading"><strong id="log-type">Pine</strong><span id="log-count">LOG 01</span></div>
+      <div class="aim-readout"><span id="aim-label">CENTER AIM</span><span id="angle-label">GRAIN 0°</span></div>
+      <div class="timing-label"><span id="timing-label">Ready to find your rhythm</span><output id="timing-value">100%</output></div>
+      <div class="timing-track" aria-label="Timing meter"><div class="sweet-zone"></div><i id="timing-needle"></i></div>
+      <button id="swing-button" class="swing-button" disabled><span>Loading the backyard…</span><kbd>SPACE</kbd></button>
+      <p id="log-tip">A forgiving start. Aim for the center.</p>
+      <div class="secondary-controls"><button id="reset-button" disabled>↺ Reset log</button><button id="center-button">◎ Center aim</button></div>
+      <div class="wedge-controls"><button id="wedge-button" class="wedge-button" disabled>Wedge · open a cut first</button>
+      <button id="extract-wedge" class="wedge-button" hidden>Pull wedge [X]</button></div>
+      <details id="grain-reader"><summary>OPEN THE AIM / GRAIN READER</summary><canvas id="grain-map" width="416" height="272" aria-label="Enlarged end grain. Aim here, drag down and release to swing."></canvas><p>Drag here to chop. Aim near a dark cut: gold selects the wedge point. W drives; X pulls.</p></details>
       <details id="contracts"><summary>CAMPAIGN / CHALLENGE CONTRACTS</summary>
         <label class="field">PLAY MODE<select id="game-mode"><option value="campaign">Campaign · saved progress</option><option value="time">90 second sprint</option><option value="daily">Daily six · same UTC seed</option><option value="precision">Precision six · 12 strikes</option></select></label>
         <p>Contracts use a fresh axe and separate records. Precision: six marked targets, twelve strikes. Aim at the mint rings, match grain and the requested power. Timer starts on your first swing. Campaign gear stays saved.</p>
@@ -37,16 +47,6 @@
         <div class="result-actions"><button id="replay-contract">Replay route</button><button id="return-campaign">Campaign</button></div>
         <details><summary>RECENT RUNS / MEDAL TARGETS</summary><ol id="result-history"></ol><p>Daily gold: six logs in 90s, no misses, three clean splits. Silver: finish in 150s with 80% contact accuracy. Sprint gold: six logs, 90% accuracy; silver: four logs, 80%. Any completed log earns bronze. Precision gold: six clears, 690 points, four first-strike bullseyes, no misses. Silver: six clears and 480 points; any six clears earn bronze. Records rank points, then time, misses, and swings.</p></details>
       </section><p id="contract-status" role="status">Campaign progress saves automatically.</p>
-      <div class="log-heading"><strong id="log-type">Pine</strong><span id="log-count">LOG 01</span></div>
-      <p id="log-tip">A forgiving start. Aim for the center.</p>
-      <div class="aim-readout"><span id="aim-label">CENTER AIM</span><span id="angle-label">GRAIN 0°</span></div>
-      <details id="grain-reader"><summary>OPEN THE AIM / GRAIN READER</summary><canvas id="grain-map" width="416" height="272" aria-label="Enlarged end grain. Aim here, drag down and release to swing."></canvas><p>Drag here to chop. Aim near a dark cut: gold selects the wedge point. W drives; X pulls.</p></details>
-      <div class="timing-label"><span id="timing-label">Ready to find your rhythm</span><output id="timing-value">100%</output></div>
-      <div class="timing-track" aria-label="Timing meter"><div class="sweet-zone"></div><i id="timing-needle"></i></div>
-      <button id="swing-button" class="swing-button" disabled><span>Loading the backyard…</span><kbd>SPACE</kbd></button>
-      <div class="secondary-controls"><button id="reset-button" disabled>↺ Reset log</button><button id="center-button">◎ Center aim</button></div>
-      <div class="wedge-controls"><button id="wedge-button" class="wedge-button" disabled>Wedge · open a cut first</button>
-      <button id="extract-wedge" class="wedge-button" hidden>Pull wedge [X]</button></div>
       <p class="gesture-tip">Aim at the end grain. Drag down & release.<br>Power & grain preview while you pull.<br>Space twice also chops. Q / E turns the blade.</p>
       <details id="shop"><summary>THE TOOL SHED <span id="coins">0 coins</span></summary><div class="shop-content">
         <p id="axe-stats">2.4 kg axe · sharpness 100%</p>
@@ -66,7 +66,7 @@
       <p id="wood-condition">Moisture 8% · frost 0%</p><p id="weather-effect">Dry wood · steady grip</p>
       <label class="field" for="time">TIME OF DAY <output id="time-label">16:30</output></label><input id="time" type="range" min="0" max="24" value="16.5" step="0.1">
       <label class="check"><input id="day-cycle" type="checkbox" checked> Sun follows the clock</label>
-      <label class="field">QUALITY<select id="quality"><option value="auto">Auto · adapts to FPS</option><option value="low">Low · software friendly</option><option value="medium">Balanced</option><option value="high">High · bloom + SSAO</option></select></label>
+      <label class="field">QUALITY<select id="quality"><option value="auto">Auto · adaptive</option><option value="low">Low · efficient</option><option value="medium">Balanced</option><option value="high">High · effects</option></select></label>
       <p id="performance">Measuring frame rate…</p></details>
       <details class="settings"><summary>FIELD SETTINGS</summary>
         <label class="field" for="music-volume">MUSIC <output id="music-volume-value">32%</output></label><input id="music-volume" type="range" min="0" max="100" value="32" step="1">
@@ -80,8 +80,8 @@
         <button id="camera-button">Reset camera</button><button id="reset-progress">Reset saved progress</button><p id="save-state">Progress saves locally.</p>
       </details>
     </aside>
-    <div id="hit-feedback" aria-live="polite"><strong id="hit-title"></strong><span id="hit-detail"></span></div>
-    <div class="scene-status" role="status" aria-live="polite"><i class="live-dot"></i><span id="scene-status">Preparing the backyard…</span></div>
+    <div id="hit-feedback" aria-live="polite" tabindex="0" aria-label="Chopping feedback"><strong id="hit-title"></strong><span id="hit-detail"></span></div>
+    <div class="scene-status" tabindex="0" role="status" aria-live="polite"><i class="live-dot"></i><span id="scene-status">Preparing the backyard…</span></div>
     <div class="camera-hint">RIGHT DRAG TO ORBIT <span>·</span> SCROLL TO EXPLORE</div>
   </main>
   <footer><span>A quiet backyard. A better swing.</span><span>GRAIN / GRIT / A LITTLE MOMENTUM</span><span id="session-note">6 CHAPTERS · 18 LOGS · 6 BOSSES</span></footer>

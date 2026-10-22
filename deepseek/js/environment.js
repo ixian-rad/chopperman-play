@@ -6,7 +6,9 @@ import {
   createDirtPatchTexture,
   createEndGrainTexture,
   createGrassTexture,
+  createShadowBlobTexture,
   createSidingTexture,
+  createSurfaceMaps,
   createWoodTexture,
   mulberry32,
   randomPointInRing,
@@ -115,6 +117,7 @@ function createSky(scene) {
       }
     `,
     fragmentShader: /* glsl */ `
+      #include <common>
       varying vec3 vWorldPosition;
       uniform vec3 uTop;
       uniform vec3 uHorizon;
@@ -127,15 +130,39 @@ function createSky(scene) {
         float horizon = smoothstep(-0.06, 0.62, dir.y);
         vec3 color = mix(uHorizon, uTop, horizon);
         color = mix(color, vec3(0.76, 0.79, 0.68), smoothstep(0.0, -0.22, dir.y) * 0.45);
-        float sun = max(dot(dir, normalize(uSunDir)), 0.0);
-        color += uSunColor * (pow(sun, 480.0) * 2.8 + pow(sun, 20.0) * 0.18);
-        float haze = pow(1.0 - h, 12.0) * 0.18;
+
+        // Warm light pooling on the sun side of the sky. This is what makes the
+        // golden hour read as a direction rather than a flat orange gradient.
+        vec2 dh = normalize(dir.xz + vec2(0.0001));
+        vec2 sh = normalize(uSunDir.xz + vec2(0.0001));
+        float side = max(dot(dh, sh), 0.0);
+        float vanish = 1.0 - h;
+        float band = side * side * side * vanish * vanish * vanish;
+        color += uSunColor * band * 0.3;
+
+        // pow(sun, 480) is one of the most expensive per-pixel ops in the whole
+        // frame on a software rasteriser. A smoothstep disc reads the same and
+        // costs two compares; keep the cheaper broad aureole.
+        vec3 sunDir = normalize(uSunDir);
+        float sun = max(dot(dir, sunDir), 0.0);
+        float sunDisc = smoothstep(0.9992, 0.99965, sun);
+        color += uSunColor *
+          (sunDisc * 2.8 + pow(sun, 20.0) * 0.22 + sun * sun * sun * sun * 0.05);
+        float haze = vanish * vanish * vanish * vanish * vanish * vanish *
+          vanish * vanish * vanish * vanish * vanish * vanish * 0.18;
         color += vec3(1.0, 0.83, 0.59) * haze;
+
+        // A sub-LSB dither kills the banding the gradient shows on an 8-bit
+        // framebuffer without adding a texture fetch.
+        float dither = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        color += (dither - 0.5) * (1.5 / 255.0);
         gl_FragColor = vec4(color, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }
     `,
   });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(90, 40, 20), material);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(90, 32, 16), material);
   sky.frustumCulled = false;
   sky.renderOrder = -100;
   scene.add(sky);
@@ -155,7 +182,7 @@ function createGroundTextureSet() {
 
 function createGround(scene) {
   const textures = createGroundTextureSet();
-  const geo = new THREE.PlaneGeometry(90, 90, 90, 90);
+  const geo = new THREE.PlaneGeometry(90, 90, 44, 44);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -207,11 +234,13 @@ function createGround(scene) {
   ground.receiveShadow = true;
   ground.name = 'ground';
   const simpleGroundMaterial = new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    color: 0xffffff,
+    map: textures.grass,
+    // The unlit low preset needs a brighter albedo than the lit PBR path:
+    // there is no sun to lift the dark, saturated grass texture.
+    color: new THREE.Color(1.9, 1.8, 1.35),
     fog: true,
   });
-  simpleGroundMaterial.userData.baseColor = new THREE.Color(0xffffff);
+  simpleGroundMaterial.userData.baseColor = new THREE.Color(1.9, 1.8, 1.35);
   ground.userData.standardMaterial = mat;
   ground.userData.simpleMaterial = simpleGroundMaterial;
   scene.add(ground);
@@ -226,7 +255,7 @@ function createGround(scene) {
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
   });
-  const patch = new THREE.Mesh(new THREE.CircleGeometry(1.75, 48), patchMat);
+  const patch = new THREE.Mesh(new THREE.CircleGeometry(1.75, 24), patchMat);
   patch.rotation.x = -Math.PI / 2;
   patch.position.set(BLOCK.x, 0.012, BLOCK.z + 0.05);
   patch.receiveShadow = true;
@@ -361,7 +390,87 @@ function createGrass(scene, preset = null) {
   weeds.receiveShadow = true;
   scene.add(weeds);
 
-  return { grass, material, weeds, weedMat };
+  // SwiftShader pays a surprising fixed cost for instanced draws even when
+  // only a few blades are visible. Bake a small merged copy of the same blades
+  // for the Low preset: one ordinary draw, no per-instance vertex attributes,
+  // and the same silhouette. Medium+ keeps the instanced meshes for density.
+  const merged = buildMergedBlades([
+    { mesh: grass, max: 900 },
+    { mesh: weeds, max: 90 },
+  ]);
+  scene.add(merged);
+
+  return { grass, material, weeds, weedMat, merged, mergedMaterial: merged.material };
+}
+
+/** Merge instanced blades into one non-instanced BufferGeometry for Low. */
+function buildMergedBlades(sources) {
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const matrix = new THREE.Matrix4();
+  const point = new THREE.Vector3();
+  let vertexOffset = 0;
+  for (const { mesh, max } of sources) {
+    const geometry = mesh.geometry;
+    const array = geometry.attributes.position.array;
+    const index = geometry.index ? geometry.index.array : null;
+    const vertexCount = array.length / 3;
+    const instanced = Math.min(mesh.count, max);
+    for (let i = 0; i < instanced; i++) {
+      mesh.getMatrixAt(i, matrix);
+      const r = mesh.instanceColor ? mesh.instanceColor.getX(i) : 1;
+      const g = mesh.instanceColor ? mesh.instanceColor.getY(i) : 1;
+      const b = mesh.instanceColor ? mesh.instanceColor.getZ(i) : 1;
+      for (let k = 0; k < vertexCount; k++) {
+        point.fromArray(array, k * 3).applyMatrix4(matrix);
+        positions.push(point.x, point.y, point.z);
+        colors.push(r, g, b);
+      }
+      if (index) {
+        for (let j = 0; j < index.length; j++) indices.push(vertexOffset + index[j]);
+      } else {
+        for (let j = 0; j < vertexCount; j++) indices.push(vertexOffset + j);
+      }
+      vertexOffset += vertexCount;
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    fog: true,
+  });
+  material.userData.baseColor = new THREE.Color(0xffffff);
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uWind = { value: 1 };
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      '#include <common>\nuniform float uTime;\nuniform float uWind;',
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      /* glsl */ `#include <begin_vertex>
+        float windPhase = position.x * 0.63 + position.z * 0.41;
+        float bend = transformed.y * transformed.y;
+        transformed.x += sin(uTime * (1.15 + uWind * 0.7) + windPhase) * bend * (0.1 + uWind * 0.15);
+        transformed.z += cos(uTime * (0.9 + uWind * 0.5) + windPhase * 1.37) * bend * (0.04 + uWind * 0.07);
+      `,
+    );
+    material.userData.shader = shader;
+  };
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'grass-merged';
+  mesh.frustumCulled = false;
+  mesh.receiveShadow = false;
+  mesh.castShadow = false;
+  mesh.visible = false;
+  return mesh;
 }
 
 /* ------------------------------------------------------------------ *
@@ -380,10 +489,7 @@ function makePicketGeometry() {
   shape.closePath();
   const geo = new THREE.ExtrudeGeometry(shape, {
     depth: 0.035,
-    bevelEnabled: true,
-    bevelSize: 0.003,
-    bevelThickness: 0.003,
-    bevelSegments: 1,
+    bevelEnabled: false,
     curveSegments: 1,
   });
   geo.translate(0, 0, -0.0175);
@@ -543,7 +649,7 @@ function createTrees(scene) {
     new THREE.MeshStandardMaterial({ color: 0x607b3d, roughness: 0.92, flatShading: true }),
     new THREE.MeshStandardMaterial({ color: 0x354d29, roughness: 0.9, flatShading: true }),
   ];
-  const leafGeo = new THREE.IcosahedronGeometry(1, 1);
+  const leafGeo = new THREE.IcosahedronGeometry(1, 0);
   const leafPalette = [0x425f2d, 0x526f34, 0x607b3d, 0x354d29, 0x4a6b36, 0x263b20];
   const canopyMaterial = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -634,7 +740,7 @@ function createTrees(scene) {
 
     // A dark inner crown keeps the silhouette from looking hollow.
     addCanopyBlob(
-      new THREE.IcosahedronGeometry(1, 1),
+      new THREE.IcosahedronGeometry(1, 0),
       new THREE.Vector3(0, crownY + 0.35, 0),
       new THREE.Vector3(2.25, 1.65, 2.1),
       new THREE.Euler(0, 0, 0),
@@ -674,7 +780,7 @@ function createTrees(scene) {
   // Low shrubs along the fence and foundation.
   const shrubMat = new THREE.MeshStandardMaterial({ color: 0x3c572f, roughness: 1, flatShading: true });
   const shrubMat2 = new THREE.MeshStandardMaterial({ color: 0x4a6638, roughness: 1, flatShading: true });
-  const shrubGeo = new THREE.IcosahedronGeometry(0.55, 1);
+  const shrubGeo = new THREE.IcosahedronGeometry(0.55, 0);
   const shrubs = new THREE.Group();
   for (let i = 0; i < 22; i++) {
     const x = -7.9 + random() * 15.8;
@@ -891,9 +997,40 @@ function createHouse(scene) {
 function createChoppingBlock(scene) {
   const bark = createBarkTexture(44, 2.4, 1.3);
   const endGrain = createEndGrainTexture(32, 512);
-  const barkMat = new THREE.MeshStandardMaterial({ map: bark, color: 0x9c8663, roughness: 1 });
-  const topMat = new THREE.MeshStandardMaterial({ map: endGrain, color: 0xdcb57b, roughness: 0.9 });
-  const sideMat = new THREE.MeshStandardMaterial({ map: endGrain, color: 0xc19b62, roughness: 0.94 });
+  const barkMaps = createSurfaceMaps(bark, {
+    normalStrength: 2.0,
+    roughnessBase: 0.9,
+    roughnessContrast: 0.16,
+  });
+  const endMaps = createSurfaceMaps(endGrain, {
+    normalStrength: 0.8,
+    roughnessBase: 0.7,
+    roughnessContrast: 0.26,
+  });
+  const barkMat = new THREE.MeshStandardMaterial({
+    map: bark,
+    color: 0x9c8663,
+    roughness: 1,
+    normalMap: barkMaps?.normalMap || null,
+    roughnessMap: barkMaps?.roughnessMap || null,
+  });
+  if (barkMaps) barkMat.normalScale.set(1.0, 1.0);
+  const topMat = new THREE.MeshStandardMaterial({
+    map: endGrain,
+    color: 0xdcb57b,
+    roughness: 1,
+    normalMap: endMaps?.normalMap || null,
+    roughnessMap: endMaps?.roughnessMap || null,
+  });
+  if (endMaps) topMat.normalScale.set(0.55, 0.55);
+  const sideMat = new THREE.MeshStandardMaterial({
+    map: endGrain,
+    color: 0xc19b62,
+    roughness: 1,
+    normalMap: endMaps?.normalMap || null,
+    roughnessMap: endMaps?.roughnessMap || null,
+  });
+  if (endMaps) sideMat.normalScale.set(0.7, 0.7);
 
   const group = new THREE.Group();
   group.position.set(BLOCK.x, 0, BLOCK.z);
@@ -960,8 +1097,32 @@ function createWoodpile(scene, sharedBark, sharedEnd, random) {
   const group = new THREE.Group();
   group.position.set(-3.4, 0, -3.95);
   group.rotation.y = 0.08;
-  const barkMat = new THREE.MeshStandardMaterial({ map: sharedBark, color: 0x9a8462, roughness: 1 });
-  const endMat = new THREE.MeshStandardMaterial({ map: sharedEnd, color: 0xd2ad77, roughness: 0.92 });
+  const barkMaps = createSurfaceMaps(sharedBark, {
+    normalStrength: 2.2,
+    roughnessBase: 0.9,
+    roughnessContrast: 0.14,
+  });
+  const endMaps = createSurfaceMaps(sharedEnd, {
+    normalStrength: 0.7,
+    roughnessBase: 0.74,
+    roughnessContrast: 0.22,
+  });
+  const barkMat = new THREE.MeshStandardMaterial({
+    map: sharedBark,
+    color: 0x9a8462,
+    roughness: 1,
+    normalMap: barkMaps?.normalMap || null,
+    roughnessMap: barkMaps?.roughnessMap || null,
+  });
+  if (barkMaps) barkMat.normalScale.set(1, 1);
+  const endMat = new THREE.MeshStandardMaterial({
+    map: sharedEnd,
+    color: 0xd2ad77,
+    roughness: 1,
+    normalMap: endMaps?.normalMap || null,
+    roughnessMap: endMaps?.roughnessMap || null,
+  });
+  if (endMaps) endMat.normalScale.set(0.6, 0.6);
   const logGeo = new THREE.CylinderGeometry(0.115, 0.13, 0.86, 12, 1);
   const logGeometries = [];
   const dummy = new THREE.Object3D();
@@ -1185,6 +1346,24 @@ function createMotes(scene) {
 function createLanterns(scene) {
   const group = new THREE.Group();
   group.name = 'yard-lanterns';
+  // A warm additive pool on the lawn under each lantern. Low-quality yard
+  // materials are unlit (MeshBasic), so the real PointLight cannot tint them;
+  // these decals are what make night read as lantern-lit instead of a dark
+  // silhouette. One shared material and one quad per lamp: two extra draws.
+  const poolTexture = makeGlowTexture();
+  const poolMaterial = new THREE.MeshBasicMaterial({
+    map: poolTexture,
+    color: 0xffa956,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+    fog: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  });
   const wood = new THREE.MeshStandardMaterial({ color: 0x5d4830, roughness: 0.92 });
   const iron = new THREE.MeshStandardMaterial({ color: 0x25261f, metalness: 0.6, roughness: 0.5 });
   const glass = new THREE.MeshStandardMaterial({
@@ -1243,9 +1422,22 @@ function createLanterns(scene) {
     glow.scale.set(1.15, 1.15, 1);
     glow.position.copy(light.position);
     post.add(glow);
+    // Elliptical pool on the ground beneath the hanging bulb. Rotate the
+    // local 0.34 m arm offset by the post's yaw so the pool sits under the lamp.
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), poolMaterial);
+    pool.rotation.x = -Math.PI / 2;
+    pool.rotation.z = spec.rot * 0.35;
+    pool.scale.set(2.7, 1.65, 1);
+    pool.position.set(
+      spec.x + Math.cos(spec.rot) * 0.34,
+      0.042,
+      spec.z - Math.sin(spec.rot) * 0.34,
+    );
+    pool.renderOrder = 2;
+    scene.add(pool);
     const structureMeshes = mergeStaticGroup(post);
     group.add(post);
-    lanterns.push({ light, glow, bulb, intensity: 2.5, structureMeshes });
+    lanterns.push({ light, glow, bulb, pool, intensity: 2.5, structureMeshes });
   }
   scene.add(group);
   return lanterns;
@@ -1351,6 +1543,59 @@ function createSnowOverlay(scene) {
   return plane;
 }
 
+/**
+ * One instanced batch of soft radial AO decals. Real shadows are off on Low,
+ * so these contact patches are what stop the block, woodpile and props from
+ * looking like stickers floating on the lawn. Single draw call, no per-frame
+ * work, and they also darken the ground beneath the block on High.
+ */
+function createContactShadows(scene) {
+  const texture = createShadowBlobTexture();
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    color: 0x090705,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+    toneMapped: false,
+    fog: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  });
+  // Ordered by importance: Low draws only the first four (block, woodpile,
+  // the AO patch under the log, bucket) and skips the scattered small props.
+  const specs = [
+    { x: BLOCK.x, z: BLOCK.z, y: 0.012, sx: 1.38, sz: 1.38, rot: 0 },
+    { x: -3.4, z: -3.95, y: 0.012, sx: 1.75, sz: 1.3, rot: 0.08 },
+    // AO on the block's top face, under the log.
+    { x: BLOCK.x, z: BLOCK.z, y: BLOCK.top + 0.004, sx: 0.46, sz: 0.46, rot: 0.2 },
+    { x: 1.5, z: -1.7, y: 0.012, sx: 0.5, sz: 0.5, rot: 0 },
+    { x: 2.7, z: 1.45, y: 0.012, sx: 0.42, sz: 0.42, rot: 0 },
+    { x: -3.2, z: -2.35, y: 0.012, sx: 0.42, sz: 0.42, rot: 0 },
+    { x: 4.6, z: 0.0, y: 0.012, sx: 0.72, sz: 0.46, rot: -0.55 },
+  ];
+  const mesh = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(1, 1),
+    material,
+    specs.length,
+  );
+  const dummy = new THREE.Object3D();
+  specs.forEach((spec, index) => {
+    dummy.position.set(spec.x, spec.y, spec.z);
+    dummy.rotation.set(-Math.PI / 2, 0, spec.rot);
+    dummy.scale.set(spec.sx, spec.sz, 1);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(index, dummy.matrix);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1;
+  mesh.userData.maxCount = specs.length;
+  scene.add(mesh);
+  return mesh;
+}
+
 function buildSimpleMaterialSet(root) {
   const cache = new Map();
   const states = [];
@@ -1429,11 +1674,15 @@ export function createEnvironment(scene, renderer, preset = null) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.near = 0.5;
-  sun.shadow.camera.far = 28;
-  sun.shadow.camera.left = -8;
-  sun.shadow.camera.right = 8;
-  sun.shadow.camera.top = 8;
-  sun.shadow.camera.bottom = -8;
+  sun.shadow.camera.far = 24;
+  // Tight fit around the chopping block, the log and the humanoid. A 16 m
+  // frustum wasted most of the shadow map on the lawn; 9 m doubles the usable
+  // texel density at the same 512/1024/2048 map size.
+  sun.shadow.camera.left = -4.5;
+  sun.shadow.camera.right = 4.5;
+  sun.shadow.camera.top = 4.5;
+  sun.shadow.camera.bottom = -4.5;
+  sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.00015;
   sun.shadow.normalBias = 0.025;
   sun.shadow.radius = preset?.shadowRadius ?? 3;
@@ -1467,6 +1716,9 @@ export function createEnvironment(scene, renderer, preset = null) {
   });
   const fence = createFence(scene, woodTexture);
   const trees = createTrees(scene);
+  // createTrees returns the tree array plus its merged forest group; expose the
+  // group at the top level so the wind sway and shadow LOD actually run.
+  trees.forest = trees.trees?.forest || null;
   const house = createHouse(scene);
   const block = createChoppingBlock(scene);
   const barkTex = createBarkTexture(82, 1.2, 1.3);
@@ -1497,6 +1749,7 @@ export function createEnvironment(scene, renderer, preset = null) {
   const lanterns = createLanterns(scene);
   const puddles = createPuddles(scene);
   const snowOverlay = createSnowOverlay(scene);
+  const contactShadows = createContactShadows(scene);
 
   const state = {
     sun,
@@ -1515,6 +1768,7 @@ export function createEnvironment(scene, renderer, preset = null) {
     lanterns,
     puddles,
     snowOverlay,
+    contactShadows,
     ground,
     windowMaterials: [...(house.windowMaterials || [])],
     elapsed: 0,
@@ -1546,22 +1800,22 @@ export function createEnvironment(scene, renderer, preset = null) {
     if (groundMaterial && groundMaterial.userData.baseColor) {
       groundMaterial.color.copy(groundMaterial.userData.baseColor).multiply(color).multiplyScalar(intensity);
     }
+    const mergedGrass = grass.mergedMaterial;
+    if (mergedGrass?.userData.baseColor) {
+      mergedGrass.color.copy(mergedGrass.userData.baseColor).multiply(color).multiplyScalar(intensity);
+    }
   }
 
   function update(dt, elapsed) {
     state.elapsed = elapsed;
     state.simpleActive = simpleSet.states[0]?.object.material !== simpleSet.states[0]?.original;
-    const activeGrassMaterial = grass.grass?.material || grass.material;
-    const shader = activeGrassMaterial.userData.shader;
-    if (shader) {
+    // Only one of the instanced / merged grass paths is visible; update both so
+    // a live quality switch never starts with stale wind uniforms.
+    for (const material of [grass.grass?.material, grass.weedMat, grass.mergedMaterial]) {
+      const shader = material?.userData?.shader;
+      if (!shader) continue;
       shader.uniforms.uTime.value = elapsed;
       shader.uniforms.uWind.value = state.wind;
-    }
-    const activeWeedMaterial = grass.weeds?.material || grass.weedMat;
-    const weedShader = activeWeedMaterial.userData.shader;
-    if (weedShader) {
-      weedShader.uniforms.uTime.value = elapsed + 2.1;
-      weedShader.uniforms.uWind.value = state.wind * 1.15;
     }
 
     // The whole tree line breathes gently with the wind. The individual trees
@@ -1620,11 +1874,19 @@ export function createEnvironment(scene, renderer, preset = null) {
   function setQuality(p) {
     if (!p) return;
     state.quality = p;
-    if (grass.grass) grass.grass.count = Math.min(MAX_GRASS, p.grass);
-    if (grass.weedMat?.userData.shader) {
-      grass.weedMat.userData.shader.uniforms.uWind.value = state.wind;
+    // Low-quality software rendering uses the pre-merged blade batch: one
+    // ordinary draw instead of two instanced draws, and materially cheaper in
+    // SwiftShader. Medium+ keeps the instanced meshes for full density.
+    const useMergedGrass = Boolean(p.simpleMaterials);
+    if (grass.grass) {
+      grass.grass.count = Math.min(MAX_GRASS, p.grass);
+      grass.grass.visible = !useMergedGrass;
     }
-    if (grass.weeds) grass.weeds.count = Math.min(MAX_WEEDS, p.weeds);
+    if (grass.weeds) {
+      grass.weeds.count = Math.min(MAX_WEEDS, p.weeds);
+      grass.weeds.visible = !useMergedGrass;
+    }
+    if (grass.merged) grass.merged.visible = useMergedGrass;
     if (motes.points) {
       motes.points.visible = p.motes > 0;
       motes.points.geometry.setDrawRange(0, Math.max(0, Math.min(110, p.motes)));
@@ -1655,6 +1917,11 @@ export function createEnvironment(scene, renderer, preset = null) {
       ground.ground.receiveShadow = !useSimpleGround && Boolean(p.shadows);
     }
     if (snowOverlay) snowOverlay.receiveShadow = Boolean(p.shadows);
+    if (contactShadows) {
+      contactShadows.count = p.simpleMaterials
+        ? Math.min(4, contactShadows.userData.maxCount)
+        : contactShadows.userData.maxCount;
+    }
     const canopyShadows = Boolean(p.shadows) && p.name !== 'Low';
     if (trees.forest) {
       trees.forest.traverse((object) => {

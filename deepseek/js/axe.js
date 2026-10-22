@@ -115,7 +115,7 @@ export class Axe {
       points.push(new THREE.Vector3(bend, y, 0));
     }
     const curve = new THREE.CatmullRomCurve3(points);
-    const handleGeo = new THREE.TubeGeometry(curve, 28, 0.029, 9, false);
+    const handleGeo = new THREE.TubeGeometry(curve, 20, 0.029, 7, false);
     const handle = new THREE.Mesh(handleGeo, handleMat);
     handle.castShadow = true;
     handle.receiveShadow = true;
@@ -128,10 +128,10 @@ export class Axe {
     this.group.add(butt);
 
     // Leather grip wraps.
-    for (let i = 0; i < 13; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.033, 0.0052, 5, 14), leatherMat);
+    for (let i = 0; i < 9; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.033, 0.0052, 4, 10), leatherMat);
       ring.rotation.x = Math.PI / 2;
-      ring.position.y = -0.23 + i * 0.032;
+      ring.position.y = -0.23 + i * 0.047;
       ring.castShadow = true;
       this.group.add(ring);
     }
@@ -182,7 +182,7 @@ export class Axe {
       bevelEnabled: true,
       bevelSize: 0.008,
       bevelThickness: 0.007,
-      bevelSegments: 2,
+      bevelSegments: 1,
       curveSegments: 2,
     });
     headGeo.translate(0, 0, -0.035);

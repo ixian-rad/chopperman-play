@@ -24,6 +24,8 @@
     <div id="loading-text">Loading physics engine…</div>
   </div>
 
+  <!-- HUD overlay: a CSS grid so panels never overlap, whatever the text size -->
+  <div id="hud">
   <!-- top-left: progression -->
   <section id="stats" class="panel" aria-live="polite">
     <div class="lvl">
@@ -107,6 +109,7 @@
   </section>
 
   <!-- bottom-centre: timing / power meter -->
+  <div id="bottombar">
   <div id="meter" class="idle">
     <div class="track">
       <div class="zone" id="m-zone"></div>
@@ -118,12 +121,14 @@
   </div>
 
   <div id="hint" class="small">Mouse: aim on the log top · hold LMB to charge, drag ↔ to turn the blade, release to swing · right-drag orbit · wheel zoom</div>
+  </div>
 
   <div id="modebar" class="panel hidden"><span id="mb-text"></span><button id="btn-quitmode" title="Quit to free play">Quit</button></div>
   <div id="toasts" aria-live="polite"></div>
   <div id="hitcard" class="hidden"></div>
 
   <section id="telemetry" class="panel small hidden"></section>
+  </div>
 
   <!-- shop modal -->
   <div id="shop" class="modal hidden" role="dialog" aria-label="Shop">
