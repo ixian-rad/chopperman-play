@@ -68,7 +68,7 @@ export class Simulation {
     if(this.running)return false;
     if(settings.tool==='wedge'&&!this.wedgeReady)return false;
     this.configure(settings);if(this.split)this.reset();this.strikeTool=settings.tool??'axe';
-    this.force=clamp(Number(force)||100,30,150)/100;this.running=true;this.impactHandled=false;this.sectionBroken=false;this.elapsed=0;this.impactEnergy=0;this.impactSpeed=0;this.peakSpeed=0;this.stage='windup';this.contactSource=null;
+    this.force=clamp(Number(force)||100,30,150)/100;this.running=true;this.impactHandled=false;this.sectionBroken=false;this.elapsed=0;this.impactEnergy=0;this.impactSpeed=0;this.peakSpeed=0;this.stage='windup';this.contactSource=null;this.swingSoundPlayed=false;
     this.setPose(1.03,0,1.19,-.66,0);this.preSpeed=0;this.duration=.39/Math.sqrt(this.force);this.strikeAim={...this.settings.aim};
     this.strikeAim.x+=Math.sin(.8+this.time*2.7)*this.settings.weather.wind;
     this.strikeYaw=this.settings.yaw;
@@ -96,11 +96,12 @@ export class Simulation {
       this.elapsed+=dt;const pose=swingPose(this.elapsed,this.force*100,this.strikeAim,this.strikeYaw,this.strikeHeight);
       ({angle,x,y,z,yaw}=pose);this.effort=pose.effort;this.stage=pose.stage;
       if(this.impactHandled){this.stage='follow-through';if(!this.split&&!this.sectionBroken){const t=this.elapsed-this.contactTime,recoil=(this.settings.recoil===false?0:this.response.recoil)*Math.exp(-t*9)*Math.sin(t*28);angle=this.poseAngle+clamp((this.stopAngle??angle)-recoil-this.poseAngle,-8*dt,8*dt);}}
-      if(pose.finished){this.running=false;this.stage='settled';if(!this.impactHandled){this.impactHandled=true;this.contactSource='miss';this.onImpact?.({energy:0,speed:0,split:false,accuracy:0,alignment:0,penetration:0,damage:this.damage,hazard:false,tool:this.strikeTool,source:'miss'});}}
+      if(pose.finished){this.running=false;this.stage='settled';if(!this.impactHandled){this.impactHandled=true;this.contactSource='miss';this.onImpact?.({energy:0,speed:0,split:false,accuracy:0,alignment:0,penetration:0,damage:this.damage,hazard:false,tool:this.strikeTool,x:this.strikeAim.x,z:this.strikeAim.z,source:'miss'});}}
     }else if(this.stage==='settled'){return;}
     this.setPose(angle,x,y,z,yaw);
     const after=this.axe.pointToWorldFrame(HEAD_LOCAL);after.vsub(before,this.preVelocity);this.preVelocity.scale(1/dt,this.preVelocity);this.preSpeed=this.preVelocity.length();
     if(this.running)this.peakSpeed=Math.max(this.peakSpeed,this.preSpeed);
+    if(this.running&&this.stage==='downswing'&&!this.swingSoundPlayed&&this.preSpeed>2+this.force){this.swingSoundPlayed=true;this.onSoundEvent?.('swing',{power:this.force*100,speed:this.preSpeed});}
     // Continuous edge sweep against the supported log's upper face. The width
     // expands the circular target by the blade's 3.5 cm half-width.
     if(this.running&&!this.impactHandled&&this.stage==='downswing'){
@@ -235,7 +236,7 @@ export class Simulation {
     const angle=(panel.start+panel.end)/2,speed=Math.sqrt(2*energy*.10/panel.body.mass);
     panel.body.position.x+=Math.cos(angle)*.008;panel.body.position.z+=Math.sin(angle)*.008;
     panel.body.velocity.set(Math.cos(angle)*speed,.4,Math.sin(angle)*speed+incoming.z*.025);
-    panel.body.angularVelocity.set(Math.sin(angle)*1.6,.3,-Math.cos(angle)*1.6);panel.body.aabbNeedsUpdate=true;this.world.broadphase.dirty=true;this.dynamic.push(panel);this.syncMeshes();
+    panel.body.angularVelocity.set(Math.sin(angle)*1.6,.3,-Math.cos(angle)*1.6);panel.body.aabbNeedsUpdate=true;this.world.broadphase.dirty=true;this.dynamic.push(panel);this.listenFragment(panel.body);this.syncMeshes();
     panel.mesh.updateMatrixWorld(true);
     for(const p of this.inclusionMeshes.filter(p=>p.mesh.parent===this.scene)){
       const owner=this.settings.log.burl?burlSectorAt({...this.settings.log,removedSections:[]},p.x,p.z):this.settings.log.mineral?inclusions({...this.settings.log,removedSections:[]}).findIndex(seed=>seed.x===p.x&&seed.z===p.z):-1;
@@ -258,7 +259,7 @@ export class Simulation {
       const angle=(start+end)/2,dir=new CANNON.Vec3(Math.cos(angle),0,Math.sin(angle));q.vmult(dir,dir);
       body.position.x+=dir.x*.007;body.position.z+=dir.z*.007;
       body.velocity.set(velocity.x*.10+dir.x*radialSpeed, .36+Math.min(.42,radialSpeed*.14),velocity.z*.10+dir.z*radialSpeed+incoming.z*.035);
-      body.angularVelocity.set((rand()-.5)*2.8,(rand()-.5)*1.8,-dir.x*2.4);this.world.addBody(body);
+      body.angularVelocity.set((rand()-.5)*2.8,(rand()-.5)*1.8,-dir.x*2.4);this.world.addBody(body);this.listenFragment(body);
       const geometry=this.fragmentGeometry(verts,faces,n,polygon,cx,cz);
       const piece=mesh(geometry,[this.wood.end,this.wood.bark,this.wood.grain],this.scene);this.dynamic.push({body,mesh:piece,windArea:Math.sqrt(massFraction*Math.PI*this.radius**2)*LOG_HEIGHT});
       piece.position.copy(body.position);piece.quaternion.copy(body.quaternion);piece.updateMatrixWorld(true);
@@ -267,6 +268,15 @@ export class Simulation {
       }
     }
     this.syncMeshes();this.emitChips(energy,Math.min(this.chipLimit??28,14+Math.round(energy*.15)));this.rebuildDebug();
+  }
+  listenFragment(body){
+    let last=-Infinity;
+    body.addEventListener('collide',event=>{
+      if(!this.onSoundEvent||this.time-last<.16)return;
+      const speed=Math.abs(event.contact.getImpactVelocityAlongNormal());
+      if(speed>.35){last=this.time;this.onSoundEvent('fragmentLand',{speed});}
+      if(event.body.mass===0&&Math.hypot(body.velocity.x,body.velocity.z)>.25&&body.angularVelocity.length()>.5){last=this.time;this.onSoundEvent('fragmentRoll',{speed:body.velocity.length(),delay:.07});}
+    });
   }
   isBarkEdge(a,b){
     const outline=this.settings.log.burl?burlOutline(this.settings.log):roundOutline(this.radius);

@@ -96,10 +96,11 @@ async function main() {
   const hud = new Hud(game, weather);
 
   function onSwingEvent(type, data) {
-    if (type === 'downswing') audio.whoosh(data.power);
+    if (type === 'swingStart') audio.windup(data.power);
+    else if (type === 'downswing') audio.whoosh(data.power);
     else if (type === 'blockHit') game.onBlockHit(data);
     else if (type === 'swingEnd') game.onSwingEnd();
-    else if (type === 'wrench') game.stamina = Math.max(0, game.stamina - 3);
+    else if (type === 'wrench') { game.stamina = Math.max(0, game.stamina - 3); audio.wedgePull(); }
   }
 
   game.on('hit', (h) => {
@@ -107,6 +108,11 @@ async function main() {
     if (fpsNow > 20 && h.result !== 'miss') ui.hitStop = h.result === 'split' ? 0.07 : 0.05;
     if (h.result === 'split') {
       if (h.combo > 1) audio.ding(h.combo);
+      audio.points(h.points);
+      // Celebratory stingers: boss down > perfect bullseye > any clean split.
+      if (h.boss) audio.bossDefeated();
+      else if (h.timing === 'perfect' && h.grade === 'Bullseye') { audio.perfect(); audio.splitStinger('perfect'); }
+      else if (h.grade === 'Bullseye' || h.grade === 'Clean split') audio.splitStinger('clean');
       // Perfect-timed bullseyes and boss kills get a longer, deeper slow-mo.
       const big = (h.timing === 'perfect' && h.grade === 'Bullseye') || h.boss;
       if (big && fpsNow > 20) ui.hitStop = 0.12;
@@ -118,6 +124,15 @@ async function main() {
     sparkLight.intensity = 8;
   });
   game.on('yaw', (d) => { ui.camYaw += d; });
+  game.on('meter', (on) => { if (on) audio.meterStart(); });
+  game.on('swing', () => { audioUi.lastSwing = performance.now(); });
+  game.on('modeEnd', (sum) => {
+    if (sum.reason === 'quit') return;
+    if (sum.reason === 'time') audio.timeUp();
+    audio.modeComplete(sum.stars ?? 0);
+    if (sum.best) audio.achievement();
+  });
+  const audioUi = { lastSwing: 0, meterQ: -1, meterIn: false, modals: document.querySelectorAll('.modal') };
 
   // ------------------------------------------------------------ settings + quality
   const S = game.p.settings;
@@ -149,7 +164,6 @@ async function main() {
   weather.setHour(S.hour ?? 16.5);
   weather.timeFlow = S.timeFlow !== false;
   weather.onThunder = (dist, delay) => setTimeout(() => audio.thunder(dist), delay * 1000);
-  audio.setEnabled(S.sound !== false);
   ui.slowmo = S.slowmo !== false;
 
   // ------------------------------------------------------------ input
@@ -165,6 +179,7 @@ async function main() {
     const el = $(id);
     const open = el.classList.contains('hidden');
     for (const m of document.querySelectorAll('.modal')) m.classList.add('hidden');
+    audio.uiOpen(open);
     if (open) {
       el.classList.remove('hidden');
       if (id === 'shop') hud.openShop();
@@ -172,7 +187,9 @@ async function main() {
     }
   }
 
+  // Audio settings live in their own localStorage key (see audio.js); S.sound mirrors the SFX toggle.
   function setSound(on) { audio.setEnabled(on); S.sound = on; $('chk-sound').checked = on; }
+  function setMusic(on) { audio.setMusicOn(on); $('chk-music').checked = on; }
   function setSlowmo(on) { ui.slowmo = on; S.slowmo = on; $('chk-slowmo').checked = on; if (!on) ui.cine.active = false; }
   function setTelemetry(on) { ui.telemetry = on; $('telemetry').classList.toggle('hidden', !on); physics.debugLines.visible = false; }
   function resetCamera() {
@@ -199,7 +216,7 @@ async function main() {
       case 'KeyH': toggleModal('help'); break;
       case 'KeyG': game.sharpen(); break;
       case 'KeyR': resetScene(); break;
-      case 'KeyM': setSound(!audio.enabled); break;
+      case 'KeyM': setMusic(!audio.prefs.musicOn); game.toast(audio.prefs.musicOn ? 'Music on' : 'Music muted'); break;
       case 'KeyT': weather.cycleTime(); break;
       case 'KeyN': setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weather.presetId) + 1) % WEATHER_ORDER.length]); break;
       case 'KeyK': {
@@ -225,17 +242,35 @@ async function main() {
   $('btn-time').addEventListener('click', () => weather.cycleTime());
   $('chk-timeflow').addEventListener('change', (e) => { weather.timeFlow = e.target.checked; S.timeFlow = e.target.checked; });
   $('chk-sound').addEventListener('change', (e) => setSound(e.target.checked));
+  $('chk-music').addEventListener('change', (e) => setMusic(e.target.checked));
+  for (const [id, fn] of [['vol-music', (v) => audio.setMusicVolume(v)], ['vol-sfx', (v) => audio.setSfxVolume(v)]]) {
+    const el = $(id);
+    el.value = Math.round(100 * (id === 'vol-music' ? audio.prefs.musicVolume : audio.prefs.sfxVolume));
+    el.addEventListener('input', () => fn(el.value / 100));
+    el.addEventListener('change', () => { el.blur(); if (id === 'vol-sfx') audio.uiClick(); });
+  }
+  // UI sounds for every button / toggle (shop actions play their own purchase / denied sounds).
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest?.('button, input[type=checkbox], select');
+    if (!el || el.closest('[data-act]')) return;
+    if (el.matches('[data-close]')) audio.uiOpen(false); else audio.uiClick();
+  });
+  document.addEventListener('pointerover', (e) => {
+    const b = e.target.closest?.('button');
+    if (b && !b.disabled && !(e.relatedTarget && b.contains(e.relatedTarget))) audio.uiHover();
+  });
   $('chk-slowmo').addEventListener('change', (e) => setSlowmo(e.target.checked));
   $('sel-weather').addEventListener('change', (e) => { setWeather(e.target.value); e.target.blur(); });
   $('sel-quality').addEventListener('change', (e) => { applyQuality(e.target.value, true); e.target.blur(); });
   for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => $(b.dataset.close).classList.add('hidden'));
   // Keep Space from re-clicking focused buttons.
-  for (const b of document.querySelectorAll('button, input[type=checkbox]')) {
+  for (const b of document.querySelectorAll('button, input[type=checkbox], input[type=range]')) {
     b.addEventListener('keydown', (e) => { if (e.code === 'Space') e.preventDefault(); });
     b.addEventListener('keyup', (e) => { if (e.code === 'Space') e.preventDefault(); });
   }
   $('chk-timeflow').checked = weather.timeFlow;
   $('chk-sound').checked = audio.enabled;
+  $('chk-music').checked = audio.prefs.musicOn;
   $('chk-slowmo').checked = ui.slowmo;
   $('sel-weather').value = S.weather ?? 'clear';
 
@@ -290,7 +325,10 @@ async function main() {
       const v = p.entry.body.linvel();
       pieceVel.set(v.x, v.y, v.z);
       const dv = pieceVel.distanceTo(p.lastVel);
-      if (dv > 1.2 && p.entry.body.translation().y < 0.6) audio.knock(dv / 4);
+      const y = p.entry.body.translation().y;
+      // Landings / bounces (audio.land is rate-limited); slow tumbling on the lawn rolls.
+      if (dv > 1.2 && y < 0.9) audio.land(dv, y);
+      else if (y < 0.3 && dv < 0.4 && Math.hypot(v.x, v.z) > 0.8) audio.roll(Math.hypot(v.x, v.z));
       p.lastVel.copy(pieceVel);
     }
   }
@@ -343,6 +381,14 @@ async function main() {
     const cond = weather.conditions;
     windV = cond.wind;
     game.update(dtReal);
+    // Timing meter: ticks at the quarter marks and a ping when the needle enters the sweet zone.
+    if (game.meter.active) {
+      const v = game.meter.value, q = Math.floor(v * 4);
+      if (q !== audioUi.meterQ) { if (audioUi.meterQ >= 0) audio.meterTick(false); audioUi.meterQ = q; }
+      const [lo, hi] = game.sweetZone, inZ = v >= lo && v <= hi;
+      if (inZ && !audioUi.meterIn) audio.meterTick(true);
+      audioUi.meterIn = inZ;
+    } else audioUi.meterQ = -1;
 
     // Surface friction follows the weather (wet / icy pieces slide further).
     const fk = `${Math.round(cond.wet * 4)}|${Math.round(cond.icy * 4)}`;
@@ -408,12 +454,77 @@ async function main() {
     }
     if (ambT > 0.3) {
       ambT = 0;
-      audio.ambience(weather.cur.rain, cond.wind.speed);
+      audio.ambience({
+        rain: weather.cur.rain, snow: weather.cur.snow, wind: cond.wind.speed, gust: cond.wind.gust,
+        night: cond.night, temp: cond.temp, fog: cond.fog, id: cond.id, window: 0.3,
+      });
+      updateMusic();
     }
   }
 
+  // Soundtrack section + intensity: menu while a menu is open or after ~30 s idle, gameplay while
+  // chopping (intensity follows the combo streak), boss while a boss round is on the block.
+  function updateMusic() {
+    const now = performance.now();
+    const modal = [...audioUi.modals].some((m) => !m.classList.contains('hidden'));
+    const boss = !!logs.log?.params.boss;
+    const idle = !audioUi.lastSwing || now - audioUi.lastSwing > 30000;
+    const recent = audioUi.lastSwing && now - audioUi.lastSwing < 5000 ? 0.12 : 0;
+    const section = boss && !modal ? 'boss' : modal || idle ? 'menu' : 'gameplay';
+    const intensity = boss ? 0.75 + 0.06 * game.combo + recent : 0.22 + 0.11 * game.combo + recent;
+    audio.music.setState(section, Math.min(1, intensity));
+  }
+
   // ------------------------------------------------------------ globals for automation
-  window.swing = (power) => game.testSwing(power);
+  window.getAudioState = () => audio.state();
+  // Scripted ~N-second showcase for recordings: swings of varied power, weather + time changes,
+  // UI sounds and a boss round. Needs an unlocked AudioContext (click the page first, or launch
+  // the browser with --autoplay-policy=no-user-gesture-required). Resolves to getAudioState().
+  window.audioDemo = async (seconds = 60) => {
+    audio.unlock();
+    if (!audio.ctx) return audio.state();
+    try { await audio.ctx.resume(); } catch { /* still locked */ }
+    audio.prefs.musicOn = true; // for this session only (not saved)
+    audio.applyVolumes();
+    audio.music.start();
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const saved = { weather: S.weather ?? 'clear', hour: weather.hour };
+    const t0 = performance.now(), end = t0 + seconds * 1000;
+    const wx = ['clear', 'rain', 'storm', 'snow', 'wind', 'fog', 'frost', 'clear'];
+    weather.setHour(9);
+    for (const [fn, ms] of [[() => audio.uiHover(), 0], [() => audio.uiClick(), 200], [() => audio.uiOpen(true), 400], [() => audio.purchase(), 700], [() => audio.denied(), 1200], [() => audio.sharpen(), 1600], [() => audio.uiOpen(false), 2400]]) setTimeout(fn, ms);
+    await sleep(2600);
+    let i = 0, boss = false, night = false;
+    while (performance.now() < end) {
+      const el = (performance.now() - t0) / 1000;
+      if (i % 4 === 1) setWeather(wx[Math.floor(i / 4) % wx.length], true);
+      if (!night && el > seconds * 0.4) { night = true; weather.setHour(22); }
+      if (!boss && el > seconds * 0.6) {
+        boss = true;
+        window.game.makeRound({ species: 'oak', traits: ['huge', 'knotty'], boss: { name: 'Demo Stump' } });
+        audio.bossIntro();
+        await sleep(1500);
+      }
+      if (i % 6 === 3) { game.startMeter(false); await sleep(1300); game.cancelMeter(); }
+      window.swing(0.5 + 0.5 * Math.random());
+      const ts = performance.now();
+      while (!['ready', 'done'].includes(swingCtl.state) && performance.now() - ts < 5000) await sleep(100);
+      await sleep(500 + Math.random() * 600);
+      i++;
+    }
+    setWeather(saved.weather, true);
+    weather.setHour(saved.hour);
+    audio.prefs.musicOn = audio.loadPrefs().musicOn;
+    audio.applyVolumes();
+    if (!audio.prefs.musicOn) audio.music.stop();
+    return audio.state();
+  };
+  window.swing = (power) => {
+    // Lets automation drive the soundtrack too, but only once the page has had a user activation
+    // (so the AudioContext never trips the autoplay warning).
+    if ((!audio.ctx || audio.ctx.state !== 'running') && navigator.userActivation?.hasBeenActive) audio.unlock();
+    return game.testSwing(power);
+  };
   window.resetScene = () => resetScene();
   window.getGameState = () => game.state();
   window.game = {

@@ -9,6 +9,7 @@ import { Game, WEATHER, CHAPTERS } from './game.js';
 import { Contract, dailySeed } from './challenges.js';
 import { grainAt, crackPoint, LOG_RADIUS, LOG_TOP, evolveCondition, conditionPhysics, pullGesture, inclusions, inclusionAt, knotAt, burlSectorAt } from './mechanics.js';
 import { Atmosphere } from './atmosphere.js';
+import { AudioManager } from './audio.js';
 
 const $=id=>document.getElementById(id);
 const viewport=$('viewport');if(innerWidth<=760)$('conditions').open=false;
@@ -52,18 +53,20 @@ for(const batch of batches.values()){
 }
 const actor=createHumanoid(scene);
 let storage;try{if(!new URLSearchParams(location.search).has('test'))storage=localStorage;}catch{/* Session play is available without storage. */}
+const audio=new AudioManager({storage});
 const campaignGame=new Game(storage);let game=campaignGame,contract=null,contractLastTick=performance.now();
 let condition={moisture:.08,frost:0},campaignConditions=null;const frostColor=new THREE.Color(0xdce4df);
 function physicalWeather(){return conditionPhysics(condition,WEATHER[atmosphere.weather]);}
 const atmosphere=new Atmosphere(scene,sun,ambient,wood);
 let currentLog=game.log,aim={x:0,z:0},yaw=currentLog.grain,slowMotion=false,armed=false,meterStart=0,meter=.82,feedbackUntil=0;
-let soundContext,quality='medium',qualityMode='auto',composer,postLoading=false,qualityEpoch=0;
+let quality='medium',qualityMode='auto',composer,postLoading=false,qualityEpoch=0;
 let fps=60,frameTime=0,frames=0,qualityClock=0,lastReadout=0,lastSave=0;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let impactEffects=!reducedMotion,hitStopUntil=0,perfectUntil=0,shakeUntil=0,shakeStrength=0;
 $('impact-effects').checked=impactEffects;
 const simulation=new Simulation(scene,wood,result=>{
   if(contract?.finished)return;
+  const previousLevel=game.level,previousBestCombo=game.bestCombo;
   const graded=contract?.grade(result,currentLog)??{};const hit=game.hit({...result,...graded,contract:!!contract},currentLog);contract?.hit(hit,game.score);
   const perfectPrecision=!!hit.precisionGrade?.bullseye&&result.split;
   $('energy').textContent=Math.round(result.energy);$('fracture').textContent=result.panelBroken&&!result.split?`${result.remainingPanels} ${currentLog.burl?'stump sections':currentLog.mineral?'stone-bound sections':currentLog.rotten?'pieces':currentLog.forked?'sections':'walls'} remain`:result.split?`Split into ${simulation.dynamic.length}`:result.source==='miss'?'Missed':result.hazard?result.hazardKind==='stone'?'Embedded stone!':'Steel staple!':`${Math.round(result.damage*100)}% · grain holding`;$('penetration').textContent=`${Math.round(result.penetration*1000)} mm`;
@@ -74,8 +77,17 @@ const simulation=new Simulation(scene,wood,result=>{
   if(impactEffects&&result.energy>0){const now=performance.now();hitStopUntil=now+(hit.clean||perfectPrecision?65:40);perfectUntil=hit.clean||perfectPrecision?now+350:0;shakeUntil=now+(result.split?280:150);shakeStrength=result.hazard?.018:result.split?.035:.013;}
   if(result.hazard)atmosphere.spark(result.x,result.z);
   if(result.panelBroken)game.stamina=Math.min(game.maxStamina,game.stamina+8);
-  guide.visible=!result.split;playImpact(result.energy,result.split,result.hazardKind,result.coreCrumbled,perfectPrecision);updateHUD();
+  guide.visible=!result.split;audio.impact(result,currentLog,condition);
+  if(hit.points>0)audio.play('points');
+  if(hit.combo>1)audio.play('combo',{combo:hit.combo});
+  if(hit.clean||hit.precisionGrade?.bullseye){audio.play('perfect');audio.celebrate(!!hit.precisionGrade?.bullseye);}
+  if(game.level>previousLevel)audio.play('levelUp');
+  if(hit.combo>=5&&previousBestCombo<5)audio.play('achievement');
+  if(result.split&&hit.boss){audio.play('bossDefeated');audio.play('chapterComplete',{delay:.7});}
+  if(hit.campaignVictory)audio.play('campaignComplete',{delay:1.1});
+  updateHUD();
 });
+simulation.onSoundEvent=(name,data)=>audio.play(name,data);
 simulation.configure({log:currentLog,recoil:impactEffects});simulation.reset();
 
 // End-grain target, grain direction, knot and staple all share the physics coordinates.
@@ -96,7 +108,7 @@ let resultsSignature='';
 function updateResults(){
   const result=contract?.result;$('contract-results').hidden=!result;
   if(!result){resultsSignature='';return;}
-  const signature=JSON.stringify(result);if(signature===resultsSignature)return;resultsSignature=signature;
+  const signature=JSON.stringify(result);if(signature===resultsSignature)return;resultsSignature=signature;audio.play('contractComplete');if(result.newBest)audio.play('achievement',{delay:.5});
   $('result-medal').textContent=`${result.medal.toUpperCase()} · ${modeName(contract.mode)}`;
   $('contract-results').dataset.medal=result.medal.toLowerCase();
   $('result-score').textContent=`${result.score.toLocaleString()} points`;
@@ -107,6 +119,7 @@ function updateResults(){
 }
 function updateHUD(){
   const locked=!!contract?.finished;
+  audio.setGameState({combo:contract?.mode==='precision'?contract.precisionCombo:game.combo,boss:!!currentLog.boss&&!simulation.split,menu:!!contract?.finished||!!$('help-dialog').open});
   updateResults();
   $('start-contract').disabled=simulation.running;
   $('contract-status').textContent=contract?contract.finished?`FINISHED · ${game.score} pts · BEST ${contract.best}`:contract.mode==='precision'?`${contract.round} / 6 logs · ${12-contract.swings} strikes left · ${contract.bullseyes} bullseyes`:contract.mode==='daily'?`${contract.seed} UTC · ${contract.round} / 6 logs · ${Math.floor(contract.elapsed)}s`:`${Math.ceil(contract.remaining)}s · ${contract.round} logs · BEST ${contract.best}`:'Campaign progress saves automatically.';
@@ -141,13 +154,14 @@ function prepareLog(){
   const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;clearTelemetry();updateGuide();
 }
 function resetScene(){
+  audio.play('reset');
   // Replacing a log during a precision windup still spends that attempt.
   if(contract?.mode==='precision'&&simulation.running&&!simulation.impactHandled&&!contract.finished){const miss={source:'miss',split:false,accuracy:0,alignment:0,hazard:false,tool:'axe'};const hit=game.hit({...miss,...contract.grade(miss,currentLog),contract:true},currentLog);contract.hit(hit,game.score);}
   armed=false;pointer=null;clearPull();hitStopUntil=perfectUntil=shakeUntil=0;prepareLog();$('timing-label').textContent='Ready to find your rhythm';$('timing-value').textContent='100%';$('timing-needle').style.left='82%';$('hit-feedback').classList.remove('visible');$('scene-status').textContent='Aim on the log or grain reader. Pull down and release to chop.';updateHUD();return window.getSimulationState();}
 function performSwing(power,automatic=false,pointerSwing=false){
   if(simulation.running||contract?.finished)return false;
   if(pointer){pointer=null;clearPull();}
-  if(game.stamina<game.cost){$('scene-status').textContent='Let your stamina recover for a moment.';return false;}
+  if(game.stamina<game.cost){audio.play('denied');$('scene-status').textContent='Let your stamina recover for a moment.';return false;}
   if(simulation.split)prepareLog();
   if(power===undefined)power=automatic?(currentLog.precisionTarget?.power??100):100;
   if(automatic){const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;updateGuide();}
@@ -156,19 +170,19 @@ function performSwing(power,automatic=false,pointerSwing=false){
   const strikeYaw=automatic?yaw:yaw+(1-timingQuality)*.08;
   const number=Number(power);power=Number.isFinite(number)?THREE.MathUtils.clamp(number,30,150):100;
   if(!game.begin())return false;beginContract();
-  armed=false;unlockAudio();$('timing-label').textContent='Power locked';$('timing-value').textContent=`${Math.round(power)}%`;$('energy').textContent='—';$('hit-feedback').classList.remove('visible');
+  armed=false;unlockAudio();audio.activity();$('timing-label').textContent='Power locked';$('timing-value').textContent=`${Math.round(power)}%`;$('energy').textContent='—';$('hit-feedback').classList.remove('visible');
   aim={...strikeAim};yaw=strikeYaw;updateGuide();
   simulation.swing(power,{tool:'axe',log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass,aim:strikeAim,yaw:strikeYaw,timing:meter});
   $('scene-status').textContent='Weight up. Eyes on the grain.';updateHUD();return true;
 }
 function driveWedge(){
-  if(contract?.finished||!simulation.wedgeReady||!game.begin(12))return false;beginContract();
-  armed=false;unlockAudio();simulation.swing(100,{tool:'wedge',aim:{...aim},log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass});
+  if(contract?.finished||!simulation.wedgeReady||!game.begin(12)){audio.play('denied');return false;}beginContract();
+  armed=false;unlockAudio();audio.activity();if(!simulation.seatedWedge)audio.play('wedgeSeat');simulation.swing(100,{tool:'wedge',aim:{...aim},log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass});
   $('hit-feedback').classList.remove('visible');$('scene-status').textContent='Wedge seated. Drive the existing fracture open.';updateHUD();return true;
 }
 function extractWedge(){
-  if(contract?.finished||simulation.running||!simulation.seatedWedge||!game.begin(simulation.extractionCost))return false;
-  simulation.extractWedge();$('scene-status').textContent='Wedge pulled. Aim near another open crack to seat it there.';updateGuide();updateHUD();return true;
+  if(contract?.finished||simulation.running||!simulation.seatedWedge||!game.begin(simulation.extractionCost)){audio.play('denied');return false;}
+  audio.play('wedgeExtract');simulation.extractWedge();$('scene-status').textContent='Wedge pulled. Aim near another open crack to seat it there.';updateGuide();updateHUD();return true;
 }
 $('extract-wedge').addEventListener('click',extractWedge);
 function meterAction(){
@@ -176,15 +190,35 @@ function meterAction(){
   unlockAudio();if(!armed){if(simulation.split)prepareLog();armed=true;meterStart=performance.now();$('timing-label').textContent='Stop in the green zone';updateHUD();}
   else {const timing=1-Math.min(1,Math.abs(meter-.81)/.81);performSwing(45+timing*75);}
 }
-function unlockAudio(){try{soundContext??=new(window.AudioContext||window.webkitAudioContext)();if(soundContext.state==='suspended')soundContext.resume().catch(()=>{});}catch{/* Optional audio. */}}
-function playImpact(energy,split,hazard,rotten=false,bullseye=false){
-  if(!soundContext||soundContext.state!=='running')return;
-  const now=soundContext.currentTime,buffer=soundContext.createBuffer(1,soundContext.sampleRate*.2,soundContext.sampleRate),data=buffer.getChannelData(0);
-  for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.exp(-i/(data.length*.13));
-  const noise=soundContext.createBufferSource();noise.buffer=buffer;const filter=soundContext.createBiquadFilter();filter.type='lowpass';filter.frequency.value=hazard==='stone'?4000:hazard?6500:rotten?550:split?2500:800;const gain=soundContext.createGain();gain.gain.setValueAtTime(Math.min(.15,energy*.0012),now);gain.gain.exponentialRampToValueAtTime(.001,now+.2);noise.connect(filter).connect(gain).connect(soundContext.destination);noise.start();
-  const thud=soundContext.createOscillator(),volume=soundContext.createGain();thud.frequency.setValueAtTime(hazard==='stone'?440:hazard?900:rotten?65:110,now);thud.frequency.exponentialRampToValueAtTime(hazard?300:45,now+.12);volume.gain.setValueAtTime(.09,now);volume.gain.exponentialRampToValueAtTime(.001,now+.16);thud.connect(volume).connect(soundContext.destination);thud.start();thud.stop(now+.2);
-  if(bullseye)for(const [delay,frequency] of [[0,660],[.08,990]]){const tone=soundContext.createOscillator(),v=soundContext.createGain();tone.type='sine';tone.frequency.value=frequency;v.gain.setValueAtTime(0,now+delay);v.gain.linearRampToValueAtTime(.045,now+delay+.008);v.gain.exponentialRampToValueAtTime(.001,now+delay+.22);tone.connect(v).connect(soundContext.destination);tone.start(now+delay);tone.stop(now+delay+.24);}
+function unlockAudio(){return audio.unlock();}
+
+// First gesture anywhere unlocks both the soundtrack and SFX. The listeners
+// remain available to recover a browser-interrupted AudioContext later.
+for(const event of ['pointerdown','keydown','click'])document.addEventListener(event,()=>audio.unlock(),{capture:true,passive:true});
+function syncAudioControls(){
+  $('music-volume').value=Math.round(audio.musicVolume*100);$('sfx-volume').value=Math.round(audio.sfxVolume*100);
+  $('music-mute').checked=!audio.musicOn;$('sfx-mute').checked=!audio.sfxOn;
+  $('music-volume-value').textContent=`${Math.round(audio.musicVolume*100)}%`;$('sfx-volume-value').textContent=`${Math.round(audio.sfxVolume*100)}%`;
 }
+for(const channel of ['music','sfx']){
+  $(`${channel}-volume`).addEventListener('input',e=>{audio.configure({[`${channel}Volume`]:Number(e.target.value)/100});syncAudioControls();});
+  $(`${channel}-mute`).addEventListener('change',e=>{audio.configure({[`${channel}On`]:!e.target.checked});syncAudioControls();});
+}
+syncAudioControls();
+document.addEventListener('click',e=>{const target=e.target.closest?.('button,summary,a');if(target&&!target.disabled)audio.play('click');},true);
+document.addEventListener('pointerover',e=>{const target=e.target.closest?.('button,summary,select,a');if(target&&!target.disabled&&!target.contains(e.relatedTarget))audio.play('hover');});
+document.addEventListener('focusin',e=>{if(e.target.matches?.('button,summary,select'))audio.play('hover');});
+document.addEventListener('pointerdown',e=>{
+  const target=e.target.closest?.('button:disabled');if(!target)return;
+  const price=target.matches('[data-upgrade]')?game.price(target.dataset.upgrade):target.id==='repair-edge'?12:Infinity;
+  if(game.coins<price||target.matches('#swing-button,#wedge-button,#extract-wedge'))audio.play('denied');
+},true);
+document.addEventListener('input',e=>{if(e.target.matches?.('input[type=range]'))audio.play('click');});
+document.addEventListener('change',e=>{if(e.target.matches?.('select,input[type=checkbox]'))audio.play('click');});
+for(const details of document.querySelectorAll('details'))details.addEventListener('toggle',()=>audio.play(details.open?'menuOpen':'menuClose'));
+window.addEventListener('keydown',e=>{if(e.code==='KeyM'&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target?.matches?.('input,textarea,select')){audio.configure({musicOn:!audio.musicOn});syncAudioControls();}});
+window.getAudioState=()=>audio.getAudioState();
+window.audioDemo=seconds=>audio.audioDemo(seconds);
 
 // Input: screen coordinates are projected onto the physical top of the log.
 const ray=new THREE.Raycaster(),pointerNDC=new THREE.Vector2(),aimPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-1.333),hitPoint=new THREE.Vector3();
@@ -246,19 +280,19 @@ function aimAt(event){
 }
 for(const surface of [renderer.domElement,reader]){
   surface.addEventListener('pointermove',e=>{if(!pointer)aimAt(e);else if(pointer.id===e.pointerId)previewPull(e);});
-  surface.addEventListener('pointerdown',e=>{if(e.button!==0||simulation.running||contract?.finished)return;if(simulation.split)prepareLog();if(!aimAt(e))return;pointer={id:e.pointerId,x:e.clientX,y:e.clientY,time:performance.now(),lastX:e.clientX,lastY:e.clientY,yaw,wasArmed:armed};surface.setPointerCapture(e.pointerId);unlockAudio();if(!armed){armed=true;meterStart=performance.now();}updateHUD();});
+  surface.addEventListener('pointerdown',e=>{if(e.button!==0||simulation.running||contract?.finished)return;if(simulation.split)prepareLog();if(!aimAt(e))return;audio.play('aim');pointer={id:e.pointerId,x:e.clientX,y:e.clientY,time:performance.now(),lastX:e.clientX,lastY:e.clientY,yaw,wasArmed:armed};surface.setPointerCapture(e.pointerId);unlockAudio();if(!armed){armed=true;meterStart=performance.now();}updateHUD();});
   surface.addEventListener('pointerup',e=>{
     if(!pointer||pointer.id!==e.pointerId)return;
     const p=pointer,pull=pullGesture(e.clientX-p.x,e.clientY-p.y,(performance.now()-p.time)/1000);pointer=null;clearPull();
     if(pull.distance>12){yaw=p.yaw+pull.yawDelta;yaw=Math.atan2(Math.sin(yaw),Math.cos(yaw));performSwing(pull.power,false,true);updateGuide();}
     else {yaw=p.yaw;if(p.wasArmed||performance.now()-p.time>180)meterAction();else $('scene-status').textContent='Meter running. Click Swing or press Space to stop it.';}
   });
-  const cancelPull=()=>{if(pointer){yaw=pointer.yaw;pointer=null;armed=false;clearPull();updateGuide();updateHUD();}};
+  const cancelPull=()=>{if(pointer){audio.play('cancel');yaw=pointer.yaw;pointer=null;armed=false;clearPull();updateGuide();updateHUD();}};
   surface.addEventListener('pointercancel',cancelPull);surface.addEventListener('lostpointercapture',cancelPull);
 }
 $('swing-button').addEventListener('click',meterAction);$('reset-button').addEventListener('click',resetScene);
 $('wedge-button').addEventListener('click',driveWedge);
-$('repair-edge').addEventListener('click',()=>{if(simulation.running)return;$('shop-message').textContent=game.repair()?'Edge restored. Avoid visible steel.':'Repair costs 12 coins and restores a chipped edge.';updateHUD();});
+$('repair-edge').addEventListener('click',()=>{if(simulation.running)return;const repaired=game.repair();audio.play(repaired?'repair':'denied');if(repaired)audio.play('sharpen');$('shop-message').textContent=repaired?'Edge restored. Avoid visible steel.':'Repair costs 12 coins and restores a chipped edge.';updateHUD();});
 function beginContract(){
   if(contract&&!contract.started)contractLastTick=performance.now();
   contract?.begin();
@@ -279,9 +313,9 @@ function selectMode(mode){
 $('start-contract').addEventListener('click',()=>selectMode($('game-mode').value));
 $('replay-contract').addEventListener('click',()=>{if(contract)selectMode(contract.mode);});
 $('return-campaign').addEventListener('click',()=>selectMode('campaign'));
-function centerAim(){if(simulation.running)return;const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;updateGuide();updateHUD();}
+function centerAim(){if(simulation.running)return;audio.play('aim');const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;updateGuide();updateHUD();}
 $('center-button').addEventListener('click',centerAim);
-document.querySelectorAll('[data-upgrade]').forEach(button=>button.addEventListener('click',()=>{if(simulation.running||contract)return;const upgraded=game.upgrade(button.dataset.upgrade);$('shop-message').textContent=upgraded?'Ready for your next swing.':'A few more good chops will pay for it.';updateHUD();}));
+document.querySelectorAll('[data-upgrade]').forEach(button=>button.addEventListener('click',()=>{if(simulation.running||contract)return;const upgraded=game.upgrade(button.dataset.upgrade);audio.play(upgraded?'purchase':'denied');if(upgraded&&button.dataset.upgrade==='sharpness')audio.play('sharpen');$('shop-message').textContent=upgraded?'Ready for your next swing.':'A few more good chops will pay for it.';updateHUD();}));
 $('weather').addEventListener('change',e=>{if(!contract)atmosphere.setWeather(e.target.value);});
 $('time').addEventListener('input',e=>{if(contract)return;atmosphere.hour=Number(e.target.value);atmosphere.cycle=false;$('day-cycle').checked=false;});
 $('day-cycle').addEventListener('change',e=>{if(!contract)atmosphere.cycle=e.target.checked;});
@@ -291,14 +325,15 @@ $('debug-physics').addEventListener('change',e=>{simulation.setDebug(e.target.ch
 $('camera-button').addEventListener('click',resetCamera);
 let resetConfirmUntil=0;
 $('reset-progress').addEventListener('click',()=>{if(performance.now()>resetConfirmUntil){resetConfirmUntil=performance.now()+4000;$('reset-progress').textContent='Click again to erase saved progress';return;}campaignGame.reset();if(contract)selectMode('campaign');else resetScene();$('reset-progress').textContent='Reset saved progress';});
-const dialog=$('help-dialog');$('help-button').addEventListener('click',()=>dialog.showModal());dialog.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());dialog.querySelector('.dialog-done').addEventListener('click',()=>dialog.close());
+const dialog=$('help-dialog');$('help-button').addEventListener('click',()=>{dialog.showModal();audio.play('menuOpen');audio.setGameState({menu:true});});dialog.addEventListener('close',()=>{audio.play('menuClose');audio.setGameState({menu:false});});dialog.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());dialog.querySelector('.dialog-done').addEventListener('click',()=>dialog.close());
 window.addEventListener('keydown',e=>{
   if(dialog.open||e.target?.matches?.('input,textarea,select,button,a,summary')||e.ctrlKey||e.metaKey||e.altKey||e.repeat)return;
   if(e.code==='Space'){e.preventDefault();meterAction();}
   else if(e.code==='KeyX')extractWedge();else if(e.code==='KeyR')resetScene();else if(e.code==='KeyW')driveWedge();else if(e.code==='KeyC')centerAim();else if(e.code==='KeyS'&&!contract){$('slow-motion').checked=!slowMotion;$('slow-motion').dispatchEvent(new Event('change'));}
   else if(!simulation.running){if(e.code==='KeyQ')yaw-=Math.PI/36;if(e.code==='KeyE')yaw+=Math.PI/36;
     yaw=Math.atan2(Math.sin(yaw),Math.cos(yaw));
-    if(e.code.startsWith('Arrow')){e.preventDefault();const step=.015;if(e.code==='ArrowLeft')aim.x-=step;if(e.code==='ArrowRight')aim.x+=step;if(e.code==='ArrowUp')aim.z-=step;if(e.code==='ArrowDown')aim.z+=step;aim.x=THREE.MathUtils.clamp(aim.x,-.34,.34);aim.z=THREE.MathUtils.clamp(aim.z,-.34,.34);}updateGuide();updateHUD();}
+    if(['KeyQ','KeyE'].includes(e.code))audio.play('aim');
+    if(e.code.startsWith('Arrow')){audio.play('aim');e.preventDefault();const step=.015;if(e.code==='ArrowLeft')aim.x-=step;if(e.code==='ArrowRight')aim.x+=step;if(e.code==='ArrowUp')aim.z-=step;if(e.code==='ArrowDown')aim.z+=step;aim.x=THREE.MathUtils.clamp(aim.x,-.34,.34);aim.z=THREE.MathUtils.clamp(aim.z,-.34,.34);}updateGuide();updateHUD();}
 });
 
 async function setQuality(value){
@@ -350,7 +385,7 @@ window.runPhysicsChecks=()=>{
   for(const delta of [1/60,1/15,.25,.5]){test.configure({log:{...currentLog},weather:{...WEATHER.sun},aim:{x:0,z:0},yaw:currentLog.grain,sharpness:game.sharpness,axeMass:game.axeMass});test.reset();const target=test.goodAim();test.swing(100,{aim:{x:target.x,z:target.z},yaw:target.yaw});for(let t=0;t<4;t+=delta)test.update(delta);const s=test.snapshot();trials.push({delta,hit:s.energy>0,peakSpeed:s.peakSpeed,source:s.contactSource,visualsMatch:!s.split||!s.logVisible&&s.fragmentMeshes===s.expectedPieces});}
   test.reset();testScene.traverse(o=>{o.geometry?.dispose();if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material])if(!Object.values(wood).includes(m))m.dispose?.();}});return {ok:trials.every(t=>t.hit&&t.peakSpeed<=15.2&&t.visualsMatch),trials};
 };
-let previous=performance.now();
+let previous=performance.now(),lastMeterBucket=-1,lastPerfectZone=false;
 function animate(now){
   const elapsed=Math.max(0,(now-previous)/1000),dt=Math.min(elapsed,.5);previous=now;
   const wasRunning=simulation.running,impactScale=now<hitStopUntil?0:now<perfectUntil?.3:1;const wasFinished=contract?.finished;
@@ -363,7 +398,9 @@ function animate(now){
   atmosphere.update(Math.min(dt,.1),quality,simulation.time);controls.update();updateGuide();
   if(pointer)previewPull({clientX:pointer.lastX,clientY:pointer.lastY});
   if(armed&&!pointer){meter=(Math.sin((now-meterStart)/1000*4.4-Math.PI/2)+1)/2;$('timing-needle').style.left=`${meter*100}%`;if(!pointer)$('timing-value').textContent=`${Math.round(45+(1-Math.min(1,Math.abs(meter-.81)/.81))*75)}%`;}
-  if(now-lastReadout>120){updateHUD();
+  if(!armed||pointer){lastMeterBucket=-1;lastPerfectZone=false;}
+  else {const bucket=Math.floor(meter*10),perfectZone=meter>=.75&&meter<=.87;if(bucket!==lastMeterBucket){audio.play('timingTick');lastMeterBucket=bucket;}if(perfectZone&&!lastPerfectZone)audio.play('perfectZone');lastPerfectZone=perfectZone;}
+  if(now-lastReadout>120){updateHUD();audio.setEnvironment({weather:atmosphere.weather,hour:atmosphere.hour,wind:simulation.wind.strength});
     simulation.wood.bark.roughness=.9-condition.moisture*.48;simulation.wood.end.roughness=.85-condition.moisture*.35;
     simulation.wood.end.color.setHex(currentLog.color??0xffffff).multiplyScalar(1-condition.moisture*.15).lerp(frostColor,condition.frost*.45);
     simulation.wood.bark.color.setRGB(1-condition.moisture*.25,1-condition.moisture*.23,1-condition.moisture*.2).lerp(frostColor,condition.frost*.75);

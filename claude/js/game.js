@@ -257,7 +257,7 @@ export class Game {
   onLogLanded() {
     this.swing.solveRigTarget();
     if (this.swing.state === 'done') this.swing.liftToLog();
-    this.audio.knock(0.6);
+    this.audio.logPlace?.();
     this.dust.burst(new THREE.Vector3(0, this.blockTop + 0.01, 0), 30, 0.3, this.rng);
     this.emit('log');
   }
@@ -374,8 +374,8 @@ export class Game {
     if (!ok) return false;
     this.p.stats.swings++;
     this.pendingResult = { timing, power: pw, requested: power, slip, exhausted, error: err };
-    if (exhausted) this.toast('Exhausted — weak swing', 'warn');
-    if (slip) this.toast('Wet handle — hands slipped!', 'warn');
+    if (exhausted) { this.toast('Exhausted — weak swing', 'warn'); this.audio.exhausted?.(); }
+    if (slip) { this.toast('Wet handle — hands slipped!', 'warn'); this.audio.slip?.(); }
     this.emit('swing', this.pendingResult);
     return true;
   }
@@ -407,6 +407,9 @@ export class Game {
     const sp = P.species;
     const impact = contact.impact;
     const lc = logConditions(cond, P, !!log.iceShell);
+    const hadIce = !!log.iceShell;
+    const hpBefore = P.boss ? this.bossHp(log) : 0;
+    const sfxS = clamp(contact.Eeff / 250, 0.15, 1);
     const n = new THREE.Vector3(-contact.edgeDir.z, 0, contact.edgeDir.x);
     const woodCol = [P.sap[0] / 255 * 0.95, P.sap[1] / 255 * 0.9, P.sap[2] / 255 * 0.85];
     const barkCol = [P.outerBark[0] / 255, P.outerBark[1] / 255, P.outerBark[2] / 255];
@@ -440,8 +443,8 @@ export class Game {
           const punk = [[0.42, 0.31, 0.2], [0.3, 0.21, 0.13]];
           this.chips.burst(impact, n, contact.edgeDir, 22, 0.5, this.rng, { colors: punk, bark: 0.4 });
           this.dust.burst(impact, 260, 0.7, this.rng);
-          this.audio.punk?.();
-        } else this.audio.crack(out.ratio, lc.frozen);
+          this.audio.punk?.(P);
+        } else this.audio.split?.(P, lc, out);
         if (P.boss) this.fx.shake = Math.max(this.fx.shake, 1.2);
         this.fx.shake = Math.max(this.fx.shake, 0.6 + 0.4 * ex);
         break;
@@ -451,12 +454,22 @@ export class Game {
         log.damage += out.damageAdd;
         this.chips.burst(impact, n, contact.edgeDir, Math.round(6 * dryK), 0.5, this.rng, { colors });
         this.dust.burst(impact, Math.round(60 * dryK), 0.6, this.rng);
-        this.audio.thunk(Math.min(1, contact.Eeff / 250), true);
+        {
+          // The stuck axe works like a wedge: drive, seat (deep in an existing crack), creak.
+          const progress = clamp(log.damage / (0.75 * P.req), 0, 1);
+          this.audio.stuck?.(P, lc, sfxS, progress, { knot: !!out.knotHit, seat: log.hits > 1 && progress > 0.35, stringy: !!out.stringy });
+          if (P.boss) {
+            this.audio.bossHit?.(sfxS);
+            const hp = this.bossHp(log);
+            const phase = hpBefore > 2 / 3 && hp <= 2 / 3 ? 1 : hpBefore > 1 / 3 && hp <= 1 / 3 ? 2 : 0;
+            if (phase) this.audio.bossPhase?.(phase);
+          }
+        }
         break;
       case 'glance':
         this.chips.burst(impact, n, contact.edgeDir, 8, 0.7, this.rng, { colors, bark: 0.85 });
         this.dust.burst(impact, 40, 0.5, this.rng);
-        this.audio.glance();
+        this.audio.glance?.(P, lc, hadIce && !out.iceBroke);
         break;
       case 'nail': {
         const rock = out.hazard === 'rock';
@@ -477,11 +490,11 @@ export class Game {
     // A blade that never touched the round hits the chopping block (or the dirt).
     if (info.missedLog && this.logs.log) {
       this.dust.burst(info.impact, 40, 0.5, this.rng);
-      this.audio.thunk(Math.min(1, info.Eeff / 200), false);
+      this.audio.miss?.(!!info.overBlock, Math.min(1, info.Eeff / 200));
       if (!info.overBlock) this.sharpness = this.sharpness - 0.03;
       this.scoreOutcome({ kind: 'miss', offset: 1.2, Ein: info.Eeff, vHead: info.vHead }, { pend: this.pendingResult ?? {}, cond: this.weather.conditions, P: this.logs.log.params });
     } else {
-      this.audio.thunk(Math.min(1, info.Eeff / 300), false);
+      this.audio.miss?.(true, Math.min(1, info.Eeff / 300));
     }
   }
 
@@ -508,7 +521,7 @@ export class Game {
         b.applyImpulse({ x: d.x * m * 1.7, y: m * 0.9, z: d.z * m * 1.7 }, true);
         b.applyTorqueImpulse({ x: d.z * m * 0.05, y: 0, z: -d.x * m * 0.05 }, true);
       }
-      this.audio.knock(0.4);
+      this.audio.shove?.();
     }
     if ((!on.length && pn.t > 0.3) || pn.t > 2.2) {
       this.pendingNext = null;
@@ -600,6 +613,7 @@ export class Game {
     }
     this.p.score = Math.max(0, this.p.score + points);
     this.p.cash += cash;
+    if (this.combo >= 3 && this.combo > this.p.bestCombo) this.audio.achievement?.();
     this.p.bestCombo = Math.max(this.p.bestCombo, this.combo);
     this.lastHit = {
       result: out.kind === 'nail' && out.hazard === 'rock' ? 'rock' : out.kind, grade, points, xp, cash, labels,
@@ -634,6 +648,7 @@ export class Game {
       this.audio.levelUp();
       this.toast(`Level ${this.p.level}! +1 skill point, +$${bonus}`, 'level', true);
       for (const s of newSp) this.toast(`New wood unlocked: ${s.name}`, 'level');
+      if (newSp.length) this.audio.unlockWood?.();
       this.emit('levelUp', this.p.level);
     }
   }
@@ -644,8 +659,9 @@ export class Game {
     const a = AXES_BY_ID[id];
     if (!a) return false;
     if (this.p.owned.includes(id)) return this.equipAxe(id);
-    if (this.p.cash < a.price) { this.toast('Not enough cash', 'warn'); return false; }
+    if (this.p.cash < a.price) { this.toast('Not enough cash', 'warn'); this.audio.denied?.(); return false; }
     this.p.cash -= a.price;
+    this.audio.purchase?.();
     this.p.owned.push(id);
     this.p.sharp[id] = a.sharp;
     this.toast(`Bought: ${a.name}`, 'good');
@@ -658,14 +674,15 @@ export class Game {
     if (this.p.sharp[id] === undefined) this.p.sharp[id] = AXES_BY_ID[id].sharp;
     this.swing.setAxe(this.axeStats);
     this.needed = null;
+    this.audio.equip?.();
     this.save();
     this.emit('change');
     return true;
   }
 
   sharpen() {
-    if (this.sharpness >= this.maxSharp - 0.005) { this.toast('Already razor sharp', 'info'); return false; }
-    if (this.p.cash < SHARPEN_PRICE) { this.toast('Not enough cash', 'warn'); return false; }
+    if (this.sharpness >= this.maxSharp - 0.005) { this.toast('Already razor sharp', 'info'); this.audio.denied?.(); return false; }
+    if (this.p.cash < SHARPEN_PRICE) { this.toast('Not enough cash', 'warn'); this.audio.denied?.(); return false; }
     this.p.cash -= SHARPEN_PRICE;
     this.sharpness = this.maxSharp;
     this.audio.sharpen();
@@ -678,8 +695,10 @@ export class Game {
   buyHone() {
     const tier = HONE_TIERS[this.p.hone];
     if (!tier) return false;
-    if (this.p.cash < tier.price) { this.toast('Not enough cash', 'warn'); return false; }
+    if (this.p.cash < tier.price) { this.toast('Not enough cash', 'warn'); this.audio.denied?.(); return false; }
     this.p.cash -= tier.price;
+    this.audio.purchase?.();
+    this.audio.sharpen?.();
     this.p.hone++;
     this.sharpness = this.maxSharp;
     this.toast(`Honing level ${this.p.hone}: max sharpness ${Math.round(this.maxSharp * 100)}%`, 'good');
@@ -690,8 +709,9 @@ export class Game {
 
   buyGloves() {
     if (this.p.gloves) return false;
-    if (this.p.cash < GLOVES_PRICE) { this.toast('Not enough cash', 'warn'); return false; }
+    if (this.p.cash < GLOVES_PRICE) { this.toast('Not enough cash', 'warn'); this.audio.denied?.(); return false; }
     this.p.cash -= GLOVES_PRICE;
+    this.audio.purchase?.();
     this.p.gloves = true;
     this.toast('Grippy work gloves: −75% handle slip in the wet', 'good');
     this.save();
@@ -700,8 +720,9 @@ export class Game {
   }
 
   spendSkill(id) {
-    if (this.p.skillPoints <= 0 || !SKILLS[id] || this.p.skills[id] >= SKILLS[id].max) return false;
+    if (this.p.skillPoints <= 0 || !SKILLS[id] || this.p.skills[id] >= SKILLS[id].max) { this.audio.denied?.(); return false; }
     this.p.skillPoints--;
+    this.audio.skill?.();
     this.p.skills[id]++;
     this.swing.strength = this.strengthMult;
     this.needed = null;

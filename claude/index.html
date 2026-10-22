@@ -86,6 +86,12 @@
       </label>
       <span class="small dim"><b id="h-fps">—</b> FPS · <span id="h-qname">—</span></span>
     </div>
+    <div class="ctl audio" title="Everything you hear is synthesized live (Web Audio)">
+      <label class="chk"><input type="checkbox" id="chk-music" checked /> Music <kbd>M</kbd></label>
+      <input type="range" id="vol-music" min="0" max="100" value="50" aria-label="Music volume" title="Music volume" />
+      <label class="chk"><input type="checkbox" id="chk-sound" checked /> SFX</label>
+      <input type="range" id="vol-sfx" min="0" max="100" value="80" aria-label="Sound effects volume" title="Sound effects volume" />
+    </div>
   </section>
 
   <!-- bottom-right: actions -->
@@ -97,7 +103,6 @@
     <button id="btn-reset" title="Reset the current log (R)">Reset log <kbd>R</kbd></button>
     <button id="btn-help" title="Controls and rules (H)">Help <kbd>H</kbd></button>
     <button id="btn-tele" title="Physics telemetry (F)">Physics <kbd>F</kbd></button>
-    <label class="chk"><input type="checkbox" id="chk-sound" checked /> Sound <kbd>M</kbd></label>
     <label class="chk"><input type="checkbox" id="chk-slowmo" checked /> Impact slow-mo</label>
   </section>
 
@@ -165,7 +170,7 @@
             <li><b>Hold left button</b> to charge the meter; <b>drag left/right</b> while holding to turn the blade; <b>release</b> to swing.</li>
             <li>Or <b>click</b> once to start the meter and <b>click again</b> (or <kbd>Space</kbd>) to stop it.</li>
             <li><b>Right-drag</b> orbits the camera, <b>Shift+right-drag</b> pans, <b>wheel</b> zooms, <b>Shift+wheel</b> turns the blade.</li>
-            <li>Keyboard: <kbd>Space</kbd> start/stop meter · arrows nudge aim · <kbd>Q</kbd>/<kbd>E</kbd> turn blade · <kbd>R</kbd> reset log · <kbd>B</kbd> shop · <kbd>O</kbd> modes · <kbd>G</kbd> sharpen · <kbd>T</kbd> time · <kbd>N</kbd> weather · <kbd>K</kbd> quality · <kbd>C</kbd> camera · <kbd>F</kbd> physics · <kbd>M</kbd> sound · <kbd>X</kbd> quick swing</li>
+            <li>Keyboard: <kbd>Space</kbd> start/stop meter · arrows nudge aim · <kbd>Q</kbd>/<kbd>E</kbd> turn blade · <kbd>R</kbd> reset log · <kbd>B</kbd> shop · <kbd>O</kbd> modes · <kbd>G</kbd> sharpen · <kbd>T</kbd> time · <kbd>N</kbd> weather · <kbd>K</kbd> quality · <kbd>C</kbd> camera · <kbd>F</kbd> physics · <kbd>M</kbd> music on/off (volumes and SFX toggle: bottom-left panel) · <kbd>X</kbd> quick swing</li>
           </ul>
         </div>
         <div>
