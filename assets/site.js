@@ -194,7 +194,16 @@
       vals.forEach(function (v, i) {
         var td = document.createElement('td');
         td.setAttribute('data-label', labels[i]);
-        if (i === 7 && v2sub) {
+        if (i === 6 && r.h.reported_usd != null) {
+          td.className = 'v2col';
+          var wt = el('span', 'v2col__v'); wt.appendChild(el('b', null, v));
+          var parts = [];
+          if (r.h.reported_usd) parts.push(fmtUSD(r.h.reported_usd) + ' reported');
+          if (r.h.token_priced_usd) parts.push(fmtUSD(r.h.token_priced_usd) + ' token-priced');
+          if (r.h.est_usd) parts.push('est. ' + fmtUSD(r.h.est_usd));
+          wt.appendChild(el('span', 'v2col__sub', parts.join(' + ')));
+          td.appendChild(wt);
+        } else if (i === 7 && v2sub) {
           td.className = 'v2col';
           var wrapv = el('span', 'v2col__v'); wrapv.appendChild(el('b', null, v)); wrapv.appendChild(el('span', 'v2col__sub', v2sub));
           td.appendChild(wrapv);
@@ -213,7 +222,7 @@
       var dd = document.createElement('dd'); dd.textContent = data.basis[r.g];
       d.appendChild(dt); d.appendChild(dd); basis.appendChild(d);
     });
-    text(document.getElementById('cost-generated'), 'Generated ' + (data.generated || 'unknown') + ' from the usage log. “Agent hours” are the wall-clock hours recorded across all runs. Bases differ, so compare with care.');
+    text(document.getElementById('cost-generated'), 'Generated ' + (data.generated || 'unknown') + ' from the usage log, the same totals as the “Behind the build” post below. “Agent hours” are the wall-clock hours recorded across all runs. Bases differ, so compare with care.');
     var bal = data.deepseek_balance_measured;
     if (bal && bal.spent_usd != null && H.deepseek) {
       text(document.getElementById('cost-balance'), 'Footnote: the DeepSeek account balance was also measured directly. It dropped by ' + fmtUSD(bal.spent_usd) +

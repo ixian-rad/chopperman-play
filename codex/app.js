@@ -335,7 +335,7 @@ window.addEventListener('keydown',e=>{
 });
 
 async function setQuality(value){
-  const epoch=++qualityEpoch;quality=value;lowPixelScale=.4;frameTime=0;frames=0;qualityClock=0;if(backyard){backyard.qualityMode=qualityMode;backyard.applyQuality(value);}const pixel=value==='low'?lowPixelScale:softwareRenderer?(value==='high'?.7:.6):value==='medium'?.85:Math.min(devicePixelRatio,1.25);
+  const epoch=++qualityEpoch;quality=value;lowPixelScale=.4;frameTime=0;frames=0;qualityClock=0;if(backyard){backyard.qualityMode=qualityMode;backyard.applyQuality(value);}const pixel=value==='low'?lowPixelScale:softwareRenderer?(value==='high'?.6:.5):value==='medium'?.85:Math.min(devicePixelRatio,1.25);
   renderer.setPixelRatio(pixel);renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=value!=='low'&&!softwareRenderer;renderer.shadowMap.type=value==='low'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
   const size=value==='low'?512:value==='medium'?1024:2048;sun.shadow.mapSize.set(size,size);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
   simulation.chipLimit=value==='low'?14:value==='medium'?24:36;simulation.chipPoolLimit=value==='low'?32:value==='medium'?56:80;simulation.trimChips();if(simulation.debugGroup.visible)simulation.rebuildDebug();atmosphere.count=value==='low'?160:value==='medium'?350:650;
@@ -431,6 +431,7 @@ backyard=new AssetBackyard({scene,camera,controls,renderer,storage,audio,
   onReward:tree=>{const level=campaignGame.level;campaignGame.xp+=35;campaignGame.coins+=20;campaignGame.save();if(campaignGame.level>level)audio.play('levelUp');audio.play('points');updateHUD();},
 });
 backyard.softwareRenderer=softwareRenderer;
+atmosphere.softwareRenderer=softwareRenderer;
 $('yard-setting').addEventListener('change',e=>backyard.setSetting(e.target.value));
 $('sergey-costume').addEventListener('change',e=>backyard.setCostume(e.target.value));
 $('sergey-axe').addEventListener('change',e=>{if(e.target.value!=='golden'||backyard.goldenUnlocked)backyard.setAxe(e.target.value);});

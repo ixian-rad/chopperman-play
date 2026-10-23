@@ -146,7 +146,7 @@ A(f'<tr><th scope="row">ElevenLabs</th>{cell(f"Hank Harvey voiceover: intro scri
 A(f'<tr class="blogtotal"><th scope="row">Dollar-valued assets</th>{cell("OpenAI + Higgsfield + Codex image tool", "txt")}{cell(f"<strong>est. ${grand_assets:.2f}</strong>")}{cell("Meshy and ElevenLabs excluded (no dollars logged)", "txt")}</tr>')
 A('</tbody></table></div>')
 A(f'<p class="fine"><strong>Grand total, mixed basis:</strong> est. <strong>${grand:,.2f}</strong> = harness runs ${grand_harness:,.2f} + dollar-valued assets est. ${grand_assets:.2f}. '
-  'It mixes list-price equivalents with measured spend, so read it as a size estimate, not an invoice. The spend log covers Oct 22 12:44 to 14:40 ET only.</p>')
+  'It mixes list-price equivalents with measured spend, so read it as a size estimate, not an invoice. The spend log covers Oct 22 12:44 to Oct 23 00:42 ET.</p>')
 
 # narrative
 A('<h3 class="h-mid">The story, in order</h3><div class="prose blog__prose">')
@@ -170,14 +170,15 @@ for h in H:
     d = v2[h]; f = d['fps']
     A(f'<tr><th scope="row">{NAME[h]}</th>{cell(E(d["attempts"]), "txt")}{cell(f"{f['nj_low']} / {f['tiraspol_low']} / {f['tiraspol_high']}")}{cell(str(d["hits_to_fell_nj"]))}{cell(f"{d["load_seconds"]:.1f} s")}{cell(f"{d["commit"]} ({d["iter"]})")}</tr>')
 A('</tbody></table></div>')
-A('<p class="fine">FPS are software-rendering figures from the final headless-Chrome check on the build machine. They are far below what a real graphics card gives, and no real GPU was tested.</p>')
+A('<p class="fine">FPS are software-rendering figures from the final headless-Chrome check on the build machine (Codex: the check after its polish pass, tag polish-1). They are far below what a real graphics card gives, and no real GPU was tested.</p>')
 A('<ul class="blog__list">')
 items = [
  'Claude needed 3 build attempts. Attempt 2 failed the frame-rate check (4.9 FPS in the New Jersey scene at Low against a minimum of 8). Attempt 3 fixed it (34.6 FPS), and the final check read 45.8 FPS. Attempt 3 was first killed mid-run at about 21:14 ET on Oct 22, then resumed from its saved work.',
  'DeepSeek ran on a hard budget: $10 total with a stop at $9.75, measured by the balance endpoint (it read $8.38 at the Oct 22 restart). Its balance guard hit three SSL handshake timeouts (18:45, 19:53 and 20:51 ET), and attempt 2 was killed mid-run at about 21:14 ET and resumed. Its final merge then looped on a push that failed because the remote already held an identical merge. It was fixed by hand at 23:35 ET.',
  'DeepSeek’s Sergey walking speed appears tied to the frame rate (slower when FPS is low). One of its live checks failed when all three games were tested at once (4.6 FPS) and passed when run alone. Low quality shows only 16 of its 42 trees and its first load takes 10 to 13 seconds.',
- 'Claude: Medium and High are real-GPU presets and crawl in software rendering, swings have some foot sliding, and trees do not regrow. Codex: tree canopies can block the camera, and the face and full-body animation are approximate.',
- 'The v2 builds were not re-reviewed on video. The review scores on this page are for the classic builds. A further Codex integration pass was asked for late on Oct 22, but no extra Codex run appears in the usage log, so none is counted here.',
+ 'Claude: Medium and High are real-GPU presets and crawl in software rendering, swings have some foot sliding, and trees do not regrow. Codex: after its extra polish pass, canopies fade out of the camera’s way and falling trees avoid fences and props, but the face, fingers and full-body animation are still approximate.',
+ 'The v2 builds were not re-reviewed on video. The review scores on this page are for the classic builds.',
+ 'Codex got one extra polish pass on Oct 23 (00:27 to 01:41 ET, 1h13m, 4,409 s): it fixed the known issues in its own list (camera-blocking canopies, crowns passing through fences, foot sliding, abrupt animation changes, Low-quality speed), added a short hit-stop and a head turn toward the chop target, and merged as polish-1 after the same automated check passed. Its software-rendering FPS went from 30.7 / 22.1 / 6.8 to 49.9 / 36.7 / 14.4, but those readings move a lot with machine load (an earlier docs-run reading of NJ Low was 8.3). The run is counted in the Codex totals below as token-priced, $3.47.',
  'Stops and restarts: the Oct 21 operator aborts, the Oct 22 box restart at 02:13 ET, and the mid-run kills at about 21:14 ET (Claude attempt 3, DeepSeek attempt 2), each resumed from saved work. They all show up in the run tables below.']
 for i in items: A(f'<li>{E(i)}</li>')
 A('</ul>')
@@ -214,6 +215,28 @@ else:
     assert s_.count('</main>') == 1
     s_ = s_.replace('</main>', frag + '\n</main>')
 open(p, 'w').write(s_)
+
+# ---- data/costs.json: the landing page's "The bill" table and scoreboard cost row read this file, so they always match the blog totals ----
+import datetime as _dt
+cj = {'generated': _dt.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M %Z'), 'source': 'tools/build_blog.py (same numbers as the Behind the build post)', 'harness': {}}
+for h in H:
+    t = T[h]; v2r = [r for r in byh[h] if 'assets-v2' in r['phase'] and r['cost_usd'] is not None]
+    cj['harness'][h] = dict(
+        runs=t['runs'], wall_h=round(t['wall'] / 3600, 2), input_uncached=int(t['inp']), input_cached=int(t['cached']), output=int(t['out']),
+        cost_usd=round(t['total'], 2), reported_usd=round(t['reported'], 2), token_priced_usd=round(t['token'], 2), est_usd=round(t['est'] + t['measured_bal'], 2),
+        assets_v2_runs=len(v2r), assets_v2_cost_usd=round(sum(r['cost_usd'] for r in v2r), 2),
+        assets_v2_wall_h=round(sum((r['wall_s'] or 0) for r in v2r) / 3600, 2))
+bal = None
+try:
+    bal = json.load(open(f'{SITE}/data/costs.json')).get('deepseek_balance_measured')
+except Exception: pass
+if bal: cj['deepseek_balance_measured'] = bal
+cj['basis'] = {
+    'claude': f'Claude Code ran on a subscription login. Total {usd(T["claude"]["total"])} = {usd(T["claude"]["reported"])} reported by the tool + {usd(T["claude"]["token"])} token-priced + {usd(T["claude"]["est"], True)}. Includes two play-site design runs ({usd(claude_site)}) and the channel-art kit ({usd(claude_art)}). List-price equivalent, not a charge.',
+    'codex': f'Codex ran on a ChatGPT plan login. Total {usd(T["codex"]["total"])} = {usd(T["codex"]["token"])} token-priced (recorded tokens x gpt-6.1-sol list price) + {usd(T["codex"]["est"], True)} for runs with no recorded tokens. API-equivalent, not a charge.',
+    'deepseek': f'DeepSeek was pay-as-you-go. Total {usd(T["deepseek"]["total"])} = {usd(T["deepseek"]["token"])} token-priced (measured tokens x list price) + {usd(T["deepseek"]["measured_bal"], True)} from the balance counter for a killed pass. The measured balance drop was $8.92.'}
+cj['note'] = 'Project total = every logged run of that harness, including play-site design runs. The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes).'
+json.dump(cj, open(f'{SITE}/data/costs.json', 'w'), indent=1)
 summary = dict(T=T, claude_site=claude_site, claude_art=claude_art, meshy_cr=meshy_cr, hf_cr=hf_cr, hf_usd=hf_usd, oa_usd=oa_usd, oa_tok=oa_tok, cb_est=cb_est,
                grand_harness=grand_harness, grand_assets=grand_assets, grand=grand, vo_chars=vo_chars, rv_chars=rv_chars,
                codex_iter7=[r for r in rows if r['harness']=='codex' and r['phase']=='iter-7'][0]['cost_usd'])

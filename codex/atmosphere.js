@@ -46,8 +46,8 @@ export class Atmosphere {
     this.scene.environmentIntensity=.09+day*.3;this.scene.background.copy(sky);this.scene.fog.color.copy(sky);this.scene.fog.near=this.weather==='fog'?3:this.weather==='rain'?8:18;this.scene.fog.far=this.weather==='fog'?18:this.weather==='snow'?30:48;
     this.sun.position.set(Math.cos((this.hour-6)/12*Math.PI)*8,Math.max(.15,elevation*10),4);this.sun.intensity=(.08+day*3.1)*(this.weather==='rain'?.5:1);this.sun.color.setHex(gold>.25?0xffbf7c:0xffe6bd);this.ambient.intensity=.35+day*1.7;
     for(const group of this.lampGroups)group.visible=quality!=='low'||day<.5;
-    for(const {light,glow}of this.lamps){light.intensity=(1-day)*12;glow.emissiveIntensity=.3+(1-day)*3;}
-    this.rays.visible=quality!=='low'&&this.weather!=='fog'&&this.weather!=='rain'&&day>.7;this.rays.children[0].material.opacity=.012+gold*.022;
+    for(const {light,glow}of this.lamps){light.visible=day<.98;light.intensity=(1-day)*12;glow.emissiveIntensity=.3+(1-day)*3;}
+    this.rays.visible=!this.softwareRenderer&&quality!=='low'&&this.weather!=='fog'&&this.weather!=='rain'&&day>.7;this.rays.children[0].material.opacity=.012+gold*.022;
     if(this.precipitation.visible){this.precipitation.geometry.setDrawRange(0,this.count);for(let i=0;i<this.count;i++){const k=i*3;this.positions[k]+=(this.weather==='rain'?.7:.25)*dt;this.positions[k+1]-=dt*(this.weather==='rain'?7:.7);this.positions[k+2]+=Math.sin(i+this.hour)*dt*.2;if(this.positions[k+1]<.02){this.positions[k+1]=8;this.positions[k]=(this.rand()-.5)*16;}}this.precipitation.geometry.attributes.position.needsUpdate=true;}
     if(this.sparkLife>0){this.sparkLife-=dt;for(let i=0;i<40;i++){this.sparkVel[i].y-=dt*9.81;for(let a=0;a<3;a++)this.sparkPositions[i*3+a]+=this.sparkVel[i].getComponent(a)*dt;}this.sparks.geometry.attributes.position.needsUpdate=true;this.sparks.material.opacity=this.sparkLife/.65;}else this.sparks.visible=false;
   }

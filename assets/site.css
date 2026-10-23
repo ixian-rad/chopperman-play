@@ -424,7 +424,7 @@ summary .kicker { margin: 0; }
 .cost-intro { margin: -.2em 0 1.2em; }
 .costs td.v2col .v2col__v { display: inline-flex; flex-direction: column; align-items: flex-end; }
 .costs td.v2col b { font-weight: 500; }
-.costs td.v2col .v2col__sub { font-family: var(--f-body); font-size: 1rem; color: var(--muted); white-space: nowrap; }
+.costs td.v2col .v2col__sub { font-family: var(--f-body); font-size: 1rem; color: var(--muted); white-space: normal; text-align: right; max-width: 16rem; }
 .footnote { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 18px; }
 
 /* ---------- behind the build (blog post) ---------- */

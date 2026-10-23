@@ -27,23 +27,23 @@
   },
   "codex": {
    "title": "Backyard \u2014 Find the grain",
-   "commit": "15a5271",
-   "tag": "assets-v2-release",
-   "iter": "iter-11",
+   "commit": "d9bbf61",
+   "tag": "polish-1",
+   "iter": "iter-11 + polish-1",
    "verify_ok": true,
    "fps": {
-    "nj_low": 30.7,
-    "tiraspol_low": 22.1,
-    "tiraspol_high": 6.8
+    "nj_low": 49.9,
+    "tiraspol_low": 36.7,
+    "tiraspol_high": 14.4
    },
-   "load_seconds": 2.945,
+   "load_seconds": 4.141,
    "hits_to_fell_nj": 6,
-   "attempts": "2 build attempts (both passed) + 1 docs run",
+   "attempts": "2 build attempts (both passed) + 1 docs run + 1 extra polish pass (passed)",
    "known_issues": [
-    "Face, fingers and full-body animation are approximate (arm corrections, no authored grip)",
-    "Canopies can obstruct the camera; falling crowns can intersect fences/props",
+    "Face, fingers and full-body animation are still approximate: the new grip and torso corrections add no finger curls, and walking has no terrain IK",
+    "Crown fading is conservative, and falling trees are a hinge approximation against static bounds, not rigid branch physics",
     "Tree felling is session-only: no regrowth, no timber carrying, no touch movement",
-    "Software rendering can stay slow even at Low"
+    "Software rendering speed depends on machine load; no real GPU was tested"
    ],
    "classic_build": "codex 831d6dc iter-10",
    "repo_readme_known_issues": "from the harness README/CHANGELOG"

@@ -1,38 +1,48 @@
 {
- "generated": "2026-10-22 23:35 EDT",
+ "generated": "2026-10-23 01:45 EDT",
+ "source": "tools/build_blog.py (same numbers as the Behind the build post)",
  "harness": {
+  "claude": {
+   "runs": 14,
+   "wall_h": 10.88,
+   "input_uncached": 1682,
+   "input_cached": 182188354,
+   "output": 1401614,
+   "cost_usd": 99.61,
+   "reported_usd": 80.92,
+   "token_priced_usd": 11.54,
+   "est_usd": 7.15,
+   "assets_v2_runs": 6,
+   "assets_v2_cost_usd": 49.25,
+   "assets_v2_wall_h": 2.93
+  },
+  "codex": {
+   "runs": 18,
+   "wall_h": 12.41,
+   "input_uncached": 2851351,
+   "input_cached": 77549568,
+   "output": 683783,
+   "cost_usd": 21.09,
+   "reported_usd": 0,
+   "token_priced_usd": 20.3,
+   "est_usd": 0.8,
+   "assets_v2_runs": 4,
+   "assets_v2_cost_usd": 11.99,
+   "assets_v2_wall_h": 5.37
+  },
   "deepseek": {
    "runs": 57,
    "wall_h": 29.27,
    "input_uncached": 7131410,
    "input_cached": 962277758,
    "output": 3921218,
-   "cost_usd": 8.74,
-   "assets_v2_runs": 3,
-   "assets_v2_cost_usd": 1.27,
-   "assets_v2_wall_h": 2.48
-  },
-  "codex": {
-   "runs": 17,
-   "wall_h": 11.18,
-   "input_uncached": 2444232,
-   "input_cached": 61657472,
-   "output": 576886,
-   "cost_usd": 16.82,
-   "assets_v2_runs": 3,
-   "assets_v2_cost_usd": 8.52,
-   "assets_v2_wall_h": 4.14
-  },
-  "claude": {
-   "runs": 12,
-   "wall_h": 10.06,
-   "input_uncached": 1518,
-   "input_cached": 171101837,
-   "output": 1244683,
-   "cost_usd": 84.07,
+   "cost_usd": 9.03,
+   "reported_usd": 0,
+   "token_priced_usd": 8.74,
+   "est_usd": 0.29,
    "assets_v2_runs": 4,
-   "assets_v2_cost_usd": 38.64,
-   "assets_v2_wall_h": 2.46
+   "assets_v2_cost_usd": 1.56,
+   "assets_v2_wall_h": 2.48
   }
  },
  "deepseek_balance_measured": {
@@ -40,8 +50,9 @@
   "checked": "2026-10-22 22:25:01 EDT"
  },
  "basis": {
-  "deepseek": "estimate: measured tokens x DeepSeek list price (deepseek-flash; peak hours 2x)",
-  "codex": "ChatGPT plan (subscription-included); API-equivalent estimate at gpt-6.1-sol list price",
-  "claude": "total_cost_usd reported by Claude Code (list-price basis; may be subscription-covered)"
- }
+  "claude": "Claude Code ran on a subscription login. Total $99.61 = $80.92 reported by the tool + $11.54 token-priced + est. $7.15. Includes two play-site design runs ($8.38) and the channel-art kit ($6.15). List-price equivalent, not a charge.",
+  "codex": "Codex ran on a ChatGPT plan login. Total $21.09 = $20.30 token-priced (recorded tokens x gpt-6.1-sol list price) + est. $0.80 for runs with no recorded tokens. API-equivalent, not a charge.",
+  "deepseek": "DeepSeek was pay-as-you-go. Total $9.03 = $8.74 token-priced (measured tokens x list price) + est. $0.29 from the balance counter for a killed pass. The measured balance drop was $8.92."
+ },
+ "note": "Project total = every logged run of that harness, including play-site design runs. The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes)."
 }
