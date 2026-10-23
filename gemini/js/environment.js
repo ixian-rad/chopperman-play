@@ -146,7 +146,7 @@ export function buildBackyardEnvironment(scene, world, materials) {
   envGroup.add(foliageGroup);
 
   // 7. Backyard Woodchopping Props + Yard Lantern Post beside Chopping Station
-  const { group: propsGroup, yardLanternBulb } = buildBackyardProps(
+  const { group: propsGroup, yardLanternBulb, cordwoodMeshes } = buildBackyardProps(
     barkTex,
     endGrainTex,
     world,
@@ -179,7 +179,13 @@ export function buildBackyardEnvironment(scene, world, materials) {
     swayTargets,
     puddleGroup,
     rippleRings,
-    snowGroup
+    snowGroup,
+    updateCordwoodStack(logsSplitCount = 0) {
+      const visibleBonus = Math.min(cordwoodMeshes.length, Math.max(0, logsSplitCount));
+      for (let i = 0; i < cordwoodMeshes.length; i++) {
+        cordwoodMeshes[i].visible = i < visibleBonus;
+      }
+    }
   };
 }
 
@@ -867,16 +873,28 @@ function buildBackyardProps(barkTex, endGrainTex, world, woodPhysMat, lanternBul
   logGeo.rotateX(Math.PI / 2);
   const logMats = [logBarkMat, logEndMat, logEndMat];
 
-  for (let row = 0; row < 4; row++) {
+  const cordwoodMeshes = [];
+  const splitWedgeGeo = new THREE.CylinderGeometry(0.085, 0.09, 0.5, 5);
+  splitWedgeGeo.rotateX(Math.PI / 2);
+
+  for (let row = 0; row < 6; row++) {
     const count = 8 - (row % 2);
     for (let col = 0; col < count; col++) {
       const lx = -0.78 + col * 0.215 + (row % 2) * 0.09;
-      const ly = 0.18 + row * 0.175;
-      const stackedLog = new THREE.Mesh(logGeo, logMats);
+      const ly = 0.18 + row * 0.165;
+      const isBonusRow = row >= 3;
+      const stackedLog = new THREE.Mesh(
+        isBonusRow ? splitWedgeGeo : logGeo,
+        logMats
+      );
       stackedLog.position.set(lx, ly, (col % 2 - 0.5) * 0.03);
       stackedLog.rotation.z = (row * 0.4 + col) * 0.5;
       stackedLog.castShadow = true;
       stackedLog.receiveShadow = true;
+      if (isBonusRow) {
+        stackedLog.visible = false;
+        cordwoodMeshes.push(stackedLog);
+      }
       rackGroup.add(stackedLog);
     }
   }
@@ -985,5 +1003,5 @@ function buildBackyardProps(barkTex, endGrainTex, world, woodPhysMat, lanternBul
   }
   group.add(grillGroup);
 
-  return { group, yardLanternBulb };
+  return { group, yardLanternBulb, cordwoodMeshes };
 }

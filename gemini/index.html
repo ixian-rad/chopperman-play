@@ -69,6 +69,16 @@
           <div id="hud-log-hp-fill" class="progress-fill log-hp-fill" style="width: 100%"></div>
         </div>
       </div>
+
+      <div class="hud-bar-item">
+        <div class="bar-label-row">
+          <span class="bar-title">&#9876; Blade Edge</span>
+          <span id="hud-edge-text" class="bar-subtext">100% Sharp</span>
+        </div>
+        <div class="progress-track edge-track">
+          <div id="hud-edge-fill" class="progress-fill edge-fill" style="width: 100%"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Shop & Reset Progress Actions -->
@@ -114,6 +124,12 @@
       <button id="rot-right-btn" type="button" class="btn btn-secondary btn-sm" title="Rotate log clockwise (E)">
         &#8635; <kbd>E</kbd>
       </button>
+      <button id="wedge-btn" type="button" class="btn btn-secondary btn-sm" title="Plant forged steel splitting wedge into log kerf (W)">
+        &#9660; Wedge <kbd>W</kbd>
+      </button>
+      <button id="hone-btn" type="button" class="btn btn-secondary btn-sm" title="Sharpen &amp; hone axe blade with whetstone (H)">
+        &#10024; Hone <kbd>H</kbd>
+      </button>
       <button id="reset-btn" type="button" class="btn btn-secondary btn-sm" title="Spawn fresh log (R)">
         New Log <kbd>R</kbd>
       </button>
@@ -129,6 +145,21 @@
       </div>
       <p class="subtitle">Suburban NJ Backyard &bull; Physics &amp; RPG</p>
     </header>
+
+    <!-- Game Mode / Challenge Selector -->
+    <div class="control-group">
+      <div class="label-row">
+        <label for="mode-select">Game Mode</label>
+        <span id="challenge-status-pill" class="value-pill">Boss in 6</span>
+      </div>
+      <select id="mode-select" class="ui-select">
+        <option value="campaign" selected>Campaign / Free Chop (Boss Rounds)</option>
+        <option value="time_attack">Time Attack (60s Rapid Split Blitz)</option>
+        <option value="precision">Precision Gauntlet (Center-Grain Mastery)</option>
+        <option value="endless">Endless Endurance (Scaling Hazard Gauntlet)</option>
+        <option value="daily_seed">Daily Seed Challenge (Fixed Backyard Seed)</option>
+      </select>
+    </div>
 
     <!-- Log Species Progression Selector -->
     <div class="control-group">

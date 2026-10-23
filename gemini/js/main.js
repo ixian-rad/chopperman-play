@@ -38,6 +38,12 @@ class AxeSplittingSimulation {
     this.pendingStrikeResult = null;
     this.autoSpawnTimer = 0;
 
+    // Impact Juice state: Hit-Stop freeze, Perfect-Hit Slow-Mo pulse, and Camera Shake trauma
+    this.hitStopTimer = 0;
+    this.juiceSlowMoTimer = 0;
+    this.cameraShakeTrauma = 0;
+    this.shakeOffset = new THREE.Vector3();
+
     // Mouse gesture state
     this.raycaster = new THREE.Raycaster();
     this.mouseNDC = new THREE.Vector2();
@@ -86,9 +92,12 @@ class AxeSplittingSimulation {
     );
     this.debugWireframe = new PhysicsDebugWireframe(this.scene, this.world);
 
-    // Sync initial log & axe visuals from saved RPG state
+    // Sync initial log, cordwood rack & axe visuals from saved RPG state
     this.choppingStation.spawnFreshLog(this.gameState.logType);
     this.humanoid.applyAxeVisuals(this.gameState.getEquippedAxe());
+    if (this.environment && typeof this.environment.updateCordwoodStack === 'function') {
+      this.environment.updateCordwoodStack(this.gameState.logsSplitCount);
+    }
 
     // Wire blade impact callback from humanoid downswing to chopping station physics
     this.humanoid.onImpactCallback = (bladePos, bladeVel) => {
@@ -500,6 +509,12 @@ class AxeSplittingSimulation {
       this.mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       this.mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
+      // If blade is wedged in a tough kerf (`WEDGED_PRY`), wiggling the mouse horizontally pries it free!
+      if (this.humanoid.state === 'WEDGED_PRY' && Math.abs(e.movementX || 0) > 14) {
+        this.pryWedgedAxe(e.movementX > 0 ? 1 : -1);
+        return;
+      }
+
       // Project cursor onto the horizontal plane of the log's top surface
       const logTopY =
         this.choppingStation.blockHeight + this.choppingStation.logHeight;
@@ -617,10 +632,13 @@ class AxeSplittingSimulation {
     this.meterSwingBtn = document.getElementById('meter-swing-btn');
     this.timingTrack = document.getElementById('timing-meter-track');
     this.resetBtn = document.getElementById('reset-btn');
+    this.wedgeBtn = document.getElementById('wedge-btn');
+    this.honeBtn = document.getElementById('hone-btn');
     this.rotLeftBtn = document.getElementById('rot-left-btn');
     this.rotRightBtn = document.getElementById('rot-right-btn');
     this.slowmoToggle = document.getElementById('slowmo-toggle');
     this.wireframeToggle = document.getElementById('wireframe-toggle');
+    this.modeSelect = document.getElementById('mode-select');
     this.logSelect = document.getElementById('log-select');
     this.autoLogToggle = document.getElementById('auto-log-toggle');
     this.timeSlider = document.getElementById('time-slider');
@@ -668,6 +686,18 @@ class AxeSplittingSimulation {
       });
     }
 
+    if (this.honeBtn) {
+      this.honeBtn.addEventListener('click', () => {
+        this.honeAxeBlade();
+      });
+    }
+
+    if (this.wedgeBtn) {
+      this.wedgeBtn.addEventListener('click', () => {
+        this.plantSplittingWedge();
+      });
+    }
+
     if (this.rotLeftBtn) {
       this.rotLeftBtn.addEventListener('click', () => {
         this.choppingStation.rotateLog(-0.26);
@@ -691,6 +721,22 @@ class AxeSplittingSimulation {
     if (this.wireframeToggle) {
       this.wireframeToggle.addEventListener('change', () => {
         this.debugWireframe.setEnabled(this.wireframeToggle.checked);
+      });
+    }
+
+    if (this.modeSelect) {
+      this.modeSelect.value = this.gameState.gameMode;
+      this.modeSelect.addEventListener('change', () => {
+        const mode = this.modeSelect.value;
+        this.gameState.setGameMode(mode);
+        if (mode === 'daily_seed') {
+          const weathers = ['sun', 'rain', 'snow', 'wind', 'fog'];
+          const dailyW = weathers[this.gameState.getDailySeedHash() % weathers.length];
+          this.atmosphere.setWeather(dailyW);
+          this._updateWeatherBadge(dailyW);
+        }
+        this.choppingStation.reset(this.gameState.logType);
+        this._refreshAllHUD();
       });
     }
 
@@ -807,9 +853,19 @@ class AxeSplittingSimulation {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        this.triggerTimingMeterStep();
+        if (this.humanoid.state === 'WEDGED_PRY') {
+          this.pryWedgedAxe(1);
+        } else {
+          this.triggerTimingMeterStep();
+        }
       } else if (e.code === 'KeyF') {
-        this._commitPlayerSwing(this.baseSwingForce, false);
+        if (this.humanoid.state === 'WEDGED_PRY') {
+          this.pryWedgedAxe(-1);
+        } else {
+          this._commitPlayerSwing(this.baseSwingForce, false);
+        }
+      } else if (e.code === 'KeyW') {
+        this.plantSplittingWedge();
       } else if (e.code === 'KeyR') {
         this.resetScene();
       } else if (e.code === 'KeyQ') {
@@ -843,8 +899,87 @@ class AxeSplittingSimulation {
           this._refreshShopUI();
           shopModal.classList.toggle('hidden');
         }
+      } else if (e.code === 'KeyH') {
+        this.honeAxeBlade();
       }
     });
+  }
+
+  /**
+   * Sharpens/hones the axe blade back to 100% razor edge using the whetstone.
+   */
+  honeAxeBlade() {
+    this.gameState.honeBlade();
+    const bladePos = new THREE.Vector3();
+    if (this.humanoid && this.humanoid.bladeTipNode) {
+      this.humanoid.bladeTipNode.getWorldPosition(bladePos);
+      this.choppingStation._spawnSparkBurst(bladePos, 0.55);
+    }
+    this._refreshAllHUD();
+    this._showHitBanner({
+      rating: 'BLADE HONED TO 100% RAZOR EDGE!',
+      points: 0,
+      xpGained: 0,
+      split: true,
+      glancing: false,
+      leveledUp: false
+    });
+    return true;
+  }
+
+  /**
+   * Plants a 3D forged-steel splitting wedge into the log's top kerf at the current aim offset.
+   * Driving the planted wedge with the maul multiplies cleavage force and bypasses spiral twist!
+   */
+  plantSplittingWedge() {
+    if (this.choppingStation.isLogSplit || !this.choppingStation.intactLog) {
+      return false;
+    }
+    const offsetX = this.choppingStation.aimOffsetX;
+    this.gameState.plantWedge(offsetX);
+    this.choppingStation.plantSteelWedge(offsetX);
+    this._refreshAllHUD();
+    this._showHitBanner({
+      rating: 'STEEL SPLITTING WEDGE SET! (STRIKE TO DRIVE)',
+      points: 0,
+      xpGained: 0,
+      split: true,
+      glancing: false,
+      leveledUp: false
+    });
+    return true;
+  }
+
+  /**
+   * Levers a wedged axe blade sideways out of the kerf, dealing bonus internal cleavage damage
+   * and popping low-HP cracked logs wide open!
+   */
+  pryWedgedAxe(dir = 1) {
+    if (this.humanoid.state !== 'WEDGED_PRY') return false;
+    this.humanoid.rockWedgedBlade(dir);
+    const pryRes = this.gameState.pryWedgedBlade();
+    if (pryRes.split) {
+      this.choppingStation.fractureLog(1.1, null, null, this.atmosphere.weather);
+      if (this.environment && typeof this.environment.updateCordwoodStack === 'function') {
+        this.environment.updateCordwoodStack(this.gameState.logsSplitCount);
+      }
+      this.autoSpawnTimer = this.gameState.gameMode === 'time_attack' ? 0.65 : 1.55;
+      this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.38);
+      if (pryRes.result) {
+        this._showHitBanner(pryRes.result);
+      }
+    } else {
+      this._showHitBanner({
+        rating: `BLADE LEVERED FREE! (${pryRes.remainingHp} HP LEFT)`,
+        points: 0,
+        xpGained: 0,
+        split: false,
+        glancing: false,
+        leveledUp: false
+      });
+    }
+    this._refreshAllHUD();
+    return true;
   }
 
   /**
@@ -925,11 +1060,15 @@ class AxeSplittingSimulation {
       aimOffsetX: isAutomatedSwing ? 0 : diag.aimOffsetX,
       grainAngleError: isAutomatedSwing ? 0 : diag.grainAngleError,
       knotDistance: isAutomatedSwing ? 1.0 : diag.knotDistance,
+      nailDistance: isAutomatedSwing ? 1.0 : diag.nailDistance,
+      rockDistance: isAutomatedSwing ? 1.0 : diag.rockDistance,
+      hitPlantedWedge: isAutomatedSwing ? false : diag.hitPlantedWedge,
       swingPower,
       weather: this.atmosphere.weather,
       isAutomatedSwing
     });
 
+    this._lastSwingWasAutomated = isAutomatedSwing;
     this.pendingStrikeResult = strikeResult;
     this.humanoid.swingForce = swingPower;
     this.humanoid.triggerSwing(swingPower, skipWindup);
@@ -954,9 +1093,38 @@ class AxeSplittingSimulation {
       weather: this.atmosphere.weather
     });
 
-    // If the log split cleanly, schedule next log spawn after pieces settle (1.5s)
+    // Trigger Impact Juice: Hit-Stop freeze, Camera Shake trauma, and Perfect/Boss Slow-Mo pulse!
+    if (result) {
+      if (result.isBoss && result.split) {
+        this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.78);
+        this.hitStopTimer = 0.048;
+        this.juiceSlowMoTimer = 0.34;
+      } else if (result.hitNail || result.glancing) {
+        this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.62);
+        this.hitStopTimer = 0.038;
+      } else if (result.split) {
+        this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.42);
+        this.hitStopTimer = 0.036;
+        if (result.rating === 'PERFECT GRAIN CLEAVE!') {
+          this.juiceSlowMoTimer = 0.25;
+        }
+      } else {
+        this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.28);
+        this.hitStopTimer = 0.028;
+        if (!this._lastSwingWasAutomated && !result.struckWedge) {
+          this.humanoid.enterWedgedPry();
+        }
+      }
+    }
+
+    // Update stacked cordwood in the backyard firewood rack
+    if (this.environment && typeof this.environment.updateCordwoodStack === 'function') {
+      this.environment.updateCordwoodStack(this.gameState.logsSplitCount);
+    }
+
+    // If the log split cleanly, schedule next log spawn after pieces settle (faster in Time Attack)
     if (this.choppingStation.isLogSplit) {
-      this.autoSpawnTimer = 1.55;
+      this.autoSpawnTimer = this.gameState.gameMode === 'time_attack' ? 0.65 : 1.55;
     }
 
     this._refreshAllHUD();
@@ -1039,6 +1207,7 @@ class AxeSplittingSimulation {
 
   _exposeGlobalAPI() {
     window.swing = (power) => this.swing(power);
+    window.plantWedge = () => this.plantSplittingWedge();
     window.resetScene = () => this.resetScene();
     window.getGameState = () => this.getGameState();
     window.sim = this;
@@ -1078,10 +1247,24 @@ class AxeSplittingSimulation {
     const el = document.getElementById('aim-readout');
     if (!el) return;
     const diag = this.choppingStation.getAimDiagnostics();
+    const logDef = this.gameState.getCurrentLogDef();
     const cm = (diag.aimOffsetX * 100).toFixed(1);
     const deg = Math.round((diag.grainAngleError * 180) / Math.PI);
-    const knotWarn = diag.knotDistance < 0.04 ? ' \u26A0 KNOT HAZARD!' : '';
-    el.textContent = `Aim: ${cm} cm \u2022 Grain Offset: ${deg}\u00B0${knotWarn}`;
+    const normOff = Math.abs(diag.aimOffsetX) / logDef.radius;
+
+    let warn = '';
+    if (diag.hitPlantedWedge) {
+      warn = ' \u2022 \uD83C\uDFAF STEEL WEDGE LOCKED!';
+    } else if (diag.rockDistance < 0.042) {
+      warn = ' \u2022 \u26A0 GRANITE ROCK HAZARD!';
+    } else if (diag.nailDistance < 0.038) {
+      warn = ' \u2022 \u26A0 NAIL HAZARD!';
+    } else if (diag.knotDistance < 0.04) {
+      warn = ' \u2022 \u26A0 KNOT HAZARD!';
+    } else if (logDef.isHollow && normOff < 0.21) {
+      warn = ' \u2022 \u26A0 HOLLOW ROT CORE!';
+    }
+    el.textContent = `Aim: ${cm} cm \u2022 Grain Offset: ${deg}\u00B0${warn}`;
   }
 
   _updateTimingNeedleDOM() {
@@ -1098,11 +1281,12 @@ class AxeSplittingSimulation {
     if (!banner || !title || !sub || !result) return;
 
     title.textContent = result.rating;
-    title.style.color = result.glancing
-      ? '#f87171'
-      : result.split
-      ? '#fde047'
-      : '#fb923c';
+    title.style.color =
+      result.glancing || result.hitNail || result.hitRock
+        ? '#f87171'
+        : result.split
+        ? '#fde047'
+        : '#fb923c';
 
     const ptsSign = result.points >= 0 ? `+${result.points}` : `${result.points}`;
     const lvlTag = result.leveledUp ? ' \u2022 LEVEL UP!' : '';
@@ -1113,6 +1297,31 @@ class AxeSplittingSimulation {
     this._bannerTimeout = setTimeout(() => {
       banner.classList.add('hidden');
     }, 2200);
+  }
+
+  _updateChallengeStatusPill() {
+    const pill = document.getElementById('challenge-status-pill');
+    if (!pill) return;
+    const gs = this.gameState;
+    if (gs.gameMode === 'time_attack') {
+      pill.textContent = `${gs.challengeTimer.toFixed(1)}s \u2022 ${gs.challengeSplits} Splits`;
+    } else if (gs.gameMode === 'precision') {
+      const avg =
+        gs.precisionStrikes > 0
+          ? (gs.precisionErrorSumCm / gs.precisionStrikes).toFixed(1)
+          : '0.0';
+      pill.textContent = `Avg Err: ${avg} cm`;
+    } else if (gs.gameMode === 'endless') {
+      const mult = Math.round((1 + Math.min(1.6, gs.challengeSplits * 0.08)) * 100);
+      pill.textContent = `Run: ${gs.challengeSplits} \u2022 ${mult}% HP`;
+    } else if (gs.gameMode === 'daily_seed') {
+      pill.textContent = `Seed: ${gs.dailySeedStr}`;
+    } else {
+      const rem = 6 - (gs.logsSplitCount % 6);
+      pill.textContent = LOG_TYPES[gs.logType]?.isBoss
+        ? 'BOSS ACTIVE!'
+        : `Boss in ${rem}`;
+    }
   }
 
   _refreshAllHUD() {
@@ -1144,6 +1353,20 @@ class AxeSplittingSimulation {
         100,
         (gs.stamina / gs.maxStamina) * 100
       ).toFixed(1)}%`;
+    }
+
+    // Update Blade Edge Sharpness Condition bar
+    const cond = Math.round(gs.axeCondition);
+    setTxt('hud-edge-text', cond < 65 ? `${cond}% (Hone [H])` : `${cond}% Sharp`);
+    const edgeFill = document.getElementById('hud-edge-fill');
+    if (edgeFill) {
+      edgeFill.style.width = `${Math.min(100, cond)}%`;
+      edgeFill.style.background =
+        cond < 50
+          ? 'linear-gradient(90deg, #ef4444, #f97316)'
+          : cond < 78
+          ? 'linear-gradient(90deg, #f59e0b, #fde047)'
+          : 'linear-gradient(90deg, #38bdf8, #818cf8)';
     }
 
     const logDef = gs.getCurrentLogDef();
@@ -1179,6 +1402,7 @@ class AxeSplittingSimulation {
     const descEl = document.getElementById('log-desc');
     if (descEl) descEl.textContent = logDef.description;
 
+    this._updateChallengeStatusPill();
     this._updateTelemetry();
     this._updateAimReadout();
   }
@@ -1290,7 +1514,19 @@ class AxeSplittingSimulation {
     const now = performance.now();
     const rawDt = Math.min(Math.max(0.001, (now - this._lastTickTime) / 1000), 0.12);
     this._lastTickTime = now;
-    const dt = rawDt * this.timeScale;
+
+    // Handle Hit-Stop freeze & Perfect-Hit / Boss Slow-Mo pulse
+    let effectiveScale = this.timeScale;
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer = Math.max(0, this.hitStopTimer - rawDt);
+      effectiveScale = 0.04;
+    } else if (this.juiceSlowMoTimer > 0) {
+      this.juiceSlowMoTimer = Math.max(0, this.juiceSlowMoTimer - rawDt);
+      if (!this.slowMotion) {
+        effectiveScale = 0.28;
+      }
+    }
+    const dt = rawDt * effectiveScale;
 
     this._frameCount++;
     this._fpsAccum += rawDt;
@@ -1316,10 +1552,13 @@ class AxeSplittingSimulation {
       this._updateTimingNeedleDOM();
     }
 
-    // Regenerate player stamina when idle
+    // Regenerate player stamina when idle & tick challenge timer
     const isIdle = this.humanoid.state === 'IDLE';
     const prevStam = Math.round(this.gameState.stamina);
     this.gameState.updateStamina(rawDt, isIdle, this.atmosphere.weather);
+    if (this.gameState.gameMode === 'time_attack') {
+      this._updateChallengeStatusPill();
+    }
     if (Math.round(this.gameState.stamina) !== prevStam) {
       const stamFill = document.getElementById('hud-stamina-fill');
       const stamTxt = document.getElementById('hud-stamina-text');
@@ -1358,10 +1597,31 @@ class AxeSplittingSimulation {
     }
 
     this.atmosphere.update(dt);
+    if (this.sound && typeof this.sound.tickAmbientSoundscape === 'function') {
+      this.sound.tickAmbientSoundscape(
+        rawDt,
+        this.atmosphere.weather,
+        this.atmosphere.timeOfDay
+      );
+    }
     this.debugWireframe.update();
 
     this.controls.update();
     this._updateTelemetry();
+
+    // Apply decaying trauma camera shake around OrbitControls camera position
+    let appliedShake = false;
+    if (this.cameraShakeTrauma > 0.005) {
+      const shakeMag = this.cameraShakeTrauma * this.cameraShakeTrauma * 0.065;
+      this.shakeOffset.set(
+        (Math.random() - 0.5) * 2 * shakeMag,
+        (Math.random() - 0.5) * 2 * shakeMag,
+        (Math.random() - 0.5) * 2 * shakeMag
+      );
+      this.camera.position.add(this.shakeOffset);
+      appliedShake = true;
+      this.cameraShakeTrauma = Math.max(0, this.cameraShakeTrauma - rawDt * 2.8);
+    }
 
     if (shouldRender) {
       if (this.useComposer && this.composer) {
@@ -1369,6 +1629,10 @@ class AxeSplittingSimulation {
       } else {
         this.renderer.render(this.scene, this.camera);
       }
+    }
+
+    if (appliedShake) {
+      this.camera.position.sub(this.shakeOffset);
     }
   }
 

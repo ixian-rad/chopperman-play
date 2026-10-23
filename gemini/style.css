@@ -176,6 +176,10 @@ body {
   background: linear-gradient(90deg, #f97316, #ef4444);
 }
 
+.edge-fill {
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+}
+
 .hud-actions-group {
   display: flex;
   align-items: center;

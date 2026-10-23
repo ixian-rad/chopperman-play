@@ -17,10 +17,11 @@ export class HumanoidChopper {
     this.choppingStation = choppingStation;
     this.sound = soundEffects;
 
-    // Swing state machine: 'IDLE' | 'DRAG_WINDUP' | 'WINDUP' | 'DOWNSWING' | 'IMPACT_HOLD' | 'RECOVERY'
+    // Swing state machine: 'IDLE' | 'DRAG_WINDUP' | 'WINDUP' | 'DOWNSWING' | 'IMPACT_HOLD' | 'WEDGED_PRY' | 'RECOVERY'
     this.state = 'IDLE';
     this.stateTime = 0;
     this.dragWindupRatio = 0;
+    this.pryRockAngle = 0;
     this.idleClock = 0;
     this.swingForce = 1.0; // 0.2 to 1.6 (1.0 = 100% default)
     this.hasTriggeredSplit = false;
@@ -469,10 +470,32 @@ export class HumanoidChopper {
     this.state = 'IDLE';
     this.stateTime = 0;
     this.dragWindupRatio = 0;
+    this.pryRockAngle = 0;
     this.hasTriggeredSplit = false;
     this.whooshPlayed = false;
     this._applyPose(this._getPoseForState('IDLE', 0));
     this._syncPhysicsFromRig(1 / 60);
+  }
+
+  /**
+   * Places the humanoid in the `WEDGED_PRY` state with the blade embedded in the kerf crack.
+   * Player can wiggle the mouse or tap Space/F to lever the blade free (or auto-recovers after 0.85s).
+   */
+  enterWedgedPry() {
+    this.state = 'WEDGED_PRY';
+    this.stateTime = 0;
+    this.pryRockAngle = 0;
+  }
+
+  /**
+   * Rocks the embedded axe handle laterally to pry the kerf open or extract the wedged blade.
+   */
+  rockWedgedBlade(dir = 1) {
+    if (this.state !== 'WEDGED_PRY') return false;
+    this.pryRockAngle = dir * 0.22;
+    this.state = 'RECOVERY';
+    this.stateTime = 0;
+    return true;
   }
 
   _getPoseForState(stateName, phaseProgress) {
@@ -607,6 +630,14 @@ export class HumanoidChopper {
     if (stateName === 'IMPACT_HOLD') {
       const ease = 1 - Math.pow(1 - Math.min(1, phaseProgress), 2);
       return lerpPose(poses.IMPACT, poses.FOLLOW_THROUGH, ease);
+    }
+
+    if (stateName === 'WEDGED_PRY') {
+      const p = { ...poses.IMPACT };
+      const pryOsc = Math.sin(this.stateTime * 18.0) * 0.08 + this.pryRockAngle;
+      p.torsoRotY += pryOsc * 0.5;
+      p.rShoulderZ += pryOsc;
+      return p;
     }
 
     if (stateName === 'RECOVERY') {
@@ -791,6 +822,19 @@ export class HumanoidChopper {
       this._applyPose(this._getPoseForState('IMPACT_HOLD', p));
       this._syncPhysicsFromRig(dt);
       if (p >= 1.0) {
+        this.state = 'RECOVERY';
+        this.stateTime = 0;
+      }
+      return;
+    }
+
+    if (this.state === 'WEDGED_PRY') {
+      const pryHoldDuration = 0.85;
+      const p = this.stateTime / pryHoldDuration;
+      this._applyPose(this._getPoseForState('WEDGED_PRY', p));
+      this._syncPhysicsFromRig(dt);
+      if (p >= 1.0) {
+        this.pryRockAngle = 0;
         this.state = 'RECOVERY';
         this.stateTime = 0;
       }
