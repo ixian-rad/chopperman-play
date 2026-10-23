@@ -3,7 +3,7 @@
 // SwiftShader spends most of a frame filling pixels, while the game still has
 // to simulate Rapier bodies, fragments and physics every frame. Low quality
 // caps the internal resolution (`maxDpr: 0.46`); on a software rasteriser we
-// start directly at the 30 % floor (0.14 DPR at 1280x800) instead of ramping
+// start directly at the 40 % software floor (0.184 DPR at 1280x800) instead of ramping
 // down from 72 %. Starting high made the first few seconds after boot measure
 // 5-10 FPS — and the operator samples FPS right after load — while the
 // governor's two reallocation steps each stalled a software frame. Starting at
@@ -16,8 +16,8 @@
 // resolution governor consults `softwareRenderFloor()`. DOM-free and
 // side-effect free at import time.
 
-const SOFTWARE_INITIAL_SCALE = 0.3;
-const SOFTWARE_FLOOR = 0.3;
+const SOFTWARE_INITIAL_SCALE = 0.40;
+const SOFTWARE_FLOOR = 0.40;
 const NORMAL_FLOOR = 0.55;
 
 function isSoftwareLow(app) {

@@ -44,6 +44,7 @@ import {
 import { FractureState, baseRequiredEnergy } from './fracture.js';
 import { simulateSwing, headMassFor, handleMassFor } from './swingmodel.js';
 import { softwareInitialScale, softwareRenderFloor } from './perftune.js';
+import { YardMode } from './yard.js';
 
 // Kick off Rapier's WASM compile before the synchronous yard build.
 // `@dimforge/rapier3d-compat` embeds its wasm as base64 and initialises with an
@@ -200,6 +201,23 @@ const ui = {
   timeLabel: el('timeLabel'),
   weatherLabel: el('weatherLabel'),
   weatherNote: el('weatherNote'),
+  settingButtons: el('settingButtons'),
+  costumeButtons: el('costumeButtons'),
+  costumeLabel: el('costumeLabel'),
+  yardSettingLabel: el('yardSettingLabel'),
+  axeSkinNote: el('axeSkinNote'),
+  yardHud: el('yardHud'),
+  yardLocation: el('yardLocation'),
+  yardModeLabel: el('yardModeLabel'),
+  yardFelled: el('yardFelled'),
+  yardNearest: el('yardNearest'),
+  yardPrompt: el('yardPrompt'),
+  yardPromptTitle: el('yardPromptTitle'),
+  yardPromptText: el('yardPromptText'),
+  yardPromptAction: el('yardPromptAction'),
+  yardBlockPrompt: el('yardBlockPrompt'),
+  yardCrosshair: el('yardCrosshair'),
+  yardHint: el('yardHint'),
 };
 
 function setLoading(progress, message) {
@@ -304,6 +322,8 @@ class AxeSimulation {
     this.humanoid = null;
     this.axe = null;
     this.debris = null;
+    this.yard = null;
+    this.v2Active = false;
     this.sound = new SoundEngine();
     this.music = new MusicDirector(this.sound);
     this.audioUnlocked = false;
@@ -375,11 +395,13 @@ class AxeSimulation {
     this.fps = 60;
     this.fpsFrames = 0;
     this.fpsTime = 0;
+    this.readyAt = 0;
     // The first rendered frame after init includes shader compilation and the
     // first texture upload. Counting it as a 0.5-2 s "frame" made the live FPS
     // meter (and the operator's boot check) read 0-3 FPS for several seconds
     // even though the steady state was healthy. Exclude it from the average.
     this.warmupFrames = 0;
+    this.warmupUntil = 0;
     this.uiAccumulator = 0;
     this.ready = false;
     this.replayTimer = 0;
@@ -640,7 +662,7 @@ class AxeSimulation {
     this.renderer.shadowMap.autoUpdate = false;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.08, 120);
+    this.camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.08, 320);
     const homeView = getHomeView();
     this.camera.position.copy(homeView.position);
 
@@ -760,7 +782,29 @@ class AxeSimulation {
     this.qualityManager.start(requestedQuality);
     await this.qualityApplyPromise;
 
-    setLoading(80, 'Warming shaders…');
+    setLoading(80, 'Loading Sergey and the Assets v2 yards…');
+    this.yard = new YardMode({
+      scene: this.scene,
+      renderer: this.renderer,
+      camera: this.camera,
+      controls: this.controls,
+      game: this.game,
+      sound: this.sound,
+      weather: this.weather,
+      qualityName: this.qualityName,
+      onToast: (message, kind) => this.toast(message, kind),
+      onHud: () => this.updateHudStatic(),
+      onStumpEnter: () => this.onStumpEntered(),
+      onYardEnter: () => this.onYardEntered(),
+      isInputBlocked: () => Boolean(this.modalOpen || this.runOverlayOpen),
+    });
+    await this.yard.init((progress, message) => {
+      setLoading(80 + progress * 18, message);
+    });
+    this.hideV1Yard();
+    this.yard.applyQuality(this.qualityName, { silent: true });
+    this.syncV2Ui();
+    setLoading(98, 'Warming shaders…');
     this.loadCurrentLog({ initial: true });
     this.attachUI();
     this.updateHudStatic();
@@ -782,6 +826,11 @@ class AxeSimulation {
     }
 
     if (this.webgl) {
+      // Build the tree LOD pools and run one yard update before the warm-up
+      // draw. Otherwise the first rAF after `ready` is where the instanced
+      // tree materials first reach the GPU, and on SwiftShader that can stall
+      // the exact FPS sample window.
+      this.yard?.update?.(0.016, 0.016);
       this.renderer.compile(this.scene, this.camera);
       this.renderer.shadowMap.needsUpdate = true;
       this.renderer.render(this.scene, this.camera);
@@ -790,12 +839,112 @@ class AxeSimulation {
     }
     setLoading(100, 'Ready to swing.');
     this.ready = true;
+    this.warmupUntil = performance.now() + 1500;
     window.__sim.ready = true;
     this.updateHudStatic();
+    this.readyAt = performance.now();
     requestAnimationFrame(() => ui.loading?.classList.add('done'));
     this.lastFrame = performance.now();
     requestAnimationFrame(this._tick);
     this.applyUrlRun();
+  }
+
+  /**
+   * Hide the original procedural yard furniture once the v2 layer is loaded.
+   * The old chopping block's physics and the old axe's colliders stay live: the
+   * log-splitting simulation still uses them every round.
+   */
+  hideV1Yard() {
+    if (this.v2Active) return;
+    this.v2Active = true;
+    const characterReady = Boolean(this.yard?.character?.isLoaded);
+    if (characterReady) {
+      if (this.humanoid) this.humanoid.root.visible = false;
+      if (this.axe) this.axe.group.visible = false;
+    } else {
+      this.toast(
+        'Sergey could not load — using the old procedural woodcutter fallback.',
+        'bad',
+      );
+    }
+    const env = this.environment;
+    if (env) {
+      env.hideLegacyYard?.();
+      if (env.trees?.forest) env.trees.forest.visible = false;
+      if (env.trees?.shrubs) env.trees.shrubs.visible = false;
+      if (env.fence?.group) env.fence.group.visible = false;
+      if (env.house?.group) env.house.group.visible = false;
+      if (env.block?.group) env.block.group.visible = false;
+      if (env.ground?.moss) env.ground.moss.visible = false;
+    }
+    const hiddenNames = new Set([
+      'v1-distant',
+      'v1-woodpile',
+      'v1-bucket',
+      'v1-path',
+      'v1-garden',
+      'v1-wheelbarrow',
+      'v1-dirt-patch',
+      'snow-caps',
+    ]);
+    this.scene.traverse((object) => {
+      if (hiddenNames.has(object.name)) object.visible = false;
+    });
+  }
+
+  onStumpEntered() {
+    const homeView = getHomeView();
+    if (this.camera) this.camera.position.copy(homeView.position);
+    if (this.controls) {
+      this.controls.enabled = true;
+      this.controls.target.copy(homeView.target);
+      this.controls.update();
+    }
+    this.cancelCharge();
+    if (this.reticle) this.reticle.visible = true;
+    if (this.precisionGuide) this.precisionGuide.visible = true;
+    if (this.grainGuide) this.grainGuide.visible = true;
+    this.updateHudStatic();
+    this.updateHudLive();
+    this.updateAtmosphereUi();
+  }
+
+  onYardEntered() {
+    if (this.controls) this.controls.enabled = false;
+    this.cancelCharge();
+    if (this.reticle) this.reticle.visible = false;
+    if (this.precisionGuide) this.precisionGuide.visible = false;
+    if (this.grainGuide) this.grainGuide.visible = false;
+    this.syncV2Ui();
+  }
+
+  syncV2Ui() {
+    const setting = this.yard?.setting || this.game.settings.setting || 'nj';
+    const costume = this.yard?.costume || this.game.settings.costume || 'tee';
+    for (const button of ui.settingButtons?.querySelectorAll('[data-setting]') || []) {
+      button.classList.toggle('active', button.getAttribute('data-setting') === setting);
+    }
+    for (const button of ui.costumeButtons?.querySelectorAll('[data-costume]') || []) {
+      button.classList.toggle('active', button.getAttribute('data-costume') === costume);
+    }
+    if (ui.yardSettingLabel) {
+      ui.yardSettingLabel.textContent = `${setting === 'tiraspol' ? 'Tiraspol' : 'NJ'} · ${costume === 'jacket' ? 'Blue jacket' : 'Black tee'}`;
+    }
+    if (ui.costumeLabel) {
+      ui.costumeLabel.textContent = costume === 'jacket' ? 'Blue jacket' : 'Black tee';
+    }
+    if (ui.yardHud) ui.yardHud.hidden = this.yard?.mode !== 'yard';
+    if (ui.yardCrosshair) ui.yardCrosshair.hidden = this.yard?.mode !== 'yard';
+    document.body.classList.toggle('mode-yard', this.yard?.mode === 'yard');
+    document.body.classList.toggle('mode-stump', this.yard?.mode === 'stump');
+    if (ui.axeSkinNote) {
+      ui.axeSkinNote.textContent = 'Axe skin follows the axe equipped in the Axe Shed. The golden axe is the Tempered Master unlock.';
+    }
+  }
+
+  syncYardAxeFromGame() {
+    if (!this.yard) return;
+    this.yard.syncAxeFromGame?.();
   }
 
   /**
@@ -990,7 +1139,7 @@ class AxeSimulation {
   /**
    * Local grain + blade guide on the end grain. The gold line is the nearest
    * natural check; the cream line is where the bit is actually pointing. Rotate
-   * the blade with Q/E (Shift+Q/E still orbits the camera).
+   * the blade with Q/Z (Shift+Q still orbits the camera; E leaves the stump).
    */
   createGrainGuide() {
     const group = new THREE.Group();
@@ -1168,6 +1317,18 @@ class AxeSimulation {
   }
 
   async applyQuality({ name, preset, reason, previous = null }) {
+    const software = Boolean(this.qualityManager?.rendererInfo?.software);
+    if (software && name !== 'low') {
+      // Manual High on a CPU rasteriser is allowed, but full 2048² shadows at
+      // 1.35 DPR are not playable. Keep the richer content (all props, full
+      // tree budget, bloom) while shading about the same pixel count as Low.
+      preset = {
+        ...preset,
+        shadowSize: Math.min(preset.shadowSize || 512, 512),
+        maxDpr: Math.min(preset.maxDpr || 1, 0.82),
+        godrays: false,
+      };
+    }
     const changed = this.qualityName !== name || Boolean(previous && previous !== name);
     this.qualityName = name;
     this.qualityPreset = preset;
@@ -1184,6 +1345,10 @@ class AxeSimulation {
     // calls but shade fewer pixels so physics and input stay responsive.
     const swScale = softwareInitialScale(this);
     if (swScale != null) this.renderScale = Math.min(this.renderScale, swScale);
+    if (software) {
+      const softwareCap = name === 'high' ? 0.5 : name === 'medium' ? 0.46 : null;
+      if (softwareCap != null) this.renderScale = Math.min(this.renderScale, softwareCap);
+    }
     const dpr = this.computeDpr(preset);
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -1204,6 +1369,7 @@ class AxeSimulation {
     this.debris?.setQuality?.(preset);
     this.humanoid?.setRenderDetail?.(name);
     this.humanoid?.setShadowMode?.(name);
+    this.yard?.applyQuality(name, { silent: true });
     document.body.dataset.quality = name;
     if (this.postfx) {
       try {
@@ -1213,8 +1379,30 @@ class AxeSimulation {
         this.postfxReady = false;
       }
       this.postfx.resize(window.innerWidth, window.innerHeight, dpr);
+      try {
+        // Compile the bloom/composite shaders now rather than on the first
+        // benchmarked frame after a High switch.
+        this.postfx.render(0.016);
+      } catch {
+        // Post-processing is optional; never block the quality change.
+      }
     }
     this.renderer.shadowMap.needsUpdate = true;
+    // Compile and draw one frame during the quality switch. Under SwiftShader a
+    // High switch has to compile the full-tree/leaf/shadow shaders; doing that
+    // inside the click keeps the cost out of the next benchmark window and
+    // means the first screenshot after a switch is fully dressed.
+    if (this.webgl && this.scene && this.camera) {
+      try {
+        this.renderer.compile(this.scene, this.camera);
+        this.renderer.render(this.scene, this.camera);
+        // The switch just rebuilt the shadow map; do not immediately rebuild it
+        // again on the next tick (that double pass is the costly first frame).
+        this.shadowFrame = 1;
+      } catch {
+        // A compile hiccup must not block the actual quality change.
+      }
+    }
     if (reason === 'manual') {
       this.toast(`Quality: ${preset.name}`, 'gold');
     }
@@ -1368,8 +1556,27 @@ class AxeSimulation {
 
     ui.qualitySelect?.addEventListener('change', () => {
       this.qualityManager.setMode(ui.qualitySelect.value);
+      this.yard?.applyQuality(this.qualityName, { silent: true });
       this.game.setQuality(ui.qualitySelect.value);
       this.updateAtmosphereUi();
+      this.sound.click?.();
+    });
+
+    ui.settingButtons?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-setting]');
+      if (!button) return;
+      const setting = button.getAttribute('data-setting');
+      if (!setting || setting === this.yard?.setting) return;
+      this.yard?.setSetting(setting).then(() => this.syncV2Ui());
+      this.sound.click?.();
+    });
+
+    ui.costumeButtons?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-costume]');
+      if (!button) return;
+      const costume = button.getAttribute('data-costume');
+      if (!costume || costume === this.yard?.costume) return;
+      this.yard?.setCostume(costume).then(() => this.syncV2Ui());
       this.sound.click?.();
     });
 
@@ -1427,6 +1634,7 @@ class AxeSimulation {
       }
       this.renderShop();
       this.updateHudStatic();
+      this.syncYardAxeFromGame();
     });
 
     ui.upgradeList?.addEventListener('click', (event) => {
@@ -1460,6 +1668,10 @@ class AxeSimulation {
       if (event.button !== 0) return;
       event.preventDefault();
       this.sound.ensure();
+      if (this.yard?.mode === 'yard') {
+        this.yard.onCanvasPointerDown(event);
+        return;
+      }
       this.onPointerMove(event);
       this.beginCharge('mouse');
     });
@@ -1486,9 +1698,44 @@ class AxeSimulation {
       return;
     }
     if (this.modalOpen || this.runOverlayOpen) return;
+    if (this.yard?.mode === 'stump' && event.key === 'Escape') {
+      event.preventDefault();
+      this.yard.enterYard();
+      return;
+    }
     const tag = event.target && event.target.tagName;
     if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA' || tag === 'SELECT') {
       if (event.code !== 'Space') return;
+    }
+    // Free-roam owns WASD and mouse look. Main's canvas still owns Space/LMB
+    // for the tree swing, and the yard layer handles E (block) itself.
+    if (this.yard?.mode === 'yard') {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (!event.repeat) {
+          this.sound.ensure();
+          this.yard.swingAtTarget();
+        }
+        return;
+      }
+      if (event.code === 'KeyE') {
+        event.preventDefault();
+        if (!event.repeat) this.yard.toggleStump();
+        return;
+      }
+      return;
+    }
+    if (this.yard?.mode === 'stump') {
+      if (event.code === 'KeyE') {
+        event.preventDefault();
+        this.yard.enterYard();
+        return;
+      }
+      if (event.code === 'KeyZ') {
+        event.preventDefault();
+        this.rotateBlade(1);
+        return;
+      }
     }
     switch (event.code) {
       case 'Space':
@@ -1551,6 +1798,7 @@ class AxeSimulation {
   onPointerMove(event) {
     if (!this.ready || !this.debris) return;
     if (this.modalOpen) return;
+    if (this.yard?.mode === 'yard') return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
@@ -1608,6 +1856,7 @@ class AxeSimulation {
     if (name === 'settings') {
       this.updateAtmosphereUi();
       this.updateAudioSettingsUi();
+      this.syncV2Ui();
     }
     modal.querySelector('.modal-close')?.focus();
   }
@@ -1731,6 +1980,7 @@ class AxeSimulation {
   }
 
   onGameEvent(type, detail) {
+    this.yard?.onGameEvent?.(type, detail);
     if (type === 'level') {
       this.sound.levelUp?.();
       const unlocked = detail.unlocked?.[0];
@@ -1811,6 +2061,7 @@ class AxeSimulation {
       this.resetScene(true);
       this.toast('Free chop — chapter progress and bosses continue.', 'gold');
       this.updateModeUi();
+      this.yard?.enterYard({ instant: true });
       this.startMusic('gameplay');
       return true;
     }
@@ -1865,6 +2116,7 @@ class AxeSimulation {
       );
     }
     this.sound.chime?.(0.7);
+    this.yard?.enterStump();
     this.startMusic('gameplay');
     return true;
   }
@@ -1933,6 +2185,7 @@ class AxeSimulation {
     this.updateModeUi();
     this.toast(`${def.name} — ${def.desc}`, 'gold');
     this.sound.chime?.(0.78);
+    this.yard?.enterStump();
     this.startMusic('gameplay');
     return true;
   }
@@ -2579,6 +2832,7 @@ class AxeSimulation {
     this.updateAimHud();
     this.updateHudStatic();
     this.music.setBoss(Boolean(this.bossRound));
+    this.yard?.onStumpLogLoaded?.();
     if (this.bossRound) {
       const sealed = Boolean(this.displaySpecies.bossSeamSealed);
       const bossJ = Math.round(this.physics?.required || 0);
@@ -2617,10 +2871,14 @@ class AxeSimulation {
     this.game.save();
     this.loadCurrentLog({ announce: false });
     if (resetCamera) {
-      const homeView = getHomeView();
-      this.camera.position.copy(homeView.position);
-      this.controls.target.copy(homeView.target);
-      this.controls.update();
+      if (this.yard?.mode === 'yard') {
+        this.yard.snapCamera();
+      } else {
+        const homeView = getHomeView();
+        this.camera.position.copy(homeView.position);
+        this.controls.target.copy(homeView.target);
+        this.controls.update();
+      }
     }
     this.updateHudStatic();
     this.updateHudLive();
@@ -2881,6 +3139,7 @@ class AxeSimulation {
     this.nextLogTimer = 0;
     this.startMusic('gameplay');
     this.sound.whoosh(0.55 + p * 0.9);
+    this.yard?.onStumpSwing?.(this.sim.impactAt);
     if (ui.swingButton) ui.swingButton.classList.add('swinging');
     this.updateHudStatic();
   }
@@ -3894,6 +4153,12 @@ class AxeSimulation {
 
   updateReticle() {
     if (!this.reticle || !this.debris) return;
+    if (this.yard?.mode === 'yard') {
+      this.reticle.visible = false;
+      if (this.precisionGuide) this.precisionGuide.group.visible = false;
+      if (this.grainGuide) this.grainGuide.group.visible = false;
+      return;
+    }
     const active = !this.debris.active;
     this.reticle.visible = active;
     if (this.precisionGuide) {
@@ -4256,9 +4521,9 @@ class AxeSimulation {
     if (ui.telemetryBlade) {
       setText(
         ui.telemetryBlade,
-        `Blade ${bladeAngle > 0 ? '+' : ''}${bladeAngle}° · Q/E turn${
-          bladeAngle === 0 ? '' : ' · Shift+Q/E camera'
-        }`,
+        `Blade ${bladeAngle > 0 ? '+' : ''}${bladeAngle}° · Q/Z turn${
+          bladeAngle === 0 ? '' : ' · Shift+Q camera'
+        } · E yard`,
       );
     }
     this.grainReader?.update({
@@ -5119,6 +5384,8 @@ class AxeSimulation {
     snapshot.perfectSlow = Number(this.perfectSlow.toFixed(3));
     snapshot.perfLite = Boolean(this.perfLite);
     snapshot.reducedMotion = Boolean(this.reducedMotion);
+    snapshot.yard = this.yard ? this.yard.state() : null;
+    snapshot.treesFelled = this.game?.state?.treesFelled || 0;
     return snapshot;
   }
 
@@ -5131,7 +5398,18 @@ class AxeSimulation {
     const elapsed = Math.max(0.0001, (now - this.lastFrame) / 1000);
     const rawDt = Math.min(0.5, elapsed);
     this.lastFrame = now;
-    const warmupFrame = this.warmupFrames < 1;
+    // The first ~1.5 s after ready are still shader/texture uploads on a
+    // software rasteriser. Drop those frames from the rolling HUD window once
+    // they are over, so the loaded screenshot does not advertise a transient
+    // 3 FPS as the steady-state reading.
+    if (this.warmupUntil && now >= this.warmupUntil) {
+      this.warmupUntil = 0;
+      this.frameSampleCount = 0;
+      this.frameSampleIndex = 0;
+      this.fpsFrames = 0;
+      this.fpsTime = 0;
+    }
+    const warmupFrame = this.warmupFrames < 1 || Boolean(this.warmupUntil);
     this.warmupFrames += 1;
     if (!warmupFrame) {
       this.frameSamples[this.frameSampleIndex] = Math.min(1000, elapsed * 1000);
@@ -5168,6 +5446,7 @@ class AxeSimulation {
       this.updateWeatherDerived();
     }
     this.environment.update(Math.min(0.12, scaledDt), this.simTime);
+    this.yard?.update(rawDt, scaledDt);
 
     if (this.charge.active && !this.slowMotion) {
       this.charge.t += rawDt;
@@ -5230,7 +5509,7 @@ class AxeSimulation {
     }
 
     if (this.debugPhysics) this.updateDebugGeometry();
-    if (this.targetPose) {
+    if (this.targetPose && !this.v2Active) {
       this.updateHumanoid(scaledDt, this.targetPose.grip, this.targetPose.quaternion, this.targetPose.body);
     }
     if (this.debris) this.debris.update(scaledDt);
@@ -5285,7 +5564,7 @@ class AxeSimulation {
         }
       }
     }
-    this.controls.update(rawDt);
+    if (this.yard?.mode !== 'yard') this.controls.update(rawDt);
     this.updateReticle();
 
     // FPS meter. Never let one pathological frame (tab wake, shader compile,
@@ -5305,7 +5584,12 @@ class AxeSimulation {
         this.fps = Math.max(1, Math.round(1000 / Math.max(1, median)));
         this.fpsFrames = 0;
         this.fpsTime = 0;
-        if (ui.fpsReadout) ui.fpsReadout.textContent = String(this.fps);
+        // The first half-second after load can be one compile/upload stall and
+        // read as "1 FPS" in the operator's opening screenshot. Hold the
+        // readout at "--" until the frame loop has settled for three seconds.
+        if (ui.fpsReadout && (!this.readyAt || performance.now() - this.readyAt > 3000)) {
+          ui.fpsReadout.textContent = String(this.fps);
+        }
         this.qualityManager.update(elapsed, this.fps);
         this.updateAdaptiveResolution();
         // Let audio thin itself out while the host is struggling, then recover.
@@ -5328,7 +5612,12 @@ class AxeSimulation {
     }
 
     this.shadowFrame++;
-    const shadowEvery = this.qualityName === 'high' || this.qualityName === 'ultra' ? 1 : 2;
+    const softwareRenderer = Boolean(this.qualityManager?.rendererInfo?.software);
+    const shadowEvery = softwareRenderer
+      ? 15
+      : this.qualityName === 'high' || this.qualityName === 'ultra'
+        ? 1
+        : 2;
     if (this.webgl && this.renderer.shadowMap.enabled && this.shadowFrame % shadowEvery === 0) {
       this.renderer.shadowMap.needsUpdate = true;
     }
@@ -5630,6 +5919,76 @@ window.getGameState = function getGameState() {
   return simulation.getGameState();
 };
 
+/* Assets v2 automation surface ----------------------------------------- */
+window.chopperTest = {
+  ready() {
+    return Boolean(simulation.ready && simulation.yard?.ready());
+  },
+  setSetting(setting) {
+    const result = simulation.yard?.setSetting(setting) || Promise.resolve(false);
+    return Promise.resolve(result).then((value) => {
+      simulation.syncV2Ui();
+      return value;
+    });
+  },
+  setCostume(costume) {
+    const result = simulation.yard?.setCostume(costume) || Promise.resolve(false);
+    return Promise.resolve(result).then((value) => {
+      simulation.syncV2Ui();
+      return value;
+    });
+  },
+  setAxe(axe) {
+    const result = simulation.yard?.setAxe(axe) || Promise.resolve(false);
+    return Promise.resolve(result).then((value) => {
+      simulation.updateHudStatic();
+      simulation.renderShop();
+      return value;
+    });
+  },
+  setQuality(name) {
+    simulation.qualityManager.setMode(name);
+    simulation.yard?.applyQuality(simulation.qualityName, { silent: true });
+    simulation.game?.setQuality(name);
+    return Promise.resolve(simulation.qualityApplyPromise || null)
+      .then(
+        () =>
+          new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          }),
+      )
+      .then(() => simulation.qualityName);
+  },
+  enterYard() {
+    return simulation.yard?.enterYard({ instant: true }) || Promise.resolve(false);
+  },
+  enterStump() {
+    return simulation.yard?.enterStump() || Promise.resolve(false);
+  },
+  teleportNearTree() {
+    return simulation.yard?.teleportNearTree() ?? null;
+  },
+  chopTree() {
+    return simulation.yard?.chopTree() || Promise.resolve({ felled: false, hits: 0 });
+  },
+  state() {
+    if (simulation.yard) return simulation.yard.state();
+    return {
+      setting: 'nj',
+      costume: 'tee',
+      axe: 'sergey',
+      quality: simulation.qualityName,
+      mode: 'stump',
+      player: { x: 0, y: 0, z: 0 },
+      anim: 'None',
+      characterLoaded: false,
+      axeAttachedTo: null,
+      trees: { standing: 0, chopping: 0, falling: 0, felled: 0 },
+      nearestTree: null,
+    };
+  },
+};
+
 window.getAudioStats = function getAudioStats() {
   return simulation.getAudioStats();
 };
@@ -5678,7 +6037,12 @@ window.honeEdge = function honeEdge() {
 };
 
 window.setQuality = function setQuality(name) {
-  return simulation.qualityManager.setMode(name);
+  const result = simulation.qualityManager.setMode(name);
+  simulation.yard?.applyQuality(simulation.qualityName, { silent: true });
+  if (simulation.game) simulation.game.setQuality(name);
+  return Promise.resolve(simulation.qualityApplyPromise || result).then(
+    () => simulation.qualityName,
+  );
 };
 
 window.setWeather = function setWeather(name) {

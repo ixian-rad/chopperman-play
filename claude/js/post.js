@@ -9,12 +9,17 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 export const PRESETS = {
-  potato: { name: 'Potato', ibl: false, shadowRange: 6, shadowEvery: 2, pixelRatio: 0.4, shadows: false, shadowSize: 512, grass: 0.0, post: false, bloom: false, godrays: false, ssao: false, chips: 90, precip: 0.25, cloudOctaves: 2, envUpdates: false, texScale: 0.5, pointLights: false },
-  low: { name: 'Low', ibl: false, shadowRange: 6, shadowEvery: 2, pixelRatio: 0.5, shadows: true, shadowSize: 1024, shadowType: THREE.BasicShadowMap, grass: 0.18, post: false, bloom: false, godrays: false, ssao: false, chips: 140, precip: 0.4, cloudOctaves: 3, envUpdates: false, texScale: 0.5, pointLights: true },
-  medium: { name: 'Medium', ibl: true, shadowRange: 11, shadowEvery: 1, pixelRatio: 0.8, shadows: true, shadowSize: 1024, shadowType: THREE.PCFShadowMap, grass: 0.5, post: true, bloom: true, godrays: false, ssao: false, chips: 200, precip: 0.7, cloudOctaves: 4, envUpdates: true, texScale: 0.75, pointLights: true },
-  high: { name: 'High', ibl: true, shadowRange: 16, shadowEvery: 1, pixelRatio: 1, shadows: true, shadowSize: 2048, shadowType: THREE.PCFSoftShadowMap, grass: 1, post: true, bloom: true, godrays: true, ssao: false, chips: 260, precip: 1, cloudOctaves: 5, envUpdates: true, texScale: 1, pointLights: true },
-  ultra: { name: 'Ultra', ibl: true, shadowRange: 16, shadowEvery: 1, pixelRatio: 2, shadows: true, shadowSize: 4096, shadowType: THREE.PCFSoftShadowMap, grass: 1, post: true, bloom: true, godrays: true, ssao: true, chips: 360, precip: 1, cloudOctaves: 5, envUpdates: true, texScale: 1, pointLights: true },
+  potato: { name: 'Potato', aniso: 1, ibl: false, shadowRange: 6, shadowEvery: 2, pixelRatio: 0.3, shadows: false, shadowSize: 512, grass: 0.0, post: false, bloom: false, godrays: false, ssao: false, chips: 90, precip: 0.25, cloudOctaves: 2, envUpdates: false, texScale: 0.5, pointLights: false, trees: 16, treeLod1: 3, treeLod2: 12, treeShadows: false, propShadows: false, propLow: true },
+  low: { name: 'Low', aniso: 1, ibl: false, shadowRange: 5, shadowEvery: 3, pixelRatio: 0.34, shadows: false, shadowSize: 512, shadowType: THREE.BasicShadowMap, grass: 0, post: false, bloom: false, godrays: false, ssao: false, chips: 140, precip: 0.4, cloudOctaves: 2, envUpdates: false, texScale: 0.5, pointLights: false, trees: 22, treeLod1: 3, treeLod2: 10, treeShadows: false, propShadows: false, propLow: true },
+  medium: { name: 'Medium', aniso: 4, ibl: true, shadowRange: 11, shadowEvery: 1, pixelRatio: 0.8, shadows: true, shadowSize: 1024, shadowType: THREE.PCFShadowMap, grass: 0.5, post: true, bloom: true, godrays: false, ssao: false, chips: 200, precip: 0.7, cloudOctaves: 4, envUpdates: true, texScale: 0.75, pointLights: true, trees: 36, treeLod1: 12, treeLod2: 40, treeShadows: true, propShadows: true },
+  high: { name: 'High', aniso: 8, ibl: true, shadowRange: 16, shadowEvery: 1, pixelRatio: 1, shadows: true, shadowSize: 2048, shadowType: THREE.PCFSoftShadowMap, grass: 1, post: true, bloom: true, godrays: true, ssao: false, chips: 260, precip: 1, cloudOctaves: 5, envUpdates: true, texScale: 1, pointLights: true, trees: 46, treeLod1: 28, treeLod2: 70, treeShadows: true, propShadows: true },
+  ultra: { name: 'Ultra', aniso: 8, ibl: true, shadowRange: 16, shadowEvery: 1, pixelRatio: 2, shadows: true, shadowSize: 4096, shadowType: THREE.PCFSoftShadowMap, grass: 1, post: true, bloom: true, godrays: true, ssao: true, chips: 360, precip: 1, cloudOctaves: 5, envUpdates: true, texScale: 1, pointLights: true, trees: 52, treeLod1: 36, treeLod2: 95, treeShadows: true, propShadows: true },
 };
+// aniso: anisotropic filtering cap for the procedural textures.
+// trees: how many trees_v2 trees a yard shows (inside the fence first); treeLod1/2: TreeField LOD
+// distances (m); tree/propShadows: whether yard trees / GLB props cast shadows.
+// Low / Potato draw no shadow maps at all (SwiftShader spent ~25-200 ms per shadow-map update plus a
+// shadow lookup in every lit pixel); blob shadows (blobs.js) ground Sergey, the block and the trees.
 export const PRESET_ORDER = ['potato', 'low', 'medium', 'high', 'ultra'];
 
 // Screen-space crepuscular rays: radial blur toward the sun of the sky pixels (depth == far),

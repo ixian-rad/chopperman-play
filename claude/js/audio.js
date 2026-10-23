@@ -636,6 +636,80 @@ export class SoundFX {
     this.tone({ t, dur: 0.08, f: 300, f1: 200, gain: 0.15, type: 'triangle' });
   }
 
+  // ------------------------------------------------------------------ yard (v2): footsteps + trees
+
+  // One footstep. kind: grass | mulch | dirt | hard | snow | wet. Rate-limited.
+  footstep(kind = 'grass', run = false) {
+    if (!this.ev('step', 0.12, 2)) return;
+    const t = this.now, g = (run ? 1.3 : 1) * rand(0.8, 1.1), pan = rand(-0.15, 0.15);
+    switch (kind) {
+      case 'mulch': // crunchy wood chips
+        this.noise({ t, dur: 0.11, f: rand(1800, 2600), q: 1.2, gain: 0.11 * g, attack: 0.003, pan });
+        this.noise({ t: t + 0.02, dur: 0.07, f: rand(3200, 4200), q: 2, gain: 0.05 * g, attack: 0.002, pan });
+        this.tone({ t, dur: 0.06, f: 120, f1: 80, gain: 0.08 * g, pan });
+        break;
+      case 'dirt': // packed earth: dull thud + grit
+        this.tone({ t, dur: 0.08, f: rand(95, 120), f1: 60, gain: 0.16 * g, pan });
+        this.noise({ t, dur: 0.07, type: 'lowpass', f: 1400, gain: 0.08 * g, buf: this.brown, attack: 0.002, pan });
+        break;
+      case 'hard': // concrete patio
+        this.tone({ t, dur: 0.05, f: rand(160, 200), f1: 110, gain: 0.12 * g, pan });
+        this.noise({ t, dur: 0.035, f: 2600, q: 1.5, gain: 0.07 * g, attack: 0.001, pan });
+        break;
+      case 'snow': // squeaky crunch
+        this.noise({ t, dur: 0.16, f: rand(900, 1300), q: 0.9, gain: 0.12 * g, attack: 0.02, pan });
+        this.noise({ t: t + 0.04, dur: 0.08, f: 2400, q: 3, gain: 0.04 * g, attack: 0.01, pan });
+        break;
+      case 'wet': // squelchy lawn
+        this.noise({ t, dur: 0.12, type: 'lowpass', f: 700, q: 2, gain: 0.12 * g, buf: this.brown, attack: 0.004, pan });
+        this.tone({ t: t + 0.01, dur: 0.05, f: 340, f1: 520, gain: 0.03 * g, pan });
+        break;
+      default: // grass: soft brush + muted thump
+        this.noise({ t, dur: 0.1, f: rand(1100, 1600), q: 0.8, gain: 0.07 * g, attack: 0.006, pan });
+        this.tone({ t, dur: 0.07, f: rand(80, 100), f1: 55, gain: 0.1 * g, pan });
+    }
+  }
+
+  // Axe biting into a standing trunk: deeper and longer than a split, with trunk resonance.
+  treeHit(species = 'oak', s = 0.8, trunkR = 0.25) {
+    if (!this.ev('treeHit', 0.05, 8)) return;
+    const hard = { pine: 0.5, poplar: 0.45, birch: 0.7, apricot: 0.75, maple: 1.0, oak: 1.1, walnut: 1.15 }[species] ?? 0.9;
+    const pr = this.woodProfile({ species: { hard, tough: hard } });
+    const t = this.now;
+    pr.pitch *= clamp(0.8 - (trunkR - 0.2) * 0.6, 0.5, 1.0);
+    this.chop(pr, s, t);
+    // the whole trunk rings briefly (low body + leaf rustle overhead)
+    this.tone({ t, dur: 0.35, f: 70 + 40 * (1 - trunkR), f1: 48, gain: 0.3 * s });
+    this.noise({ t: t + 0.05, dur: 0.5, f: 3200, q: 0.6, gain: 0.05 * s, attack: 0.08, dest: this.ambFilter ?? this.sfxMuffle });
+  }
+
+  // Fibres tearing before a fall. long = the tree is going: a slow rising groan.
+  treeCreak(amount = 0.6, long = false) {
+    if (!this.ev(long ? 'treeCreakLong' : 'treeCreak', 0.3, 6)) return;
+    const t = this.now;
+    const n = long ? 5 : 2;
+    for (let i = 0; i < n; i++) {
+      const rate = (long ? 0.42 : 0.6) + 0.05 * i + rand(-0.03, 0.03);
+      this.sample({ t: t + 0.05 + i * (long ? 0.32 : 0.2), buf: this.creaks[(Math.random() * 3) | 0], rate, gain: (0.18 + 0.2 * amount) * (long ? 1 + i * 0.15 : 1), type: 'bandpass', f: 300 + 90 * i, q: 1.6, pan: rand(-0.2, 0.2) });
+    }
+    if (long) {
+      // the hinge wood popping
+      for (let i = 0; i < 4; i++) this.noise({ t: t + 0.6 + i * 0.25 + rand(0, 0.1), dur: 0.04, f: rand(1200, 2200), q: 3, gain: 0.18, attack: 0.001 });
+    }
+  }
+
+  // The trunk and crown hitting the ground: branch crash, deep thud, settling rustle.
+  treeFall(size = 0.7) {
+    if (!this.ev('treeFall', 0.4, 8)) return;
+    const t = this.now, k = clamp(size, 0.2, 1.2);
+    this.noise({ t, dur: 0.9 + 0.6 * k, f: 2400, f1: 900, q: 0.5, gain: 0.45 * k, attack: 0.01 }); // branches snapping
+    for (let i = 0; i < 6; i++) this.noise({ t: t + rand(0, 0.35), dur: 0.05, f: rand(1500, 3500), q: 4, gain: 0.2 * k, attack: 0.001 });
+    this.tone({ t: t + 0.04, dur: 0.6 + 0.4 * k, f: 62, f1: 32, gain: 0.85 * k }); // the trunk thud
+    this.noise({ t: t + 0.04, dur: 0.5, type: 'lowpass', f: 380, f1: 90, gain: 0.7 * k, buf: this.brown, attack: 0.004 });
+    this.tone({ t: t + 0.42, dur: 0.3, f: 55, f1: 38, gain: 0.35 * k }); // bounce
+    this.noise({ t: t + 0.5, dur: 1.4, f: 2800, q: 0.5, gain: 0.08 * k, attack: 0.3 }); // leaves settling
+  }
+
   // ------------------------------------------------------------------ bosses
 
   bossIntro() {

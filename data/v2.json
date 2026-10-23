@@ -1,0 +1,76 @@
+{
+ "note": "Final verify = automated headless check (driver/v2/check_v2.mjs) in Chrome with SOFTWARE rendering (no GPU) on the build machine; FPS numbers are software-GL figures, far below what a real GPU gives, and vary with machine load.",
+ "harness": {
+  "claude": {
+   "title": "Backyard Log Splitter",
+   "commit": "f84f19b",
+   "tag": "assets-v2-release",
+   "iter": "iter-4",
+   "verify_ok": true,
+   "fps": {
+    "nj_low": 45.8,
+    "tiraspol_low": 49.3,
+    "tiraspol_high": 0.5
+   },
+   "load_seconds": 6.502,
+   "hits_to_fell_nj": 3,
+   "attempts": "3 build attempts (attempt 2 failed the frame-rate check, attempt 3 fixed it) + 1 docs run",
+   "known_issues": [
+    "Medium/High/Ultra are real-GPU presets (about 0.3-1 FPS in software rendering); switching to High there stalls ~30 s while shaders compile",
+    "Low looks soft (renders at 0.34x, impostor trees from 10 m, blob shadows only)",
+    "Canned swing clips; some foot sliding; carried axe can clip the leg in walk frames",
+    "Trees do not regrow and are not saved; reload restores every tree",
+    "Two shop axes share the double-bit model and two share the maul model"
+   ],
+   "classic_build": "claude 3974092 iter-3",
+   "repo_readme_known_issues": "from the harness README/CHANGELOG"
+  },
+  "codex": {
+   "title": "Backyard \u2014 Find the grain",
+   "commit": "15a5271",
+   "tag": "assets-v2-release",
+   "iter": "iter-11",
+   "verify_ok": true,
+   "fps": {
+    "nj_low": 30.7,
+    "tiraspol_low": 22.1,
+    "tiraspol_high": 6.8
+   },
+   "load_seconds": 2.945,
+   "hits_to_fell_nj": 6,
+   "attempts": "2 build attempts (both passed) + 1 docs run",
+   "known_issues": [
+    "Face, fingers and full-body animation are approximate (arm corrections, no authored grip)",
+    "Canopies can obstruct the camera; falling crowns can intersect fences/props",
+    "Tree felling is session-only: no regrowth, no timber carrying, no touch movement",
+    "Software rendering can stay slow even at Low"
+   ],
+   "classic_build": "codex 831d6dc iter-10",
+   "repo_readme_known_issues": "from the harness README/CHANGELOG"
+  },
+  "deepseek": {
+   "title": "American Split",
+   "commit": "2998b40",
+   "tag": "assets-v2-release",
+   "iter": "iter-28",
+   "verify_ok": true,
+   "fps": {
+    "nj_low": 19,
+    "tiraspol_low": 25.9,
+    "tiraspol_high": 1.7
+   },
+   "load_seconds": 11.256,
+   "hits_to_fell_nj": 10,
+   "attempts": "2 build attempts (both passed) + 1 docs run",
+   "known_issues": [
+    "Low is soft (~0.18 DPR in software rendering, 16 of 42 trees shown); High is 1-3 FPS in software rendering",
+    "First load is slow (10-13 s on a CPU rasteriser)",
+    "Trees return after reload (only a felled tally is saved)",
+    "Tree fall is a hinge model, not full rigid body; felled log is not a collider",
+    "Campaign balance scripted, not human-playtested"
+   ],
+   "classic_build": "deepseek 1f2bd26 iter-27",
+   "repo_readme_known_issues": "from the harness README/CHANGELOG"
+  }
+ }
+}

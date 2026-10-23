@@ -121,3 +121,47 @@ Other accessibility details:
 - The drifting hero chips and smooth scrolling are only enabled under `prefers-reduced-motion: no-preference`.
 
 Screenshots: `/workspace/recordings/site/site-desktop-full.png` and `site-mobile-full.png`. The same run also saved `site-tablet-full.png` and `site-wide-full.png`.
+
+## Assets v2 update (Oct 22–23, 2026)
+
+All three games got the "Assets v2" upgrade. The main folders (`claude/`, `codex/`, `deepseek/`) now serve the v2 builds, tagged `assets-v2-release`. `classic/<g>/` still serves the pre-assets builds. I kept the design, palette, fonts and structure the same. Changes:
+
+- **Hero.** The SVG backyard is replaced with GPT key art of Sergey (`hero_wide`). On desktop (above 1100px) the image fills the hero and the copy sits on a charcoal scrim: 92–95% opacity under the text, fading out at 54–64% so Sergey stays clear. Below 1100px the image sits above the copy at 16:9, fades into charcoal at the bottom, and the copy is on solid charcoal. The Play buttons read "Play v2" and open the v2 builds. The note under them links to the v2 and Classic sections.
+- **Quick intro** (`#intro`) is directly under the hero: `<video controls preload="metadata" playsinline>` with `assets/video/chopperman-intro-web.mp4` and its poster, plus a one-line caption.
+- **New: Assets v2** (`#v2`, added to the nav) contains:
+  - Five fact tiles.
+  - "Two backyards, two outfits": NJ and Tiraspol, each with a tee and a jacket key art image, labelled as AI-generated illustration.
+  - A blue measurement call-out saying the FPS, load and screenshot figures come from software rendering and are not real-GPU numbers.
+  - Three v2 cards. Each has a v2 screenshot; the commit and tag from `<g>/BUILD.txt` (fetched at runtime); the iteration; the verify result, attempts, software-rendering FPS (NJ Low, Tiraspol Low, Tiraspol High), load time and hits-to-fell; the first 3 known issues; the Assets v2 phase and project-total cost with basis; "More v2 screenshots" (lazy-loaded inside a `<details>`); and **Play v2** / **Play Classic** buttons. All of it except the screenshots is rendered by `site.js` from `data/v2.json` and `data/costs.json`. The `note` from `v2.json` is printed under the cards.
+- **Three games.** Each card now has Play v2, Play Classic and "Read the classic review". Each card shows both build IDs (v2 and classic) and says the score is for an earlier pre-assets build.
+- **Classic, Scores and Reviews.** The Classic lede now says these are the pre-assets builds. The Scoreboard and Review sections each have a warning flag saying they cover the classic (pre-assets) builds and that v2 has not been reviewed. The review text itself is unchanged.
+- **Cost.** The table has a new "Assets v2 phase" column (cost, runs, hours) next to "Project total". The basis notes are kept. A footnote shows the measured drop in the DeepSeek balance (`deepseek_balance_measured`) against the token estimate. All of this is rendered at runtime.
+
+New images, all derived from the supplied art with Pillow (WebP q80); the originals are unchanged:
+
+| File | Size |
+|---|---|
+| `assets/art/web/hero-960.webp`, `hero-1440.webp` (+ original `hero_wide.webp` as the 1920w `srcset` entry) | 113 / 196 KB |
+| `assets/art/web/{nj,tiraspol}_keyart{,_jacket}-{640,1200}.webp` | 57–66 KB at 640w, 151–181 KB at 1200w |
+| `assets/shots/v2/<g>-0{2,3,5,7}-*.webp` (used as supplied) | 58–117 KB |
+
+Every new file is under 1 MB; the intro MP4 is the only exception. Below-the-fold images use `loading="lazy"`. The portrait `keyart_<g>.webp` files are not used.
+
+### Legibility audit (`tools/verify.mjs`, Chrome headless, port 8141)
+
+Screenshots: `/workspace/recordings/site/site-v2-desktop-full.png` (1280) and `site-v2-mobile-full.png` (390), plus `-tablet` and `-wide`.
+
+| Check | Result |
+|---|---|
+| Console errors / failed requests | **0 / 0** at 1280, 390, 768 and 1920. The intro MP4 404'd on the first run because it was still being produced; it returns 200 now. |
+| Game links | `codex/`, `claude/`, `deepseek/`, `classic/codex/`, `classic/claude/` and `classic/deepseek/` all return **HTTP 200**, as do all six `BUILD.txt` files and both data files |
+| Body text | 18px, line-height 1.6. Minimum line-height on any `p/li/dd/figcaption` is **1.5** (three older styles were raised from 1.45). |
+| Smallest text | **15px**, all high-contrast labels: the score-ring words on desktop, plus the scoreboard sub-labels on mobile (same as before). No new text is under 16px, and nothing is under 14px. |
+| Contrast below 4.5:1 | **0** elements (composited background colours) |
+| Text over the hero image | Measured per pixel: the hero text is hidden, the screenshot is taken, and every text run is tested against every pixel behind it. The worst case is **6.15:1** (the button labels on solid ember); all text on the scrim is higher. |
+| Tap targets under 44px | 0 |
+| Horizontal overflow | 0px at all four widths. The nav wraps to two centred rows up to 1100px. |
+| Broken images / missing alt | 0 / 0. Key art and screenshots have descriptive alt text. |
+| Reduced motion | The hero chip drift, smooth scroll and button lift are still gated on `prefers-reduced-motion` |
+
+`tools/verify.mjs` now takes `VIEWS=desktop,mobile` and `SHOT_PREFIX`. It looks for playwright-core at `/workspace/chopperman/driver/...` first and falls back to the runtime path, since the driver path isn't present on this box.

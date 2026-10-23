@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildEnvironment, createWoodMaterials, standard, mesh } from './environment.js';
+import { createWoodMaterials, standard, mesh } from './environment.js';
 import { createHumanoid } from './humanoid.js';
+import { AssetBackyard } from './assets-v2.js';
 import { Simulation } from './physics.js';
 import { Game, WEATHER, CHAPTERS } from './game.js';
 import { Contract, dailySeed } from './challenges.js';
@@ -14,7 +14,7 @@ import { AudioManager } from './audio.js';
 const $=id=>document.getElementById(id);
 const viewport=$('viewport');if(innerWidth<=760)$('conditions').open=false;
 if(innerWidth<=760)$('grain-reader').open=false;
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,1));renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
@@ -25,40 +25,29 @@ const reflection=reflectionGenerator.fromScene(reflectionRoom,.04);scene.environ
 const ambient=new THREE.HemisphereLight(0xf7f1dc,0x78825b,2.25);scene.add(ambient);
 const sun=new THREE.DirectionalLight(0xffe2ac,3.25);sun.position.set(-3.5,8,4.5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-10;sun.shadow.camera.right=10;sun.shadow.camera.top=10;sun.shadow.camera.bottom=-10;sun.shadow.camera.near=.5;sun.shadow.camera.far=30;sun.shadow.normalBias=.025;sun.shadow.bias=-.0003;sun.shadow.radius=4;sun.target.position.set(0,.3,-1);scene.add(sun,sun.target);
 const fill=new THREE.DirectionalLight(0xd8e8e1,.5);fill.position.set(4,3,-5);scene.add(fill);
-const camera=new THREE.PerspectiveCamera(37,innerWidth/innerHeight,.1,110);
+const camera=new THREE.PerspectiveCamera(37,innerWidth/innerHeight,.1,240);
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.065;controls.minDistance=3.4;controls.maxDistance=20;controls.maxPolarAngle=Math.PI/2-.035;controls.minPolarAngle=.18;controls.target.set(-.7,1,-.32);controls.enablePan=false;controls.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};controls.touches={ONE:null,TWO:THREE.TOUCH.DOLLY_ROTATE};controls.screenSpacePanning=false;
 function resetCamera(){
-  camera.position.set(innerWidth<=760?4.4:4.6,innerWidth<=760?4.6:3.8,innerWidth<=760?6.2:5.7);
-  controls.target.set(-.05,innerWidth<=760?.95:1.1,-.3);camera.fov=innerWidth<=760?44:38;
+  camera.position.set(innerWidth<=760?3.6:3.3,innerWidth<=760?3.3:2.65,innerWidth<=760?7.2:6.5);
+  controls.target.set(-.05,innerWidth<=760?1.05:1.15,-.3);camera.fov=innerWidth<=760?48:45;
   camera.updateProjectionMatrix();controls.update();
 }resetCamera();
-const wood=createWoodMaterials();const environment=buildEnvironment(scene,wood);
-// Merge static meshes sharing materials. The rich scenery stays inexpensive.
-environment.updateMatrixWorld(true);
-const batches=new Map(),canonicalMaterials=new Map();environment.traverse(object=>{
-  if(!object.isMesh||object.isInstancedMesh||Array.isArray(object.material))return;
-  const m=object.material;
-  const signature=[m.type,m.color?.getHex(),m.map?.uuid,m.bumpMap?.uuid,m.bumpScale,m.roughness,m.metalness,m.transparent,m.opacity,m.side,m.flatShading,m.depthWrite].join('|');
-  if(canonicalMaterials.has(signature)){const canonical=canonicalMaterials.get(signature);if(m!==canonical)m.dispose();object.material=canonical;}else canonicalMaterials.set(signature,m);
-  const key=`${object.material.uuid}-${object.castShadow}-${object.receiveShadow}`;
-  if(!batches.has(key))batches.set(key,[]);batches.get(key).push(object);
-});
-for(const batch of batches.values()){
-  if(batch.length<3)continue;
-  const geometries=batch.map(o=>{const g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);return g;});
-  const merged=mergeGeometries(geometries,false);geometries.forEach(g=>g.dispose());
-  if(!merged)continue;
-  const combined=new THREE.Mesh(merged,batch[0].material);combined.castShadow=batch[0].castShadow;combined.receiveShadow=batch[0].receiveShadow;scene.add(combined);
-  batch.forEach(o=>{o.removeFromParent();o.geometry.dispose();});
-}
-const actor=createHumanoid(scene);
+const wood=createWoodMaterials();
+// The original hand-built character remains an asset-load fallback.
+const actor=createHumanoid(scene);actor.group.visible=false;
+let backyard;
 let storage;try{if(!new URLSearchParams(location.search).has('test'))storage=localStorage;}catch{/* Session play is available without storage. */}
 const audio=new AudioManager({storage});
 const campaignGame=new Game(storage);let game=campaignGame,contract=null,contractLastTick=performance.now();
 let condition={moisture:.08,frost:0},campaignConditions=null;const frostColor=new THREE.Color(0xdce4df);
+function equippedToolStats(){
+  const axe=contract?'sergey':backyard?.axe??'sergey';
+  return {axeMass:game.axeMass+(axe==='maul'?.55:0),sharpness:game.sharpness*(axe==='golden'?1.12:axe==='double_bit'?1.04:1)};
+}
 function physicalWeather(){return conditionPhysics(condition,WEATHER[atmosphere.weather]);}
 const atmosphere=new Atmosphere(scene,sun,ambient,wood);
 let currentLog=game.log,aim={x:0,z:0},yaw=currentLog.grain,slowMotion=false,armed=false,meterStart=0,meter=.82,feedbackUntil=0;
+let lowPixelScale=.4;
 let quality='medium',qualityMode='auto',composer,postLoading=false,qualityEpoch=0;
 let fps=60,frameTime=0,frames=0,qualityClock=0,lastReadout=0,lastSave=0;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -82,6 +71,7 @@ const simulation=new Simulation(scene,wood,result=>{
   if(hit.combo>1)audio.play('combo',{combo:hit.combo});
   if(hit.clean||hit.precisionGrade?.bullseye){audio.play('perfect');audio.celebrate(!!hit.precisionGrade?.bullseye);}
   if(game.level>previousLevel)audio.play('levelUp');
+  if(game.level>previousLevel||result.split&&hit.boss)backyard?.celebrate();
   if(hit.combo>=5&&previousBestCombo<5)audio.play('achievement');
   if(result.split&&hit.boss){audio.play('bossDefeated');audio.play('chapterComplete',{delay:.7});}
   if(hit.campaignVictory)audio.play('campaignComplete',{delay:1.1});
@@ -118,6 +108,7 @@ function updateResults(){
   for(const run of contract.history){const item=document.createElement('li');item.textContent=`${run.mode==='daily'?run.seed:run.mode==='precision'?'Precision':'Sprint'} · ${run.medal} · ${run.score} pts · ${Number(run.elapsed).toFixed(1)}s · ${run.misses} misses`;list.appendChild(item);}
 }
 function updateHUD(){
+  $('yard-wallet').textContent=`${campaignGame.coins} coins · ${campaignGame.xp} XP`;
   $('control-panel').dataset.mode=contract?.mode??'campaign';
   const locked=!!contract?.finished;
   audio.setGameState({combo:contract?.mode==='precision'?contract.precisionCombo:game.combo,boss:!!currentLog.boss&&!simulation.split,menu:!!contract?.finished||!!$('help-dialog').open});
@@ -134,7 +125,7 @@ function updateHUD(){
   $('control-panel').classList.toggle('boss-round',!!currentLog.boss);
   $('center-button').textContent=currentLog.precisionTarget?'◎ Aim precision target':currentLog.burl?'◎ Find safe peeling cut':currentLog.stony?'◎ Find safe grain':currentLog.rotten?simulation.snapshot().coreRemaining?'◎ Aim soft core':'◎ Aim standing wall':currentLog.forked?'◎ Aim next section':currentLog.hollow?'◎ Aim standing wall':'◎ Center aim';
   $('log-tip').textContent=currentLog.precisionTarget?`Precision · mint bullseye, local grain, ${currentLog.precisionTarget.power}% power. Six logs / twelve strikes. First-strike bullseyes build a bonus.`:currentLog.burl?`Knot-bound stump · ${simulation.shell.filter(p=>!p.released).length} pieces. Peel the flanks to ease the knot heart (${simulation.snapshot().confinement.toFixed(2)}× resistance). Steel lies in the left flank. C finds safe grain; W follows your cut.`:currentLog.stony?currentLog.mineral?`The Iron Crown · ${simulation.shell.filter(p=>!p.released).length} stone-bound sections. Faint seams show their borders. Deepen a safe cut in each; aim at its dark kerf and W to wedge. C finds the next section.`:'Stone-bound ironwood · pale, angular inclusions chip the edge by 12%. The aim ring turns orange when the blade would touch stone. Work beside it.':currentLog.rotten?simulation.snapshot().coreRemaining?'Heart rot · dark, spongy core crumbles easily. Its work stays separate from the dense outer walls. C finds the core.':'Core cleared · strike the solid rim and turn the blade radially. Every outer wall must fall to finish. C finds one.':currentLog.forked?simulation.snapshot().phase==='limbs'?'Forked elm · remove both leaning limbs, then split the tough crotch. Each limb has its own grain. C finds the next section.':'Crotch exposed · interlocked fibers resist. Open a cut and drive the wedge.':currentLog.hollow?`Hollow oak · ${simulation.shell.filter(p=>!p.released).length} walls remain. Aim halfway across the rim; align the blade radially. C finds a standing wall.`:currentLog.boss?`${currentLog.name} · oversized round. Follow a crack; W drives the wedge. +60 boss coins.`:currentLog.tip;
-  $('coins').textContent=`${game.coins} coins`;$('axe-stats').textContent=`${game.axeMass.toFixed(2)} kg · cutting ${Math.round(game.sharpness*100)}% · edge ${Math.round(game.edge*100)}%`;
+  $('coins').textContent=`${game.coins} coins`;$('axe-stats').textContent=`${equippedToolStats().axeMass.toFixed(2)} kg · cutting ${Math.round(equippedToolStats().sharpness*100)}% · edge ${Math.round(game.edge*100)}%`;
   $('repair-edge').disabled=locked||simulation.running||game.edge>=1||game.coins<12;
   $('wedge-button').disabled=locked||!simulation.wedgeReady||game.stamina<12;
   $('wedge-button').textContent=simulation.wedgeReady?simulation.seatedWedge?'Drive seated wedge · 12 stamina [W]':'Seat / drive selected cut · 12 stamina [W]':simulation.bestCrack?.depth>=.018?'Aim near a dark cut to place wedge':'Wedge · open a cut first';
@@ -151,7 +142,7 @@ function clearTelemetry(){$('energy').textContent='—';$('speed').textContent='
 function prepareLog(){
   currentLog=contract?contract.log:game.log;
   if(contract){atmosphere.setWeather(currentLog.weather);$('weather').value=currentLog.weather;condition={moisture:currentLog.weather==='rain'?.65:.08,frost:currentLog.weather==='snow'?.65:0};}
-  simulation.configure({log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass});simulation.reset();
+  simulation.configure({log:currentLog,weather:physicalWeather(),...equippedToolStats()});simulation.reset();
   const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;clearTelemetry();updateGuide();
 }
 function resetScene(){
@@ -160,6 +151,7 @@ function resetScene(){
   if(contract?.mode==='precision'&&simulation.running&&!simulation.impactHandled&&!contract.finished){const miss={source:'miss',split:false,accuracy:0,alignment:0,hazard:false,tool:'axe'};const hit=game.hit({...miss,...contract.grade(miss,currentLog),contract:true},currentLog);contract.hit(hit,game.score);}
   armed=false;pointer=null;clearPull();hitStopUntil=perfectUntil=shakeUntil=0;prepareLog();$('timing-label').textContent='Ready to find your rhythm';$('timing-value').textContent='100%';$('timing-needle').style.left='82%';$('hit-feedback').classList.remove('visible');$('scene-status').textContent='Aim on the log or grain reader. Pull down and release to chop.';updateHUD();return window.getSimulationState();}
 function performSwing(power,automatic=false,pointerSwing=false){
+  if(backyard?.mode==='yard')return backyard.swingTree();
   if(simulation.running||contract?.finished)return false;
   if(pointer){pointer=null;clearPull();}
   if(game.stamina<game.cost){audio.play('denied');$('scene-status').textContent='Let your stamina recover for a moment.';return false;}
@@ -173,12 +165,13 @@ function performSwing(power,automatic=false,pointerSwing=false){
   if(!game.begin())return false;beginContract();
   armed=false;unlockAudio();audio.activity();$('timing-label').textContent='Power locked';$('timing-value').textContent=`${Math.round(power)}%`;$('energy').textContent='—';$('hit-feedback').classList.remove('visible');
   aim={...strikeAim};yaw=strikeYaw;updateGuide();
-  simulation.swing(power,{tool:'axe',log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass,aim:strikeAim,yaw:strikeYaw,timing:meter});
+  simulation.swing(power,{tool:'axe',log:currentLog,weather:physicalWeather(),...equippedToolStats(),aim:strikeAim,yaw:strikeYaw,timing:meter});
+  backyard?.stumpSwing(simulation);
   $('scene-status').textContent='Weight up. Eyes on the grain.';updateHUD();return true;
 }
 function driveWedge(){
   if(contract?.finished||!simulation.wedgeReady||!game.begin(12)){audio.play('denied');return false;}beginContract();
-  armed=false;unlockAudio();audio.activity();if(!simulation.seatedWedge)audio.play('wedgeSeat');simulation.swing(100,{tool:'wedge',aim:{...aim},log:currentLog,weather:physicalWeather(),sharpness:game.sharpness,axeMass:game.axeMass});
+  armed=false;unlockAudio();audio.activity();if(!simulation.seatedWedge)audio.play('wedgeSeat');simulation.swing(100,{tool:'wedge',aim:{...aim},log:currentLog,weather:physicalWeather(),...equippedToolStats()});
   $('hit-feedback').classList.remove('visible');$('scene-status').textContent='Wedge seated. Drive the existing fracture open.';updateHUD();return true;
 }
 function extractWedge(){
@@ -187,6 +180,7 @@ function extractWedge(){
 }
 $('extract-wedge').addEventListener('click',extractWedge);
 function meterAction(){
+  if(backyard?.mode==='yard'){backyard.swingTree();return;}
   if(pointer||contract?.finished||simulation.running||game.stamina<game.cost)return;
   unlockAudio();if(!armed){if(simulation.split)prepareLog();armed=true;meterStart=performance.now();$('timing-label').textContent='Stop in the green zone';updateHUD();}
   else {const timing=1-Math.min(1,Math.abs(meter-.81)/.81);performSwing(45+timing*75);}
@@ -272,6 +266,7 @@ function drawGrainReader(){
   ctx.restore();
 }
 function aimAt(event){
+  if(backyard?.mode==='yard')return false;
   if(simulation.running)return false;
   if(event.currentTarget===reader){const rect=reader.getBoundingClientRect(),r=currentLog.radius??LOG_RADIUS;const extent=r*(currentLog.forked?1.3:1),x=((event.clientX-rect.left)/rect.width*208-104)*extent/58,z=((event.clientY-rect.top)/rect.height*136-68)*extent/58;if(Math.hypot(x,z)>extent)return false;aim={x,z};}
   else {const rect=renderer.domElement.getBoundingClientRect();pointerNDC.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointerNDC,camera);let found=false;
@@ -282,7 +277,7 @@ function aimAt(event){
 }
 for(const surface of [renderer.domElement,reader]){
   surface.addEventListener('pointermove',e=>{if(!pointer)aimAt(e);else if(pointer.id===e.pointerId)previewPull(e);});
-  surface.addEventListener('pointerdown',e=>{if(e.button!==0||simulation.running||contract?.finished)return;if(simulation.split)prepareLog();if(!aimAt(e))return;audio.play('aim');pointer={id:e.pointerId,x:e.clientX,y:e.clientY,time:performance.now(),lastX:e.clientX,lastY:e.clientY,yaw,wasArmed:armed};surface.setPointerCapture(e.pointerId);unlockAudio();if(!armed){armed=true;meterStart=performance.now();}updateHUD();});
+  surface.addEventListener('pointerdown',e=>{if(backyard?.mode==='yard'||e.button!==0||simulation.running||contract?.finished)return;if(simulation.split)prepareLog();if(!aimAt(e))return;audio.play('aim');pointer={id:e.pointerId,x:e.clientX,y:e.clientY,time:performance.now(),lastX:e.clientX,lastY:e.clientY,yaw,wasArmed:armed};surface.setPointerCapture(e.pointerId);unlockAudio();if(!armed){armed=true;meterStart=performance.now();}updateHUD();});
   surface.addEventListener('pointerup',e=>{
     if(!pointer||pointer.id!==e.pointerId)return;
     const p=pointer,pull=pullGesture(e.clientX-p.x,e.clientY-p.y,(performance.now()-p.time)/1000);pointer=null;clearPull();
@@ -324,34 +319,38 @@ $('day-cycle').addEventListener('change',e=>{if(!contract)atmosphere.cycle=e.tar
 $('slow-motion').addEventListener('change',e=>{slowMotion=!contract&&e.target.checked;e.target.checked=slowMotion;});
 $('impact-effects').addEventListener('change',e=>{impactEffects=e.target.checked;simulation.configure({recoil:impactEffects});if(!impactEffects)hitStopUntil=perfectUntil=shakeUntil=0;});
 $('debug-physics').addEventListener('change',e=>{simulation.setDebug(e.target.checked);if(e.target.checked)selfCheck();});
-$('camera-button').addEventListener('click',resetCamera);
+$('camera-button').addEventListener('click',()=>{if(backyard?.mode==='yard'){backyard.pitch=.2;backyard.followCamera(1,true);}else resetCamera();});
 let resetConfirmUntil=0;
-$('reset-progress').addEventListener('click',()=>{if(performance.now()>resetConfirmUntil){resetConfirmUntil=performance.now()+4000;$('reset-progress').textContent='Click again to erase saved progress';return;}campaignGame.reset();if(contract)selectMode('campaign');else resetScene();$('reset-progress').textContent='Reset saved progress';});
+$('reset-progress').addEventListener('click',()=>{if(performance.now()>resetConfirmUntil){resetConfirmUntil=performance.now()+4000;$('reset-progress').textContent='Click again to erase saved progress';return;}campaignGame.reset();backyard.goldenUnlocked=false;backyard.setAxe('sergey');if(contract)selectMode('campaign');else resetScene();$('reset-progress').textContent='Reset saved progress';});
 const dialog=$('help-dialog');$('help-button').addEventListener('click',()=>{dialog.showModal();audio.play('menuOpen');audio.setGameState({menu:true});});dialog.addEventListener('close',()=>{audio.play('menuClose');audio.setGameState({menu:false});});dialog.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());dialog.querySelector('.dialog-done').addEventListener('click',()=>dialog.close());
 window.addEventListener('keydown',e=>{
+  if(backyard?.mode==='yard'||e.code==='Escape')return;
   if(dialog.open||e.target?.matches?.('input,textarea,select,button,a,summary')||e.ctrlKey||e.metaKey||e.altKey||e.repeat)return;
   if(e.code==='Space'){e.preventDefault();meterAction();}
   else if(e.code==='KeyX')extractWedge();else if(e.code==='KeyR')resetScene();else if(e.code==='KeyW')driveWedge();else if(e.code==='KeyC')centerAim();else if(e.code==='KeyS'&&!contract){$('slow-motion').checked=!slowMotion;$('slow-motion').dispatchEvent(new Event('change'));}
-  else if(!simulation.running){if(e.code==='KeyQ')yaw-=Math.PI/36;if(e.code==='KeyE')yaw+=Math.PI/36;
+  else if(!simulation.running){if(e.code==='KeyQ')yaw-=Math.PI/36;if(e.code==='KeyF')yaw+=Math.PI/36;
     yaw=Math.atan2(Math.sin(yaw),Math.cos(yaw));
-    if(['KeyQ','KeyE'].includes(e.code))audio.play('aim');
+    if(['KeyQ','KeyF'].includes(e.code))audio.play('aim');
     if(e.code.startsWith('Arrow')){audio.play('aim');e.preventDefault();const step=.015;if(e.code==='ArrowLeft')aim.x-=step;if(e.code==='ArrowRight')aim.x+=step;if(e.code==='ArrowUp')aim.z-=step;if(e.code==='ArrowDown')aim.z+=step;aim.x=THREE.MathUtils.clamp(aim.x,-.34,.34);aim.z=THREE.MathUtils.clamp(aim.z,-.34,.34);}updateGuide();updateHUD();}
 });
 
 async function setQuality(value){
-  const epoch=++qualityEpoch;quality=value;const pixel=value==='low'?.65:value==='medium'?1:Math.min(devicePixelRatio,1.5);
-  renderer.setPixelRatio(pixel);renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=value==='low'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
+  const epoch=++qualityEpoch;quality=value;lowPixelScale=.4;frameTime=0;frames=0;qualityClock=0;if(backyard){backyard.qualityMode=qualityMode;backyard.applyQuality(value);}const pixel=value==='low'?lowPixelScale:softwareRenderer?(value==='high'?.7:.6):value==='medium'?.85:Math.min(devicePixelRatio,1.25);
+  renderer.setPixelRatio(pixel);renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=value!=='low'&&!softwareRenderer;renderer.shadowMap.type=value==='low'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
   const size=value==='low'?512:value==='medium'?1024:2048;sun.shadow.mapSize.set(size,size);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
   simulation.chipLimit=value==='low'?14:value==='medium'?24:36;simulation.chipPoolLimit=value==='low'?32:value==='medium'?56:80;simulation.trimChips();if(simulation.debugGroup.visible)simulation.rebuildDebug();atmosphere.count=value==='low'?160:value==='medium'?350:650;
   if(composer){composer.dispose();for(const pass of composer.passes)pass.dispose?.();composer=null;}
-  if(value==='high'){
+  if(value==='high'&&!softwareRenderer){
     postLoading=true;
     try{const [{EffectComposer},{RenderPass},{SSAOPass},{UnrealBloomPass},{OutputPass}]=await Promise.all([import('three/addons/postprocessing/EffectComposer.js'),import('three/addons/postprocessing/RenderPass.js'),import('three/addons/postprocessing/SSAOPass.js'),import('three/addons/postprocessing/UnrealBloomPass.js'),import('three/addons/postprocessing/OutputPass.js')]);
       if(epoch!==qualityEpoch)return;composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));const ao=new SSAOPass(scene,camera,innerWidth,innerHeight);ao.kernelRadius=8;ao.minDistance=.003;ao.maxDistance=.12;composer.addPass(ao);composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.14,.5,1.15));composer.addPass(new OutputPass());composer.setSize(innerWidth,innerHeight);
     }catch(error){$('performance').textContent='Post effects unavailable; using balanced.';if(epoch===qualityEpoch)await setQuality('medium');}finally{postLoading=false;}
   }
 }
-$('quality').addEventListener('change',e=>{qualityMode=e.target.value;qualityClock=0;frameTime=0;frames=0;setQuality(qualityMode==='auto'?'medium':qualityMode);});
+$('quality').addEventListener('change',e=>{qualityMode=e.target.value;qualityClock=0;frameTime=0;frames=0;setQuality(qualityMode==='auto'?(softwareRenderer?'low':'medium'):qualityMode);});
+function toggleSceneView(){const open=document.body.classList.toggle('scene-view');$('scene-view').setAttribute('aria-pressed',String(open));$('scene-view').innerHTML=`${open?'Show panels':'Scene view'} <kbd>V</kbd>`;renderer.domElement.focus({preventScroll:true});}
+$('scene-view').addEventListener('click',toggleSceneView);
+window.addEventListener('keydown',e=>{if(e.code==='KeyV'&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target?.matches?.('input,textarea,select,button,a,summary')&&!document.querySelector('dialog[open]')){e.preventDefault();toggleSceneView();}});
 window.addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);composer?.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();});
 renderer.domElement.addEventListener('webglcontextlost',event=>{event.preventDefault();$('load-error').hidden=false;$('error-detail').textContent='The graphics context was interrupted. Reload to return to the backyard.';});
 document.addEventListener('visibilitychange',()=>{previous=performance.now();frameTime=0;frames=0;});window.addEventListener('pagehide',()=>game.save());
@@ -374,7 +373,7 @@ window.swing=power=>performSwing(power,true);
 window.driveWedge=driveWedge;
 window.extractWedge=extractWedge;
 window.resetScene=resetScene;
-window.getGameState=()=>({...game.snapshot(currentLog),mode:contract?.mode??'campaign',contract:contract?.snapshot()??null});
+window.getGameState=()=>({...game.snapshot(currentLog),axe:backyard?.axe??'sergey',effectiveAxeMass:equippedToolStats().axeMass,effectiveSharpness:equippedToolStats().sharpness,mode:contract?.mode??'campaign',contract:contract?.snapshot()??null});
 window.startChallenge=mode=>selectMode(mode);
 window.getSimulationState=()=>({...simulation.snapshot(),inclusions:inclusions(simulation.materialLog).map(p=>({...p})),slowMotion,debugPhysics:simulation.debugGroup.visible,weather:atmosphere.weather,hour:atmosphere.hour,quality,fps,condition:{...condition},material:physicalWeather(),bodies:simulation.world.bodies.length,renderer:{calls:renderer.info.render.calls,triangles:renderer.info.render.triangles}});
 // This helper is deliberately restricted to sessions with persistence disabled.
@@ -396,8 +395,8 @@ function animate(now){
   simulation.update(dt*(slowMotion?.25:impactScale));game.regenerate(dt);
   condition=evolveCondition(condition,atmosphere.weather,Math.min(elapsed,5));
   simulation.configure({weather:simulation.running?simulation.settings.weather:physicalWeather()});
-  if(wasRunning&&!simulation.running)updateHUD();actor.update(simulation.time,simulation.effort,...simulation.handPositions());
-  atmosphere.update(Math.min(dt,.1),quality,simulation.time);controls.update();updateGuide();
+  if(wasRunning&&!simulation.running)updateHUD();if(actor.group.visible)actor.update(simulation.time,simulation.effort,...simulation.handPositions());
+  atmosphere.update(Math.min(dt,.1),quality,simulation.time,backyard?.player.position);if(backyard?.mode!=='yard')controls.update();updateGuide();if(backyard?.mode==='yard')guide.visible=false;backyard?.update(dt,atmosphere,simulation);
   if(pointer)previewPull({clientX:pointer.lastX,clientY:pointer.lastY});
   if(armed&&!pointer){meter=(Math.sin((now-meterStart)/1000*4.4-Math.PI/2)+1)/2;$('timing-needle').style.left=`${meter*100}%`;if(!pointer)$('timing-value').textContent=`${Math.round(45+(1-Math.min(1,Math.abs(meter-.81)/.81))*75)}%`;}
   if(!armed||pointer){lastMeterBucket=-1;lastPerfectZone=false;}
@@ -412,6 +411,8 @@ function animate(now){
     if(simulation.debugGroup.visible)selfCheck();lastReadout=now;}
   if(!document.hidden){frameTime+=elapsed;frames++;qualityClock+=elapsed;}
   if(frameTime>=3){fps=frames/frameTime;$('performance').textContent=`${qualityMode==='auto'?'Auto · ':''}${quality} · ${Math.round(fps)} FPS${postLoading?' · loading effects':''}`;
+    if(quality==='low'&&fps<22&&qualityClock>4&&lowPixelScale>.35){lowPixelScale=Math.max(.35,lowPixelScale-.05);renderer.setPixelRatio(lowPixelScale);renderer.setSize(innerWidth,innerHeight);qualityClock=0;}
+    if(quality==='low'&&fps>48&&qualityClock>8&&lowPixelScale<.6){lowPixelScale=Math.min(.6,lowPixelScale+.05);renderer.setPixelRatio(lowPixelScale);renderer.setSize(innerWidth,innerHeight);qualityClock=0;}
     if(qualityMode==='auto'&&fps<27&&quality!=='low'&&qualityClock>4){setQuality(quality==='high'?'medium':'low');qualityClock=0;}frameTime=0;frames=0;}
   if(now-lastSave>15000){game.save();lastSave=now;}
   const shake=now<shakeUntil?shakeStrength*Math.min(1,(shakeUntil-now)/160):0;
@@ -419,6 +420,31 @@ function animate(now){
   if(composer)composer.render();else renderer.render(scene,camera);
   camera.position.x-=Math.sin(now*.11)*shake;camera.position.y-=Math.cos(now*.14)*shake*.6;requestAnimationFrame(animate);
 }
-resetScene();setQuality('medium');$('reset-button').disabled=false;window.simulationReady=true;document.documentElement.dataset.simulation='ready';
+// Select the efficient preset before the first render on software GPUs.
+const gl=renderer.getContext(),debugRenderer=gl.getExtension('WEBGL_debug_renderer_info');
+const gpu=debugRenderer?gl.getParameter(debugRenderer.UNMASKED_RENDERER_WEBGL):'';
+const softwareRenderer=/swiftshader|llvmpipe|software|lavapipe/i.test(gpu);
+backyard=new AssetBackyard({scene,camera,controls,renderer,storage,audio,
+  onStatus:text=>{$('scene-status').textContent=text;},
+  onShake:(strength,ms)=>{if(impactEffects){shakeStrength=strength;shakeUntil=performance.now()+ms;}},
+  onMode:mode=>{armed=false;pointer=null;clearPull();document.body.dataset.playMode=mode;if(mode==='stump')resetCamera();$('scene-status').textContent=mode==='yard'?'Explore the yard. Face a trunk and click or press Space.':'Find the grain. Esc returns to the yard.';},
+  onReward:tree=>{const level=campaignGame.level;campaignGame.xp+=35;campaignGame.coins+=20;campaignGame.save();if(campaignGame.level>level)audio.play('levelUp');audio.play('points');updateHUD();},
+});
+backyard.softwareRenderer=softwareRenderer;
+$('yard-setting').addEventListener('change',e=>backyard.setSetting(e.target.value));
+$('sergey-costume').addEventListener('change',e=>backyard.setCostume(e.target.value));
+$('sergey-axe').addEventListener('change',e=>{if(e.target.value!=='golden'||backyard.goldenUnlocked)backyard.setAxe(e.target.value);});
+$('explore-yard').addEventListener('click',()=>backyard.enterYard());
+$('return-stump').addEventListener('click',()=>{if(backyard.player.position.length()<2.6)backyard.enterStump();else $('scene-status').textContent='Walk back to the block, then press E.';});
+$('buy-golden-axe').addEventListener('click',()=>{if(contract||backyard.goldenUnlocked)return;if(campaignGame.coins<180){audio.play('denied');$('shop-message').textContent='Golden axe costs 180 coins. Trees earn 20; splitting logs earns more.';return;}campaignGame.coins-=180;campaignGame.save();backyard.goldenUnlocked=true;backyard.setAxe('golden');audio.play('purchase');$('shop-message').textContent='Golden axe unlocked · +12% cutting efficiency.';updateHUD();});
+if(new URLSearchParams(location.search).has('assetdebug'))window.assetDebug={backyard,scene,renderer,simulation};
+window.chopperTest={
+  ready:()=>backyard.loaded,
+  setSetting:value=>backyard.setSetting(value),setCostume:value=>backyard.setCostume(value),setAxe:value=>backyard.setAxe(value),
+  setQuality:value=>{qualityMode=value;$('quality').value=value;return setQuality(value);},
+  enterYard:()=>backyard.enterYard(),enterStump:()=>backyard.enterStump(),teleportNearTree:()=>backyard.teleportNearTree(),chopTree:()=>backyard.chopTree(),state:()=>backyard.state()
+};
+resetScene();qualityMode=backyard.qualityMode;$('quality').value=qualityMode;setQuality(qualityMode==='auto'?(softwareRenderer?'low':'medium'):qualityMode);$('reset-button').disabled=false;
+backyard.init().then(()=>{simulation.axeMesh.visible=false;simulation.stumpVisual.visible=false;window.simulationReady=true;document.documentElement.dataset.simulation='ready';}).catch(error=>{actor.group.visible=true;$('asset-loading').hidden=true;$('load-error').hidden=false;$('error-detail').textContent=`An asset could not load: ${error.message}`;console.error(error);});
 if(new URLSearchParams(location.search).has('debug')){simulation.setDebug(true);$('debug-physics').checked=true;console.assert(window.runPhysicsChecks().ok,'Continuous collision stress check failed');}
 requestAnimationFrame(animate);

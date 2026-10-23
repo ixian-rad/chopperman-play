@@ -17,7 +17,9 @@ export function toTexture(canvas, { repeat = [1, 1], srgb = true, wrap = true, a
     tex.wrapT = THREE.RepeatWrapping;
   }
   tex.repeat.set(repeat[0], repeat[1]);
-  tex.anisotropy = aniso;
+  tex.userData.aniso = aniso;
+  tex.anisotropy = Math.min(aniso, ANISO_CAP);
+  if (BILINEAR) tex.minFilter = THREE.LinearMipmapNearestFilter;
   tex.needsUpdate = true;
   return tex;
 }
@@ -160,6 +162,50 @@ function lutSample(lut, rho, out) {
   out[0] = lut[i];
   out[1] = lut[i + 1];
   out[2] = lut[i + 2];
+}
+
+// Anisotropic filtering cap from the quality preset. SwiftShader filters anisotropically in software
+// (up to 8 taps per pixel on the grazing lawn), so Low / Potato use plain trilinear.
+let ANISO_CAP = 8;
+export function setAnisoCap(cap, scene) {
+  ANISO_CAP = cap;
+  const seen = new Set();
+  scene?.traverse((o) => {
+    if (!o.material) return;
+    for (const m of [].concat(o.material)) {
+      for (const k of ['map', 'normalMap', 'roughnessMap', 'bumpMap', 'emissiveMap', 'alphaMap']) {
+        const t = m[k];
+        if (!t || seen.has(t) || t.userData.aniso === undefined) continue;
+        seen.add(t);
+        const a = Math.min(t.userData.aniso, cap);
+        if (a !== t.anisotropy) { t.anisotropy = a; t.needsUpdate = true; }
+      }
+    }
+  });
+}
+
+// Mip filtering from the quality preset: Low / Potato sample one mip level (bilinear) instead of
+// blending two (trilinear), which halves the texel fetches SwiftShader does per textured pixel.
+let BILINEAR = false;
+const MIP_SLOTS = ['map', 'alphaMap', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'bumpMap'];
+export function setMipFilter(bilinear, root) {
+  BILINEAR = bilinear;
+  const want = bilinear ? THREE.LinearMipmapNearestFilter : THREE.LinearMipmapLinearFilter;
+  const seen = new Set();
+  root?.traverse((o) => {
+    if (!o.material) return;
+    for (const m of [].concat(o.material)) {
+      for (const k of MIP_SLOTS) {
+        const t = m[k];
+        if (!t || seen.has(t)) continue;
+        seen.add(t);
+        if ((t.minFilter === THREE.LinearMipmapLinearFilter || t.minFilter === THREE.LinearMipmapNearestFilter) && t.minFilter !== want) {
+          t.minFilter = want;
+          t.needsUpdate = true;
+        }
+      }
+    }
+  });
 }
 
 // Texture resolution scale (set from the quality preset before logs are generated).

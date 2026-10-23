@@ -11,9 +11,9 @@ export class Atmosphere {
     this.puddles=new THREE.Group();scene.add(this.puddles);
     for(const [x,z,s]of [[1.5,1.4,.7],[-1.7,-.3,.55],[2.6,-1.4,.9]]){const p=mesh(new THREE.CircleGeometry(s,40),standard(0x788b82,{roughness:.08,metalness:.42,transparent:true,opacity:.65}),this.puddles,[x,.021,z]);p.rotation.x=-Math.PI/2;p.scale.y=.5;p.castShadow=false;}
     this.snow=mesh(new THREE.PlaneGeometry(50,50),standard(0xe6eee4,{transparent:true,opacity:.8,roughness:.96}),scene,[0,.009,0]);this.snow.rotation.x=-Math.PI/2;this.snow.castShadow=false;
-    this.lamps=[];const iron=standard(0x3c453b,{metalness:.65,roughness:.4});
+    this.lamps=[];this.lampGroups=[];const iron=standard(0x3c453b,{metalness:.65,roughness:.4});
     for(const [x,z]of [[-2.2,-2.45],[2.5,-2.65]]){
-      const lamp=new THREE.Group();lamp.position.set(x,0,z);scene.add(lamp);cylinder(lamp,.022,.04,1.3,iron,0,.65,0,8);box(lamp,.19,.035,.19,iron,0,1.27,0);box(lamp,.19,.035,.19,iron,0,1.52,0);
+      const lamp=new THREE.Group();lamp.position.set(x,0,z);scene.add(lamp);this.lampGroups.push(lamp);cylinder(lamp,.022,.04,1.3,iron,0,.65,0,8);box(lamp,.19,.035,.19,iron,0,1.27,0);box(lamp,.19,.035,.19,iron,0,1.52,0);
       const glow=standard(0xffc378,{emissive:0xff9d38,emissiveIntensity:2,roughness:.3});box(lamp,.11,.2,.11,glow,0,1.4,0);
       for(const dx of [-.08,.08])for(const dz of [-.08,.08])box(lamp,.015,.25,.015,iron,dx,1.4,dz);
       const light=new THREE.PointLight(0xffb561,0,6,2);light.position.set(x,1.45,z);scene.add(light);this.lamps.push({light,glow});
@@ -31,7 +31,8 @@ export class Atmosphere {
   }
   setWeather(value){if(!WEATHER[value])return;this.weather=value;this.precipitation.visible=value==='rain'||value==='snow';this.precipitation.material.size=value==='snow'?.045:.023;this.puddles.visible=value==='rain';this.snow.visible=value==='snow';}
   spark(x,z){this.sparkLife=.65;this.sparks.visible=true;this.sparkVel=[];for(let i=0;i<40;i++){this.sparkPositions.set([x,1.35,z],i*3);this.sparkVel.push(new THREE.Vector3((this.rand()-.5)*3,1+this.rand()*2,(this.rand()-.5)*3));}}
-  update(dt,quality,windTime=0){
+  update(dt,quality,windTime=0,focus){
+    if(focus)this.precipitation.position.set(focus.x,0,focus.z);
     const wind=windLoad(windTime,WEATHER[this.weather].wind);
     const vertices=this.ribbon.geometry.attributes.position;
     for(let i=0;i<vertices.count;i++){
@@ -44,6 +45,7 @@ export class Atmosphere {
     const sky=new THREE.Color(0x16212e).lerp(new THREE.Color(this.weather==='fog'?0xa8b9b0:0xcddfdc),day);if(gold>0)sky.lerp(new THREE.Color(0xebc5a0),gold*.45);
     this.scene.environmentIntensity=.09+day*.3;this.scene.background.copy(sky);this.scene.fog.color.copy(sky);this.scene.fog.near=this.weather==='fog'?3:this.weather==='rain'?8:18;this.scene.fog.far=this.weather==='fog'?18:this.weather==='snow'?30:48;
     this.sun.position.set(Math.cos((this.hour-6)/12*Math.PI)*8,Math.max(.15,elevation*10),4);this.sun.intensity=(.08+day*3.1)*(this.weather==='rain'?.5:1);this.sun.color.setHex(gold>.25?0xffbf7c:0xffe6bd);this.ambient.intensity=.35+day*1.7;
+    for(const group of this.lampGroups)group.visible=quality!=='low'||day<.5;
     for(const {light,glow}of this.lamps){light.intensity=(1-day)*12;glow.emissiveIntensity=.3+(1-day)*3;}
     this.rays.visible=quality!=='low'&&this.weather!=='fog'&&this.weather!=='rain'&&day>.7;this.rays.children[0].material.opacity=.012+gold*.022;
     if(this.precipitation.visible){this.precipitation.geometry.setDrawRange(0,this.count);for(let i=0;i<this.count;i++){const k=i*3;this.positions[k]+=(this.weather==='rain'?.7:.25)*dt;this.positions[k+1]-=dt*(this.weather==='rain'?7:.7);this.positions[k+2]+=Math.sin(i+this.hour)*dt*.2;if(this.positions[k+1]<.02){this.positions[k+1]=8;this.positions[k]=(this.rand()-.5)*16;}}this.precipitation.geometry.attributes.position.needsUpdate=true;}

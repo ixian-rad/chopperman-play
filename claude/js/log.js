@@ -8,7 +8,7 @@ import { RAPIER, GROUPS } from './physics.js';
 import { Rng, fbm2, valueNoise2, smoothstep, clamp, lerp } from './rng.js';
 import * as T from './textures.js';
 import { SPECIES, SPECIES_BY_ID } from './data.js';
-import { patchMaterial } from './matpatch.js';
+import { patchMaterial, lambertCopy, LOW } from './matpatch.js';
 
 export { SPECIES };
 
@@ -113,7 +113,15 @@ export function makeLogMaterials(params, { weathered = false } = {}) {
     for (const m of mats) { m.color.setRGB(0.62, 0.6, 0.58); m.roughness *= 0.62; }
   }
   mats.forEach((m, i) => patchMaterial(m, { porous: i === 0 ? 1 : 1.15 }));
-  return mats;
+  if (!LOW.on) return mats;
+  // Low / Potato: colour-map Lambert rounds (the per-log normal / roughness maps are dropped unused).
+  return mats.map((m) => {
+    for (const k of ['normalMap', 'roughnessMap']) if (m[k] && !m.userData.sharedBark) m[k].dispose();
+    const l = lambertCopy(m);
+    l.userData.sharedBark = m.userData.sharedBark;
+    m.dispose();
+    return l;
+  });
 }
 
 export function disposeMaterials(mats) {

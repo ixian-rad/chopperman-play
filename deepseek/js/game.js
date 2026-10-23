@@ -726,6 +726,9 @@ function defaultState() {
     honed: 0,
     wedges: 0,
     wedgesPulled: 0,
+    // Assets v2: trees felled in the free-roam yard. Purely a progression
+    // tally, so old saves simply start at zero.
+    treesFelled: 0,
     campaignComplete: false,
     // Highest chapter available from the Campaign chapter row. Persisted so a
     // later session can continue the story at the chapter it reached.
@@ -743,6 +746,11 @@ function defaultState() {
       music: true,
       musicVolume: 0.35,
       sfxVolume: 0.8,
+      // Assets v2 selections. Persisted next to the existing render/sound
+      // preferences so a reload puts Sergey back in the same yard, outfit and
+      // with the same bench.
+      setting: 'nj',
+      costume: 'tee',
     },
     createdAt: Date.now(),
   };
@@ -1300,6 +1308,9 @@ export class GameState {
     merged.settings.music = merged.settings.music !== false;
     merged.settings.musicVolume = clamp(finite(merged.settings.musicVolume, 0.35), 0, 1);
     merged.settings.sfxVolume = clamp(finite(merged.settings.sfxVolume, 0.8), 0, 1);
+    merged.settings.setting = merged.settings.setting === 'tiraspol' ? 'tiraspol' : 'nj';
+    merged.settings.costume = merged.settings.costume === 'jacket' ? 'jacket' : 'tee';
+    merged.treesFelled = Math.max(0, Math.round(finite(merged.treesFelled, 0)));
     merged.stamina = clamp(finite(merged.stamina, 100), 0, 200);
     merged.lastHit =
       merged.lastHit && typeof merged.lastHit === 'object' ? merged.lastHit : null;
@@ -1714,6 +1725,53 @@ export class GameState {
     this.save();
     this.emit('split', lastHit);
     return lastHit;
+  }
+
+  /* ---------------------------------------------------------------- *
+   *  Assets v2: felling a yard tree feeds the same RPG economy
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Award the coins/XP for a tree felled in free-roam. This intentionally
+   * reuses the level-up loop from the splitting path so the yard and the block
+   * share one progression curve.
+   */
+  awardTreeFell({ species = '', coins = 0, xp = 0, hits = 0 } = {}) {
+    const coinGain = Math.max(1, Math.round(finite(coins, 8)));
+    const xpGain = Math.max(1, Math.round(finite(xp, 20)));
+    const before = this.state.level;
+    this.state.coins += coinGain;
+    this.state.xp += xpGain;
+    this.state.treesFelled = (this.state.treesFelled || 0) + 1;
+    let levelsGained = 0;
+    while (this.state.xp >= xpToNext(this.state.level) && this.state.level < 99) {
+      this.state.xp -= xpToNext(this.state.level);
+      this.state.level += 1;
+      levelsGained += 1;
+    }
+    if (levelsGained > 0) {
+      this.state.stamina = Math.min(this.maxStamina, this.state.stamina + levelsGained * 22);
+    }
+    this.save();
+    const detail = {
+      species,
+      coins: coinGain,
+      xp: xpGain,
+      hits: Math.round(finite(hits, 0)),
+      treesFelled: this.state.treesFelled,
+      level: this.state.level,
+      levelsGained,
+    };
+    this.emit('tree', detail);
+    if (levelsGained > 0) {
+      this.emit('level', {
+        level: this.state.level,
+        from: before,
+        levelsGained,
+        unlocked: LOG_TYPES.filter((t) => t.unlockLevel === this.state.level),
+      });
+    }
+    return detail;
   }
 
   /* ---------------------------------------------------------------- *

@@ -1,0 +1,97 @@
+{
+  "purpose": "Low-quality static prop LODs; originals untouched",
+  "ratio": 0.25,
+  "maxError": 0.02,
+  "models": [
+    {
+      "source": "assets/models/nj/shed_nj.glb",
+      "derived": "shed_nj.glb",
+      "before": 7153,
+      "after": 3769
+    },
+    {
+      "source": "assets/models/nj/chopping_stump_nj.glb",
+      "derived": "chopping_stump_nj.glb",
+      "before": 5208,
+      "after": 1429
+    },
+    {
+      "source": "assets/models/nj/firewood_heap_nj.glb",
+      "derived": "firewood_heap_nj.glb",
+      "before": 11788,
+      "after": 4602
+    },
+    {
+      "source": "assets/models/nj/tarp_woodpile.glb",
+      "derived": "tarp_woodpile.glb",
+      "before": 8358,
+      "after": 2088
+    },
+    {
+      "source": "assets/models/nj/siding_wall.glb",
+      "derived": "siding_wall.glb",
+      "before": 10,
+      "after": 10
+    },
+    {
+      "source": "assets/models/common/chopping_block.glb",
+      "derived": "chopping_block.glb",
+      "before": 4812,
+      "after": 1201
+    },
+    {
+      "source": "assets/models/common/split_log_halves.glb",
+      "derived": "split_log_halves.glb",
+      "before": 4210,
+      "after": 1052
+    },
+    {
+      "source": "assets/models/tiraspol/house_wall_grapevine.glb",
+      "derived": "house_wall_grapevine.glb",
+      "before": 8937,
+      "after": 3932
+    },
+    {
+      "source": "assets/models/tiraspol/mangal.glb",
+      "derived": "mangal.glb",
+      "before": 5893,
+      "after": 2081
+    },
+    {
+      "source": "assets/models/tiraspol/bench.glb",
+      "derived": "bench.glb",
+      "before": 3094,
+      "after": 1220
+    },
+    {
+      "source": "assets/models/tiraspol/lada_car.glb",
+      "derived": "lada_car.glb",
+      "before": 11922,
+      "after": 3624
+    },
+    {
+      "source": "assets/models/tiraspol/well.glb",
+      "derived": "well.glb",
+      "before": 5902,
+      "after": 2664
+    },
+    {
+      "source": "assets/models/tiraspol/khrushchevka.glb",
+      "derived": "khrushchevka.glb",
+      "before": 3177,
+      "after": 2485
+    },
+    {
+      "source": "assets/models/tiraspol/cathedral.glb",
+      "derived": "cathedral.glb",
+      "before": 13783,
+      "after": 6960
+    },
+    {
+      "source": "assets/models/tiraspol/iron_tools_horseshoe.glb",
+      "derived": "iron_tools_horseshoe.glb",
+      "before": 8434,
+      "after": 2104
+    }
+  ]
+}

@@ -95,6 +95,10 @@ export class AudioManager {
     const tone=(f,len,vol,options={})=>this.tone(f,len,vol*strength,{at:a,...options});const noise=(len,vol,options={})=>this.noise(len,vol*strength,{at:a,...options});
     const motif=(notes,spacing,volume)=>this.motif(notes,spacing,volume,a);
     switch(name){
+      case 'footstep':tone(data.surface==='mulch'?85:65,.09,.055,{end:32});noise(.12,data.surface==='grass'?.045:.075,{frequency:data.surface==='grass'?900:1400,end:280,brown:true});break;
+      case 'treeHit':tone(135,.22,.23,{end:45});noise(.16,.20,{frequency:1900,end:330});break;
+      case 'treeCreak':tone(145,1.4,.09,{type:'sawtooth',end:42,cutoff:480});noise(1.5,.10,{frequency:360,end:100,brown:true});break;
+      case 'treeFall':tone(65,.85,.30,{end:23});noise(1.2,.26,{frequency:1800,end:120,brown:true});noise(.4,.14,{at:a+.2,frequency:3100,end:800});break;
       case 'swing':noise(.1+p*.18,.045+p*.19,{type:'bandpass',frequency:350+p*1450,end:160+p*450,q:.8});break;
       case 'woodSoft':tone(140,.18,.19,{end:48});noise(.19,.18,{frequency:1350,end:260});break;
       case 'woodHard':tone(220,.16,.18,{end:80});tone(510,.09,.05);noise(.12,.16,{frequency:2600,end:600});break;

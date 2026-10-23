@@ -575,7 +575,7 @@ export class WeatherSystem {
 
     // Puddles grow while it rains, freeze to ice in the cold, shrink as they dry.
     const pud = smoothstep(0.35, 1, this.wet) * (1 - this.snowCover);
-    for (const m of this.puddles) m.scale.setScalar(Math.max(0.001, m.userData.size * (0.4 + 0.6 * pud)));
+    for (const m of this.puddles) { m.scale.setScalar(Math.max(0.001, m.userData.size * (0.4 + 0.6 * pud))); m.visible = pud > 0.005; }
     this.puddleMat.opacity = pud * 0.9;
     const ice = C.temp < 0 ? 1 : 0;
     this.puddleMat.color.setRGB(lerp(0.12, 0.55, ice), lerp(0.14, 0.62, ice), lerp(0.17, 0.7, ice));

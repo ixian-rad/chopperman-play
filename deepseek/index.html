@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <meta name="theme-color" content="#141810" />
-  <meta name="description" content="American Split — a browser woodchopping RPG set in an anonymous suburban New Jersey backyard. Aim, time the swing, read the grain, and split your way from pine to knotty hickory." />
+  <meta name="description" content="American Split — a browser woodchopping RPG starring Sergey, with two playable backyards (NJ and Tiraspol), a real forest, and a deep log-splitting progression loop." />
   <title>American Split — Backyard Chopping RPG</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161911'/%3E%3Cpath d='M38 8l13 11-7 8-13-11z' fill='%23d9d4c5'/%3E%3Cpath d='M28 23L12 52' stroke='%23b6814c' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./css/style.css" />
@@ -22,11 +22,36 @@
 </head>
 <body>
   <main id="app">
-    <canvas id="scene" aria-label="Interactive 3D backyard where an anonymous woodcutter splits logs with an axe"></canvas>
+    <canvas id="scene" aria-label="Interactive 3D backyard where Sergey walks, chops trees and splits logs with an axe"></canvas>
     <div class="vignette" aria-hidden="true"></div>
     <div class="grain" aria-hidden="true"></div>
     <div id="hitFlash" class="hit-flash" aria-hidden="true"></div>
     <div id="shockPulse" class="shock-pulse" aria-hidden="true"><span>BRACE</span></div>
+
+    <!-- Assets v2 free-roam HUD ------------------------------------------>
+    <aside class="yard-hud" id="yardHud" aria-label="Yard status" hidden>
+      <div class="yard-loc">
+        <span class="yard-kicker">Setting</span>
+        <strong id="yardLocation">NJ backyard</strong>
+        <span id="yardModeLabel">Yard · free roam</span>
+      </div>
+      <div class="yard-stats">
+        <div><span>Trees felled</span><strong id="yardFelled">0</strong></div>
+        <div><span>Nearest tree</span><strong id="yardNearest">—</strong></div>
+      </div>
+      <p class="yard-controls"><kbd>WASD</kbd> walk · <kbd>Shift</kbd> run · <kbd>E</kbd> chopping block · <kbd>LMB</kbd>/<kbd>Space</kbd> chop tree · click to look</p>
+    </aside>
+
+    <div class="yard-crosshair" id="yardCrosshair" aria-hidden="true" hidden></div>
+    <div class="yard-prompt" id="yardPrompt" role="status" hidden>
+      <strong id="yardPromptTitle">Tree in reach</strong>
+      <span id="yardPromptText">LMB / Space to chop</span>
+      <span class="yard-prompt-action" id="yardPromptAction">Chop</span>
+    </div>
+    <div class="yard-block-prompt" id="yardBlockPrompt" role="status" hidden>
+      <kbd>E</kbd> Step up to the chopping block
+    </div>
+    <div class="yard-hint" id="yardHint">Click the yard to look around · WASD to walk</div>
 
     <!-- Compact top bar -------------------------------------------------->
     <header class="topbar" aria-label="Game status">
@@ -127,7 +152,7 @@
       <div class="telemetry-row"><span>Impact</span><b id="telemetryEnergy">0 J</b></div>
       <div class="telemetry-row"><span>Grain</span><b id="telemetryGrain">0% grain</b></div>
       <div class="telemetry-row telemetry-fracture"><span>Fracture</span><b id="telemetryFracture">Ready</b></div>
-      <span class="telemetry-blade" id="telemetryBlade">Blade 0° · Q/E turn</span>
+      <span class="telemetry-blade" id="telemetryBlade">Blade 0° · Q/Z turn · E yard</span>
     </aside>
 
     <!-- End grain reader (kept out of the telemetry panel so the 16 px
@@ -234,7 +259,7 @@
     </section>
 
     <div class="keys-hint">
-      <span><kbd>LMB</kbd> hold / release</span><span><kbd>RMB</kbd> orbit</span><span><kbd>Space</kbd> swing</span><span><kbd>R</kbd> new log</span><span><kbd>F</kbd> wedge</span><span><kbd>Shift</kbd>+<kbd>F</kbd> pull wedge</span><span><kbd>Q</kbd><kbd>E</kbd> rotate</span><span class="grain-key"><i></i> gold check = rive</span><span class="ring-key"><i></i> pale ring = loose ring</span>
+      <span><kbd>LMB</kbd> hold / release</span><span><kbd>RMB</kbd> orbit</span><span><kbd>Space</kbd> swing</span><span><kbd>R</kbd> new log</span><span><kbd>F</kbd> wedge</span><span><kbd>Shift</kbd>+<kbd>F</kbd> pull wedge</span><span><kbd>Q</kbd><kbd>Z</kbd> rotate</span><span><kbd>E</kbd> yard</span><span class="grain-key"><i></i> gold check = rive</span><span class="ring-key"><i></i> pale ring = loose ring</span>
     </div>
 
     <div id="popupLayer" class="popup-layer" aria-hidden="true"></div>
@@ -346,6 +371,22 @@
               <button type="button" data-weather="wind">Wind</button>
             </div>
             <p class="settings-note" id="weatherNote">Weather changes friction, fracture behaviour, stamina drain, and aim sway.</p>
+          </section>
+
+          <section class="settings-section" aria-labelledby="yardSettingsTitle">
+            <div class="section-title"><span id="yardSettingsTitle">Yard &amp; Sergey</span><small id="yardSettingLabel">NJ backyard · Black tee</small></div>
+            <label class="select-label">Setting</label>
+            <div class="segmented" id="settingButtons">
+              <button type="button" data-setting="nj">NJ backyard</button>
+              <button type="button" data-setting="tiraspol">Tiraspol</button>
+            </div>
+            <p class="settings-note">NJ: sage shed and a mulch chopping zone. Tiraspol: grapevine wall, mangal and the white cathedral on the skyline.</p>
+            <div class="section-title section-title-spaced"><span>Sergey’s outfit</span><small id="costumeLabel">Black tee</small></div>
+            <div class="segmented" id="costumeButtons">
+              <button type="button" data-costume="tee">Black tee</button>
+              <button type="button" data-costume="jacket">Blue jacket</button>
+            </div>
+            <p class="settings-note" id="axeSkinNote">Axe skin follows the axe equipped in the Axe Shed. The golden axe is the Tempered Master unlock.</p>
           </section>
 
           <section class="settings-section audio-settings" aria-labelledby="audioTitle">

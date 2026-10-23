@@ -240,7 +240,9 @@ function createGround(scene) {
     color: new THREE.Color(1.9, 1.8, 1.35),
     fog: true,
   });
-  simpleGroundMaterial.userData.baseColor = new THREE.Color(1.9, 1.8, 1.35);
+  // Tint the unlit Low ground toward the damp autumn lawn instead of a neon
+  // chartreuse. The v2 beds, tree shadows and props read better on it.
+  simpleGroundMaterial.userData.baseColor = new THREE.Color(1.42, 1.5, 1.0);
   ground.userData.standardMaterial = mat;
   ground.userData.simpleMaterial = simpleGroundMaterial;
   scene.add(ground);
@@ -256,6 +258,7 @@ function createGround(scene) {
     polygonOffsetUnits: -2,
   });
   const patch = new THREE.Mesh(new THREE.CircleGeometry(1.75, 24), patchMat);
+  patch.name = 'v1-dirt-patch';
   patch.rotation.x = -Math.PI / 2;
   patch.position.set(BLOCK.x, 0.012, BLOCK.z + 0.05);
   patch.receiveShadow = true;
@@ -1098,6 +1101,7 @@ function createChoppingBlock(scene) {
 
 function createWoodpile(scene, sharedBark, sharedEnd, random) {
   const group = new THREE.Group();
+  group.name = 'v1-woodpile';
   group.position.set(-3.4, 0, -3.95);
   group.rotation.y = 0.08;
   const barkMaps = createSurfaceMaps(sharedBark, {
@@ -1164,6 +1168,7 @@ function createWoodpile(scene, sharedBark, sharedEnd, random) {
 
 function createBucket(scene) {
   const group = new THREE.Group();
+  group.name = 'v1-bucket';
   group.position.set(1.5, 0, -1.7);
   group.rotation.y = -0.3;
   const metal = new THREE.MeshStandardMaterial({ color: 0x8b9290, metalness: 0.72, roughness: 0.42 });
@@ -1201,6 +1206,7 @@ function createPath(scene) {
   const random = mulberry32(444);
   const mat = new THREE.MeshStandardMaterial({ color: 0x8f8a78, roughness: 0.95 });
   const group = new THREE.Group();
+  group.name = 'v1-path';
   const geo = new THREE.CylinderGeometry(0.36, 0.38, 0.055, 9);
   for (let i = 0; i < 8; i++) {
     const stone = new THREE.Mesh(geo, mat);
@@ -1218,6 +1224,7 @@ function createPath(scene) {
 
 function createGardenBed(scene) {
   const group = new THREE.Group();
+  group.name = 'v1-garden';
   group.position.set(5.35, 0, -5.3);
   const soil = new THREE.Mesh(
     new THREE.BoxGeometry(3.1, 0.14, 1.05),
@@ -1256,6 +1263,7 @@ function createGardenBed(scene) {
 
 function createWheelbarrow(scene) {
   const group = new THREE.Group();
+  group.name = 'v1-wheelbarrow';
   group.position.set(4.6, 0, 0.0);
   group.rotation.y = -0.55;
   const metal = new THREE.MeshStandardMaterial({ color: 0x526a5e, metalness: 0.45, roughness: 0.58 });
@@ -1914,6 +1922,7 @@ export function createEnvironment(scene, renderer, preset = null) {
   // Faint darker tree line beyond the fence to give the yard depth.
   const distantMat = new THREE.MeshStandardMaterial({ color: 0x3c4f35, roughness: 1, flatShading: true });
   const distant = new THREE.Group();
+  distant.name = 'v1-distant';
   for (let i = 0; i < 13; i++) {
     const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), distantMat);
     const x = -18 + i * 3.1 + Math.random() * 1.4;
@@ -1925,6 +1934,11 @@ export function createEnvironment(scene, renderer, preset = null) {
   scene.add(distant);
 
   const lowDetailRoots = [wheelbarrow, garden, distant, ground.moss, trees.shrubs, path];
+  // The Assets v2 yards replace every piece of the original procedural yard.
+  // The quality switch below used to re-show the old low-detail roots (the
+  // beige icosahedron "distant tree line" was the worst offender) on Medium/
+  // High; this flag keeps the legacy furniture buried once v2 is live.
+  let legacyHidden = false;
   for (const cloud of clouds) cloud.userData.lowDetail = true;
 
   const lanterns = createLanterns(scene);
@@ -2120,7 +2134,7 @@ export function createEnvironment(scene, renderer, preset = null) {
     }
     const showDetails = (p.envDetail ?? 1) >= 0.7;
     for (const root of lowDetailRoots) {
-      if (root) root.visible = showDetails;
+      if (root) root.visible = showDetails && !legacyHidden;
     }
     for (const cloud of clouds) cloud.visible = showDetails;
     const size = p.shadowSize;
@@ -2185,6 +2199,15 @@ export function createEnvironment(scene, renderer, preset = null) {
   }
 
   state.setQuality = setQuality;
+  // Once the Assets v2 layer is live, the quality switch must not resurrect
+  // the old procedural yard roots (see legacyHidden above).
+  state.hideLegacyYard = () => {
+    legacyHidden = true;
+    for (const root of lowDetailRoots) {
+      if (root) root.visible = false;
+    }
+  };
+  state.isLegacyHidden = () => legacyHidden;
   state.setSimpleSun = setSimpleSun;
   state.setStormIntensity = setStormIntensity;
   state.simpleSunState = simpleSunState;

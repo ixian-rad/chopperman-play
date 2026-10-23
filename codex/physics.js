@@ -20,10 +20,11 @@ export class Simulation {
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.metalMaterial,this.woodMaterial,{friction:.38,restitution:.03}));
     const ground=new CANNON.Body({mass:0,material:this.groundMaterial,shape:new CANNON.Plane()});ground.quaternion.setFromEuler(-Math.PI/2,0,0);this.world.addBody(ground);
     this.stumpBody=new CANNON.Body({mass:0,material:this.woodMaterial,shape:new CANNON.Cylinder(.40,.46,BLOCK_TOP,20),position:new CANNON.Vec3(0,BLOCK_TOP/2,0)});this.world.addBody(this.stumpBody);
-    const stump=cylinder(scene,.40,.46,BLOCK_TOP,[wood.bark,wood.end,wood.end],0,BLOCK_TOP/2,0,24);
+    this.stumpVisual=new THREE.Group();scene.add(this.stumpVisual);
+    const stump=cylinder(this.stumpVisual,.40,.46,BLOCK_TOP,[wood.bark,wood.end,wood.end],0,BLOCK_TOP/2,0,24);
     // Slight root flare and a few irregular bark ridges.
-    cylinder(scene,.44,.51,.13,wood.bark,0,.067,0,14);
-    for(let i=0;i<14;i++){const a=i/14*Math.PI*2;const ridge=cylinder(scene,.025,.055,.48,wood.bark,Math.cos(a)*.414,.29,Math.sin(a)*.414,5);ridge.rotation.z=Math.sin(a)*.07;ridge.rotation.x=Math.cos(a)*.07;}
+    cylinder(this.stumpVisual,.44,.51,.13,wood.bark,0,.067,0,14);
+    for(let i=0;i<14;i++){const a=i/14*Math.PI*2;const ridge=cylinder(this.stumpVisual,.025,.055,.48,wood.bark,Math.cos(a)*.414,.29,Math.sin(a)*.414,5);ridge.rotation.z=Math.sin(a)*.07;ridge.rotation.x=Math.cos(a)*.07;}
     this.staticBox(16,1.8,.12,0,.9,-4.05);this.staticBox(.12,1.8,15,-7.95,.9,3);this.staticBox(.12,1.8,15,7.95,.9,3);
     this.staticBox(6.9,3.7,3,-3.7,1.9,-6.25);this.staticBox(1.8,.50,.65,2.7,.25,-2.9);this.staticBox(1.7,.52,.5,-3.5,.26,-2.7);
     // Hand-driven kinematic arc before contact; fragments remain dynamic rigid bodies.

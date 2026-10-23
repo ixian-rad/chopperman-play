@@ -13,9 +13,16 @@ import { RenderPipeline, PRESETS, PRESET_ORDER } from './post.js';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
-import { patchScene, updateUpView } from './matpatch.js';
-import { setTextureScale } from './textures.js';
-import { WEATHER_ORDER } from './data.js';
+import { patchScene, updateUpView, setLowShading, LOW } from './matpatch.js';
+import { BlobShadows } from './blobs.js';
+import { mergeStatic, setMerged } from './merge.js';
+import { setTextureScale, setAnisoCap, setMipFilter } from './textures.js';
+import { WEATHER_ORDER, AXES, AXES_BY_ID, AXE_FOR_MODEL } from './data.js';
+import { progress } from './assets.js';
+import { Sergey, COSTUMES } from './sergey.js';
+import { YardWorld, SETTINGS } from './yard.js';
+import { Player } from './player.js';
+import { WoodChips } from './woodchips.js';
 
 const BLOCK = { R: 0.31, H: 0.46 };
 const CAMERA_HOME = { pos: new THREE.Vector3(1.85, 1.55, 2.75), target: new THREE.Vector3(-0.1, 0.72, -0.45) };
@@ -25,9 +32,17 @@ const MAX_STEPS = 90;
 const $ = (id) => document.getElementById(id);
 const loading = $('loading');
 
+// Loading screen: a progress bar fed by every GLB / texture request (models load in parallel).
+progress.listeners.add((done, total) => {
+  const f = $('load-fill'), c = $('load-count');
+  if (f) f.style.width = `${Math.max(3, Math.round((100 * done) / Math.max(1, total)))}%`;
+  if (c) c.textContent = `${done} / ${total} assets`;
+});
+const setLoadText = (t) => { const el = $('loading-text'); if (el) el.textContent = t; };
+
 async function main() {
   const physics = await Physics.create();
-  loading.querySelector('#loading-text').textContent = 'Building the backyard…';
+  setLoadText('Building the backyard…');
   await new Promise((r) => setTimeout(r, 0));
 
   // ------------------------------------------------------------ renderer / scene / camera
@@ -63,6 +78,7 @@ async function main() {
   const settingsPeek = (() => { try { return JSON.parse(localStorage.getItem('backyard-log-splitter-save-v2'))?.settings ?? {}; } catch { return {}; } })();
   const startQuality = settingsPeek.quality && settingsPeek.quality !== 'auto' ? settingsPeek.quality : detected.preset;
   setTextureScale(PRESETS[startQuality].texScale);
+  setAnisoCap(PRESETS[startQuality].aniso);
 
   const env = createEnvironment({ scene, renderer, physics });
   const weather = new WeatherSystem({ scene, renderer, env, camera });
@@ -82,6 +98,8 @@ async function main() {
   const sparks = new Sparks(scene);
   const audio = new SoundFX();
   physics.createDebug(scene);
+  const lantern = env.lamps.find((L) => L.name === 'lantern');
+  const blobs = new BlobShadows(scene); // stand-in shadows when the preset draws no shadow maps
   const sparkLight = new THREE.PointLight(0xffa040, 0, 4, 2);
   scene.add(sparkLight);
 
@@ -94,6 +112,34 @@ async function main() {
   const game = new Game({ scene, physics, logs, swing: swingCtl, chips, dust, sparks, audio, weather, env, blockTop: BLOCK.H });
   logs.onLanded = () => game.onLogLanded();
   const hud = new Hud(game, weather);
+
+  // ------------------------------------------------------------ assets v2: Sergey, the two yards, trees
+  // Everything loads in parallel while the physics scene is being built; the loading screen waits
+  // for it (see "start" below). If a GLB fails, the old procedural person keeps working.
+  const S0 = game.p.settings;
+  {
+    const sid = SETTINGS[S0.setting] ? S0.setting : 'nj', h = S0.hour ?? 16.5;
+    const v = h >= 20.5 || h < 5.5 ? 'night' : h >= 17.3 || h < 7 ? 'dusk' : 'wide';
+    loading.style.backgroundImage = `linear-gradient(rgba(10,8,5,0.72), rgba(10,8,5,0.85)), url(assets/art/${sid}/${sid}_background_${v}.webp)`;
+    loading.style.backgroundSize = 'cover';
+    loading.style.backgroundPosition = 'center';
+  }
+  const sergey = new Sergey(scene);
+  const world = new YardWorld({ scene, env, physics, block, camera });
+  const woodchips = new WoodChips(scene);
+  setLoadText('Loading Sergey, the yard and the trees…');
+  const charReady = sergey.setCostume(COSTUMES[S0.costume] ? S0.costume : 'tee')
+    .then(() => sergey.setAxe(game.axeStats.model ?? 'sergey'))
+    .then(() => onCharacterLoaded());
+  const yardReady = world.setSetting(SETTINGS[S0.setting] ? S0.setting : 'nj');
+  // Sergey's meshes manage their own shadow flag (post.js only toggles static scenery).
+  function onCharacterLoaded() {
+    sergey.root.traverse((o) => { if (o.isMesh) o.userData.castOrig = false; });
+    patchScene(sergey.root);
+    humanoid.group.visible = false; // the procedural person stays only as the physics proxy / fallback
+    axe.group.visible = false;
+    return player.refreshBlade();
+  }
 
   function onSwingEvent(type, data) {
     if (type === 'swingStart') audio.windup(data.power);
@@ -118,6 +164,11 @@ async function main() {
       if (big && fpsNow > 20) ui.hitStop = 0.12;
       if (ui.slowmo && fpsNow > 14) ui.cine = { active: true, t: 0, hold: big ? 0.9 : 0.45, low: big ? 0.15 : 0.3 };
     }
+  });
+  game.on('hit', (h) => { if (h.result === 'split' && h.boss) player.cheer = 2.8; });
+  game.on('levelUp', () => { player.cheer = 2.6; });
+  game.on('axe', (a) => {
+    sergey.setAxe(a.model ?? 'sergey').then(() => { patchScene(sergey.root); sergey.root.traverse((o) => { if (o.isMesh) o.userData.castOrig = false; }); return player.refreshBlade(); });
   });
   game.on('sparkLight', (p) => {
     sparkLight.position.copy(p).y += 0.05;
@@ -151,8 +202,21 @@ async function main() {
     env.grass.visible = P.grass > 0;
     setMaxChips(P.chips);
     setTextureScale(P.texScale);
+    setAnisoCap(P.aniso, scene);
+    setMipFilter(!!P.propLow, scene);
     weather.setQuality({ precipScale: P.precip, cloudOctaves: P.cloudOctaves, envUpdates: P.envUpdates, ibl: P.ibl });
     for (const L of env.lamps) L.light.visible = P.pointLights || L.name === 'lantern';
+    sparkLight.visible = P.pointLights; // every point light costs in every lit shader on software GL
+    world.applyQuality(P);
+    LOW.on = !!P.propLow; // rounds made from now on start out Lambert on Low / Potato
+    // Low / Potato draw the procedural NJ house / fence / neighbours as one mesh per material.
+    if (P.propLow && !env.njBatch) env.njBatch = mergeStatic(env.njGroup, { exclude: [env.procGrill, env.procTable].filter(Boolean) });
+    setMerged(env.njBatch, !!P.propLow);
+    for (const r of [env.ground, env.dirt, env.njGroup, env.woodpile?.mesh]) setLowShading(r, !!P.propLow);
+    for (const m of [logs.log?.mesh, ...logs.pieces.map((p) => p.mesh), ...game.queue.map((it) => it.mesh)]) setLowShading(m, !!P.propLow);
+    blobs.setEnabled(!P.shadows);
+    env.ground.geometry = P.propLow ? env.groundGeo.lo : env.groundGeo.hi;
+    sergey.setLow(!!P.propLow);
     onResize();
     $('sel-quality').value = S.quality === 'auto' ? 'auto' : id;
   }
@@ -172,8 +236,91 @@ async function main() {
     actions: {
       closeModals: () => { for (const m of document.querySelectorAll('.modal')) m.classList.add('hidden'); },
       key: (code) => onKey(code),
+      modalOpen: () => modalOpen(),
+      leaveStump: () => enterYard(),
+      yardKey: (code) => player.yardKey(code),
     },
   });
+
+  const player = new Player({
+    scene, camera, controls, dom: renderer.domElement, sergey, world, game, swingCtl, logs, audio, woodchips, dust, env, weather,
+    blockTop: BLOCK.H, ui: { enterStump: () => enterStump(), modalOpen: () => modalOpen() },
+  });
+
+  function modalOpen() { return [...document.querySelectorAll('.modal')].some((m) => !m.classList.contains('hidden')); }
+
+  // ------------------------------------------------------------ yard / stump modes
+  // Stump: the original splitting game (orbit camera around the block). Yard: Sergey walks around.
+  function enterYard() {
+    if (player.mode === 'yard') return true;
+    if (swingCtl.busy) { game.toast('Finish the swing first', 'info'); return false; }
+    game.cancelMeter();
+    ui.camTween = null;
+    player.setMode('yard');
+    input.yard = true;
+    document.body.classList.add('yard');
+    updateModeButton();
+    player.snapCamera();
+    if (!S.seenYard) { S.seenYard = true; game.toast('Yard: W A S D to walk, Shift to run, right-drag to look. Face a tree and click to chop. E at the block to split.', 'info', true); }
+    return true;
+  }
+  function enterStump() {
+    if (player.mode === 'stump') return true;
+    if (player.busy) return false;
+    player.setMode('stump');
+    input.yard = false;
+    document.body.classList.remove('yard');
+    if (!swingCtl.busy) swingCtl.setReady();
+    // Glide the camera back to the block view.
+    const yaw = game.aim.yaw;
+    const rot = (v) => v.clone().applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw);
+    ui.camYaw = 0;
+    ui.camTween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: rot(CAMERA_HOME.pos), t1: rot(CAMERA_HOME.target), k: 0 };
+    controls.enabled = false;
+    updateModeButton();
+    return true;
+  }
+  function updateModeButton() {
+    const b = $('btn-mode');
+    if (!b) return;
+    const yard = player.mode === 'yard';
+    b.innerHTML = yard ? 'Split logs <kbd>E</kbd>' : 'Walk the yard <kbd>Esc</kbd>';
+    b.title = yard ? 'Walk to the chopping block and press E (or click here)' : 'Walk around the yard and chop trees (Esc)';
+    $('hint').textContent = yard
+      ? 'W A S D walk · Shift run · right-drag / arrows look · wheel zoom · click or Space chops the ringed tree · E at the block splits logs'
+      : 'Mouse: aim on the log top · hold LMB to charge, drag ↔ to turn the blade, release to swing · right-drag orbit · wheel zoom · Esc walks the yard';
+  }
+  // Backdrop art for a setting at the current time of day (wide / dusk / night).
+  function backdropUrl(id) {
+    const h = weather.hour;
+    const v = h >= 20.5 || h < 5.5 ? 'night' : h >= 17.3 || h < 7 ? 'dusk' : 'wide';
+    return `assets/art/${id}/${id}_background_${v}.webp`;
+  }
+  let postcardT = 0;
+  function showPostcard(id) {
+    const pc = $('postcard');
+    pc.querySelector('img').src = backdropUrl(id);
+    pc.querySelector('figcaption').textContent = `Greetings from the ${SETTINGS[id].name}`;
+    pc.classList.remove('hidden');
+    clearTimeout(postcardT);
+    postcardT = setTimeout(() => pc.classList.add('hidden'), 3200);
+  }
+  async function setSetting(id) {
+    const s = await world.setSetting(id);
+    S.setting = world.id;
+    $('sel-setting').value = world.id;
+    if (player.mode === 'yard') world.collide(player.pos, 0.35, player.queueObstacles());
+    game.save();
+    return s;
+  }
+  async function setCostume(id) {
+    await sergey.setCostume(COSTUMES[id] ? id : 'tee');
+    S.costume = sergey.costume;
+    $('sel-costume').value = sergey.costume;
+    await onCharacterLoaded();
+    game.save();
+    return sergey.costume;
+  }
 
   function toggleModal(id) {
     const el = $(id);
@@ -232,6 +379,21 @@ async function main() {
     }
   }
 
+  $('btn-mode').addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    if (player.mode === 'yard') {
+      enterStump(); // the button walks him straight back to the block
+    } else enterYard();
+  });
+  $('sel-setting').addEventListener('change', (e) => {
+    e.target.blur();
+    const id = e.target.value;
+    game.toast(`Loading the ${SETTINGS[id].name}…`, 'info');
+    setSetting(id).then(() => showPostcard(id)).catch((err) => { console.warn(err); game.toast('Could not load that yard', 'warn'); });
+  });
+  $('sel-costume').addEventListener('change', (e) => { e.target.blur(); setCostume(e.target.value).catch((err) => console.warn(err)); });
+  $('sel-setting').value = SETTINGS[S0.setting] ? S0.setting : 'nj';
+  $('sel-costume').value = COSTUMES[S0.costume] ? S0.costume : 'tee';
   $('btn-shop').addEventListener('click', () => toggleModal('shop'));
   $('btn-modes').addEventListener('click', () => toggleModal('modes'));
   $('btn-help').addEventListener('click', () => toggleModal('help'));
@@ -282,6 +444,7 @@ async function main() {
     dust.setViewport(window.innerHeight, pr);
     sparks.setViewport(window.innerHeight, pr);
     weather.setViewport(window.innerHeight, pr);
+    woodchips.setViewport(window.innerHeight, pr, camera);
   }
   window.addEventListener('resize', onResize);
 
@@ -358,7 +521,9 @@ async function main() {
   function frame(now) {
     requestAnimationFrame(frame);
     try {
+      const t0 = performance.now();
       tick(now);
+      ui.tickMs = (ui.tickMs ?? 0) * 0.9 + (performance.now() - t0) * 0.1; // CPU time per frame (telemetry)
     } catch (err) {
       // Never let one bad frame kill the loop (that is what froze v1's swing).
       if (String(err) !== lastError) { lastError = String(err); console.error(err); }
@@ -378,6 +543,12 @@ async function main() {
     }
 
     weather.update(dtReal);
+    // Low / Potato keep only the block lantern's point light, and only while it is actually lit:
+    // an unlit point light still costs a light loop in every lit fragment on software GL.
+    if (!pipeline.preset.pointLights && lantern) {
+      const on = weather.lampLevel > (lantern.light.visible ? 0.01 : 0.03);
+      if (on !== lantern.light.visible) lantern.light.visible = on;
+    }
     const cond = weather.conditions;
     windV = cond.wind;
     game.update(dtReal);
@@ -415,19 +586,40 @@ async function main() {
     env.update(simTime);
     sparkLight.intensity = Math.max(0, sparkLight.intensity - dtReal * 40);
 
-    // Camera follows blade-direction changes around the block, plus impact shake.
-    camera.position.sub(shakeOff);
-    if (Math.abs(ui.camYaw) > 1e-4) {
-      const step = ui.camYaw * (1 - Math.exp(-8 * dtReal));
-      ui.camYaw -= step;
-      const pivot = new THREE.Vector3(0, 0, 0);
-      camera.position.sub(pivot).applyAxisAngle(THREE.Object3D.DEFAULT_UP, step).add(pivot);
-      controls.target.sub(pivot).applyAxisAngle(THREE.Object3D.DEFAULT_UP, step).add(pivot);
-    }
-    controls.update();
-    const sh = game.fx.shake * game.fx.shake * 0.012;
-    shakeOff.set(Math.sin(now * 0.091) * sh, Math.sin(now * 0.077 + 1) * sh, Math.sin(now * 0.083 + 2) * sh);
-    camera.position.add(shakeOff);
+    // Sergey (stump pose or yard locomotion), the yard's trees and the wood-chip sprites.
+    player.update(dtReal, dtReal * scale); // sim time (slow-mo / hit-stop) drives the stump follow-through
+    world.update(dtReal, camera, weather);
+    blobs.update(sergey.root.position, sergey.root.rotation.y, world.field, weather.daylight * (1 - 0.7 * Math.min(1, weather.cur.clouds)));
+    woodchips.update(dtReal, windV);
+    woodchips.uniforms.uLight.value.setScalar(0.25 + 0.85 * weather.daylight);
+    // The sun's shadow frustum follows Sergey around the yard (and sits on the block otherwise).
+    if (player.mode === 'yard') env.sun.target.position.set(Math.round(player.pos.x), 0, Math.round(player.pos.z));
+    else env.sun.target.position.set(0, 0, 0.5);
+    env.sun.target.updateMatrixWorld();
+
+    if (player.mode === 'stump') {
+      // Camera follows blade-direction changes around the block, plus impact shake.
+      camera.position.sub(shakeOff);
+      if (ui.camTween) {
+        const T = ui.camTween;
+        T.k = Math.min(1, T.k + dtReal / 0.7);
+        const e = T.k * T.k * (3 - 2 * T.k);
+        camera.position.lerpVectors(T.p0, T.p1, e);
+        controls.target.lerpVectors(T.t0, T.t1, e);
+        if (T.k >= 1) { ui.camTween = null; controls.enabled = true; }
+      }
+      if (Math.abs(ui.camYaw) > 1e-4) {
+        const step = ui.camYaw * (1 - Math.exp(-8 * dtReal));
+        ui.camYaw -= step;
+        const pivot = new THREE.Vector3(0, 0, 0);
+        camera.position.sub(pivot).applyAxisAngle(THREE.Object3D.DEFAULT_UP, step).add(pivot);
+        controls.target.sub(pivot).applyAxisAngle(THREE.Object3D.DEFAULT_UP, step).add(pivot);
+      }
+      if (ui.camTween) camera.lookAt(controls.target); else controls.update();
+      const sh = game.fx.shake * game.fx.shake * 0.012;
+      shakeOff.set(Math.sin(now * 0.091) * sh, Math.sin(now * 0.077 + 1) * sh, Math.sin(now * 0.083 + 2) * sh);
+      camera.position.add(shakeOff);
+    } else shakeOff.set(0, 0, 0);
     camera.updateMatrixWorld();
     updateUpView(camera);
 
@@ -444,6 +636,7 @@ async function main() {
     if (hudT > 0.1) {
       hudT = 0;
       hud.update(fpsNow, pipeline.preset.name + (pipeline.auto ? ' (auto)' : ''));
+      updatePrompt();
       if (ui.telemetry) {
         hud.telemetry({
           state: swingCtl.state, headSpeed: swingCtl.headSpeedNow(), bodies: physics.bodyCount(),
@@ -460,6 +653,23 @@ async function main() {
       });
       updateMusic();
     }
+  }
+
+  // On-screen prompt in the yard: the ringed tree (with chop progress) or the chopping block.
+  function updatePrompt() {
+    const el = $('prompt');
+    let html = '';
+    if (player.mode === 'yard') {
+      const t = player.target?.tree;
+      if (t && (t.state === 'standing' || t.state === 'chopping')) {
+        const need = t.meta.hitsToFell, done = Math.min(need, Math.round(t.hits * 10) / 10);
+        const name = t.species[0].toUpperCase() + t.species.slice(1);
+        html = `🪓 ${name} — <kbd>Click</kbd> or <kbd>Space</kbd> to chop<small>${done} / ${need} hits · about ${Math.round(t.meta.height * t.scale)} m tall</small><span class="pbar"><i style="width:${Math.round((100 * done) / need)}%"></i></span>`;
+      } else if (player.nearBlock()) html = 'Chopping block — press <kbd>E</kbd> or click it to split logs';
+      else if (player.busy) html = '';
+    }
+    if (html !== el.dataset.h) { el.innerHTML = html; el.dataset.h = html; }
+    el.classList.toggle('hidden', !html);
   }
 
   // Soundtrack section + intensity: menu while a menu is open or after ~30 s idle, gameplay while
@@ -523,6 +733,7 @@ async function main() {
     // Lets automation drive the soundtrack too, but only once the page has had a user activation
     // (so the AudioContext never trips the autoplay warning).
     if ((!audio.ctx || audio.ctx.state !== 'running') && navigator.userActivation?.hasBeenActive) audio.unlock();
+    if (player.mode === 'yard') { player.act = null; enterStump(); } // the hook always swings at the block
     return game.testSwing(power);
   };
   window.resetScene = () => resetScene();
@@ -564,6 +775,7 @@ async function main() {
     get chips() { return chips.list.length; },
     get bodies() { return physics.bodyCount(); },
     get fps() { return fpsNow; },
+    get tickMs() { return ui.tickMs; },
     get quality() { return pipeline.presetId; },
     get lastContact() { return swingCtl.lastContact; },
     get lastOutcome() { return swingCtl.lastOutcome; },
@@ -575,17 +787,147 @@ async function main() {
       syncVisuals();
       return swingCtl.state;
     },
-    weather, pipeline, game, swing: swingCtl, logs,
+    weather, pipeline, game, swing: swingCtl, logs, world,
     render: () => pipeline.render(),
     camera, controls, scene, renderer,
   };
 
+
+  // ------------------------------------------------------------ assets-v2 test hooks
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const waitFor = async (fn, ms = 10000) => { const t0 = performance.now(); while (!fn() && performance.now() - t0 < ms) await sleep(50); return fn(); };
+  const liveTree = (t) => t && (t.state === 'standing' || t.state === 'chopping');
+  function nearestTree(filter = liveTree) {
+    const f = world.field;
+    if (!f) return null;
+    let best = null, bd = Infinity;
+    const p = sergey.root.position;
+    for (const t of f.trees) {
+      if (!filter(t)) continue;
+      const d = Math.hypot(t.position.x - p.x, t.position.z - p.z);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return best ? { tree: best, distance: bd } : null;
+  }
+  function treeStats() {
+    const s = { standing: 0, chopping: 0, falling: 0, felled: 0 };
+    for (const t of world.field?.trees ?? []) {
+      if (t.state === 'gone') continue;
+      s[t.state === 'fallen' || t.state === 'stump' ? 'felled' : t.state]++;
+    }
+    return s;
+  }
+  // Put Sergey at a tree's approach point facing it, camera behind him.
+  function teleportNearTree(tree = null) {
+    if (player.mode !== 'yard') enterYard();
+    if (player.mode !== 'yard') return null;
+    const f = world.field;
+    if (!f) return null;
+    const cands = tree ? [tree] : f.trees.filter((t) => liveTree(t) && world.insideBounds(t.position.x, t.position.z, 0.3))
+      .sort((a, b) => a.position.distanceTo(player.pos) - b.position.distanceTo(player.pos));
+    // Is the follow camera (4 m behind, ~2 m up) clear of every tree crown from this spot?
+    const camClear = (p, yaw) => {
+      const cx = p.x - Math.sin(yaw) * 3.9, cz = p.z - Math.cos(yaw) * 3.9;
+      if (!world.insideBounds(cx, cz, -6)) return false;
+      return !f.trees.some((o) => (o.state === 'standing' || o.state === 'chopping')
+        && Math.hypot(cx - o.position.x, cz - o.position.z) < o.meta.crownRadius * o.scale * 0.8 && (o.meta.crownBase ?? 2) * o.scale < 2.3);
+    };
+    for (const t of cands) {
+      const base = Math.atan2(player.pos.x - t.position.x, player.pos.z - t.position.z);
+      let fallback = null, chosen = null;
+      for (let k = 0; k < 12 && !chosen; k++) {
+        const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 6);
+        const d = t.meta.approachDistance * t.scale;
+        const p = new THREE.Vector3(t.position.x + Math.sin(a) * d, 0, t.position.z + Math.cos(a) * d);
+        if (!world.insideBounds(p.x, p.z, 0.5)) continue;
+        const q = world.collide(p.clone(), 0.35, player.queueObstacles());
+        if (q.distanceTo(p) > 0.02) continue;
+        if (camClear(p, Math.atan2(t.position.x - p.x, t.position.z - p.z))) chosen = p;
+        else fallback ??= p;
+      }
+      const p = chosen ?? fallback;
+      if (p) {
+        player.act = null;
+        player.pos.copy(p);
+        player.speed = 0;
+        player.yaw = Math.atan2(t.position.x - p.x, t.position.z - p.z);
+        player.camYaw = player.yaw;
+        player.camPitch = 0.16;
+        sergey.root.position.copy(p);
+        sergey.root.rotation.y = player.yaw;
+        player.snapCamera();
+        return t.id;
+      }
+    }
+    return null;
+  }
+  window.__v2 = { sergey, world, player, woodchips, env }; // debugging handles
+  window.chopperTest = {
+    ready: () => !!(window.simReady && sergey.loaded && world.field && world.field.trees.length && player.rows.chop),
+    setSetting: (id) => setSetting(id).then(() => world.id),
+    setCostume: (id) => setCostume(id),
+    setAxe: async (model) => {
+      const a = AXE_FOR_MODEL(model);
+      if (!game.p.owned.includes(a.id)) { game.p.owned.push(a.id); game.p.sharp[a.id] = a.sharp; }
+      await waitFor(() => !swingCtl.busy && !player.busy, 8000);
+      game.equipAxe(a.id);
+      await sergey.setAxe(a.model);
+      await player.refreshBlade();
+      return a.model;
+    },
+    setQuality: (q) => { applyQuality(q, true); return pipeline.presetId; },
+    enterYard: async () => { await waitFor(() => !swingCtl.busy, 8000); enterYard(); return player.mode; },
+    enterStump: async () => { await waitFor(() => !player.busy, 8000); enterStump(); await sleep(50); return player.mode; },
+    teleportNearTree: () => teleportNearTree(),
+    chopTree: async () => {
+      if (player.mode !== 'yard') enterYard();
+      let tree = player.target?.tree;
+      if (!liveTree(tree)) { const id = teleportNearTree(); tree = id == null ? null : world.field.trees[id]; }
+      if (!tree) return { felled: false, hits: 0 };
+      let swings = 0;
+      while (swings < 30 && liveTree(tree)) {
+        await waitFor(() => !player.busy, 6000);
+        if (!liveTree(tree)) break;
+        // keep facing this trunk so pick() selects it
+        player.yaw = Math.atan2(tree.position.x - player.pos.x, tree.position.z - player.pos.z);
+        const pick = world.field.pick(player.pos, player.forward(), 1.75, 0.45);
+        if (!pick || pick.tree !== tree) teleportNearTree(tree);
+        if (player.swingAtTree(true)) swings++;
+        await sleep(30);
+      }
+      await waitFor(() => !player.busy, 6000);
+      await waitFor(() => tree.state === 'fallen' || tree.state === 'stump', 9000);
+      return { felled: !liveTree(tree), hits: Math.round(tree.hits * 100) / 100, swings, species: tree.species, id: tree.id };
+    },
+    state: () => {
+      const n = nearestTree();
+      const clip = sergey.current ? sergey.cur?.actions[sergey.current]?.getClip().name : null;
+      let attached = null;
+      const ax = sergey.cur?.inner.children[0];
+      for (let o = ax; o; o = o.parent) if (o.isBone) { attached = o.name; break; }
+      return {
+        setting: world.id, costume: sergey.costume, axe: game.axeStats.model, axeName: game.axeStats.name, quality: pipeline.presetId,
+        mode: player.mode, player: { x: +sergey.root.position.x.toFixed(3), y: +sergey.root.position.y.toFixed(3), z: +sergey.root.position.z.toFixed(3) },
+        anim: clip, characterLoaded: !!(sergey.loaded && sergey.cur?.model.parent), axeAttachedTo: attached,
+        trees: treeStats(),
+        nearestTree: n ? { id: n.tree.id, species: n.tree.species, x: +n.tree.position.x.toFixed(3), z: +n.tree.position.z.toFixed(3), radius: +n.tree.radius.toFixed(3), distance: +n.distance.toFixed(3) } : null,
+        fps: +fpsNow.toFixed(1),
+      };
+    },
+  };
+
   // ------------------------------------------------------------ start
+  // Wait for Sergey and the saved yard (they have been loading in parallel all along).
+  const [charRes, yardRes] = await Promise.allSettled([charReady, yardReady]);
+  if (charRes.status === 'rejected') { console.warn('Sergey failed to load, using the procedural person:', charRes.reason); }
+  if (yardRes.status === 'rejected') { console.warn('Yard assets failed to load:', yardRes.reason); }
+  setLoadText('Ready');
+  updateModeButton();
   const startPreset = S.quality === 'auto' || !S.quality ? detected.preset : S.quality;
   pipeline.auto = S.quality === 'auto' || !S.quality;
   pipeline.presetId = startPreset;
+  patchScene(scene); // before applyQuality: Low swaps patched Standard materials for Lambert copies
   applyQuality(startPreset);
-  patchScene(scene);
   game.rebuildQueue();
   game.nextLog(true);
   game.env.woodpile?.setPieces(game.p.woodpile);

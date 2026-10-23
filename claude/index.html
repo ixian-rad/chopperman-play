@@ -11,7 +11,8 @@
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js",
+        "meshoptimizer/simplifier": "https://cdn.jsdelivr.net/npm/meshoptimizer@0.22.0/meshopt_simplifier.module.js"
       }
     }
   </script>
@@ -20,8 +21,16 @@
   <div id="app"></div>
 
   <div id="loading">
-    <div class="spinner"></div>
-    <div id="loading-text">Loading physics engine…</div>
+    <div class="load-card">
+      <img class="load-art" src="assets/art/common/keyart_claude.webp" alt="Sergey with his axe in a sunlit forest" />
+      <div class="load-body">
+        <h1>Backyard Log Splitter</h1>
+        <p class="load-sub">starring <b>Sergey</b></p>
+        <div class="load-bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100"><i id="load-fill"></i></div>
+        <div class="load-row"><div class="spinner"></div><div id="loading-text">Loading physics engine…</div></div>
+        <div id="load-count" class="load-count"></div>
+      </div>
+    </div>
   </div>
 
   <!-- HUD overlay: a CSS grid so panels never overlap, whatever the text size -->
@@ -88,6 +97,20 @@
       </label>
       <span class="small dim"><b id="h-fps">—</b> FPS · <span id="h-qname">—</span></span>
     </div>
+    <div class="ctl">
+      <label>Yard
+        <select id="sel-setting" title="Which backyard">
+          <option value="nj">NJ backyard</option>
+          <option value="tiraspol">Tiraspol backyard</option>
+        </select>
+      </label>
+      <label>Outfit
+        <select id="sel-costume" title="Sergey's outfit">
+          <option value="tee">Black tee</option>
+          <option value="jacket">Blue jacket</option>
+        </select>
+      </label>
+    </div>
     <div class="ctl audio" title="Everything you hear is synthesized live (Web Audio)">
       <label class="chk"><input type="checkbox" id="chk-music" checked /> Music <kbd>M</kbd></label>
       <input type="range" id="vol-music" min="0" max="100" value="50" aria-label="Music volume" title="Music volume" />
@@ -98,6 +121,7 @@
 
   <!-- bottom-right: actions -->
   <section id="actions" class="panel">
+    <button id="btn-mode" class="wide" title="Walk around the yard and chop trees (Esc), or go back to the chopping block (E)">Walk the yard <kbd>Esc</kbd></button>
     <button id="btn-modes" class="primary" title="Campaign and challenges (O)">Modes <kbd>O</kbd></button>
     <button id="btn-shop" class="primary" title="Upgrade shop (B)">Shop <kbd>B</kbd></button>
     <button id="btn-sharpen" title="Sharpen the edge (G)">Sharpen <kbd>G</kbd></button>
@@ -110,6 +134,7 @@
 
   <!-- bottom-centre: timing / power meter -->
   <div id="bottombar">
+  <div id="prompt" class="hidden" aria-live="polite"></div>
   <div id="meter" class="idle">
     <div class="track">
       <div class="zone" id="m-zone"></div>
@@ -126,6 +151,7 @@
   <div id="modebar" class="panel hidden"><span id="mb-text"></span><button id="btn-quitmode" title="Quit to free play">Quit</button></div>
   <div id="toasts" aria-live="polite"></div>
   <div id="hitcard" class="hidden"></div>
+  <figure id="postcard" class="hidden" aria-live="polite"><img alt="" /><figcaption></figcaption></figure>
 
   <section id="telemetry" class="panel small hidden"></section>
   </div>
@@ -175,6 +201,7 @@
             <li><b>Hold left button</b> to charge the meter; <b>drag left/right</b> while holding to turn the blade; <b>release</b> to swing.</li>
             <li>Or <b>click</b> once to start the meter and <b>click again</b> (or <kbd>Space</kbd>) to stop it.</li>
             <li><b>Right-drag</b> orbits the camera, <b>Shift+right-drag</b> pans, <b>wheel</b> zooms, <b>Shift+wheel</b> turns the blade.</li>
+            <li><b>Yard</b> (<kbd>Esc</kbd> at the block): <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, <kbd>Shift</kbd> run, <b>right-drag</b> or arrow keys look around, wheel zoom. Face a tree (orange ring) and <b>click</b> or <kbd>Space</kbd> to chop it. Walk to the chopping block and press <kbd>E</kbd> (or click it) to split logs again.</li>
             <li>Keyboard: <kbd>Space</kbd> start/stop meter · arrows nudge aim · <kbd>Q</kbd>/<kbd>E</kbd> turn blade · <kbd>R</kbd> reset log · <kbd>B</kbd> shop · <kbd>O</kbd> modes · <kbd>G</kbd> sharpen · <kbd>T</kbd> time · <kbd>N</kbd> weather · <kbd>K</kbd> quality · <kbd>C</kbd> camera · <kbd>F</kbd> physics · <kbd>M</kbd> music on/off (volumes and SFX toggle: bottom-left panel) · <kbd>X</kbd> quick swing</li>
           </ul>
         </div>

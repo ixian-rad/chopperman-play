@@ -1,5 +1,6 @@
-// Generic suburban backyard: lawn, privacy fence, trees, shrubs, a generic house facade,
-// patio props, woodpile, sky and lighting. Everything is procedural and anonymous.
+// Shared backyard base: sky, lights, lawn + grass, the work-area dirt patch, the lantern and the
+// woodpile. The procedural New Jersey house, privacy fence, patio, shrubs and neighbourhood live in
+// env.njGroup so the Tiraspol setting (js/yard.js) can hide them; trees come from trees_v2.
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -52,12 +53,17 @@ function withNormal(mat, strength = 2, scale = 1) {
 export function createEnvironment({ scene, renderer, physics }) {
   const env = { updaters: [] };
   const rng = new Rng(2024);
+  const nj = new THREE.Group();
+  nj.name = 'nj-procedural';
+  scene.add(nj);
+  env.njGroup = nj;
 
   // ---------------------------------------------------------------- sky + lights
   // (time of day, sky colours, fog and the environment map are driven by weather.js)
   const sunDir = new THREE.Vector3(-0.5, 0.66, 0.56).normalize();
   const sky = new Sky();
   sky.scale.setScalar(5000);
+  sky.renderOrder = 50; // after opaque geometry, so early depth test skips covered sky pixels
   const su = sky.material.uniforms;
   su.turbidity.value = 4.5;
   su.rayleigh.value = 1.4;
@@ -88,12 +94,14 @@ export function createEnvironment({ scene, renderer, physics }) {
 
   // ---------------------------------------------------------------- ground
   const grassTex = T.grassTexture();
-  const groundGeo = new THREE.PlaneGeometry(240, 240, 120, 120);
-  groundGeo.rotateX(-Math.PI / 2);
-  {
-    const pos = groundGeo.getAttribute('position');
+  // Vertex-coloured lawn (mowing stripes in the yard, patchier neighbour lawns). Low / Potato swap
+  // in a coarse copy: software rasterisers pay per vertex and the 2 m grid is 29k triangles.
+  const makeGroundGeo = (seg) => {
+    const geo = new THREE.PlaneGeometry(240, 240, seg, seg);
+    geo.rotateX(-Math.PI / 2);
+    const pos = geo.getAttribute('position');
     const colors = new Float32Array(pos.count * 3);
-    const uv = groundGeo.getAttribute('uv');
+    const uv = geo.getAttribute('uv');
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const n = fbm2(x / 9, z / 9, 77, 4);
@@ -107,8 +115,11 @@ export function createEnvironment({ scene, renderer, physics }) {
       colors[i * 3 + 2] = k * lerp(1, 0.9, dry);
       uv.setXY(i, x / 10, z / 10);
     }
-    groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return geo;
+  };
+  const groundGeo = makeGroundGeo(120);
+  env.groundGeo = { hi: groundGeo, lo: makeGroundGeo(30) };
   grassTex.repeat.set(4, 4);
   const ground = new THREE.Mesh(groundGeo, withNormal(std({ map: grassTex, vertexColors: true, roughness: 0.95 }), 2.5, 0.8));
   ground.receiveShadow = true;
@@ -124,6 +135,8 @@ export function createEnvironment({ scene, renderer, physics }) {
   dirt.position.set(0, 0.004, -0.35);
   dirt.receiveShadow = true;
   scene.add(dirt);
+  env.dirt = dirt;
+  env.ground = ground;
 
   // ---------------------------------------------------------------- grass blades (instanced tufts)
   {
@@ -278,7 +291,7 @@ export function createEnvironment({ scene, renderer, physics }) {
     boards.instanceMatrix.needsUpdate = true;
     if (boards.instanceColor) boards.instanceColor.needsUpdate = true;
     shadowed(boards);
-    scene.add(boards);
+    nj.add(boards);
 
     const postGeo = new THREE.BoxGeometry(0.09, 1.95, 0.09);
     postGeo.translate(0, 0.975, 0);
@@ -288,82 +301,35 @@ export function createEnvironment({ scene, renderer, physics }) {
       postMesh.setMatrixAt(k, m4);
     });
     shadowed(postMesh);
-    scene.add(postMesh);
+    nj.add(postMesh);
     const railMat = std({ color: 0x9a7a5a, roughness: 0.9 });
     for (const r of rails) {
-      const m = box(r.len, 0.085, 0.038, railMat, r.x, r.y, r.z, scene);
+      const m = box(r.len, 0.085, 0.038, railMat, r.x, r.y, r.z, nj);
       m.rotation.y = r.ang;
     }
   }
 
   // ---------------------------------------------------------------- house (generic two-storey colonial facade)
-  buildHouse(scene, physics, env);
+  buildHouse(nj, physics, env);
 
-  // ---------------------------------------------------------------- trees and shrubs
-  const leafPalettes = {
-    maple: [[62, 104, 38], [78, 122, 44], [52, 90, 34], [96, 132, 52]],
-    oak: [[58, 92, 36], [70, 104, 40], [48, 80, 30]],
-    thuja: [[40, 78, 38], [52, 92, 44], [34, 66, 32]],
-    shrub: [[56, 98, 46], [70, 116, 52], [46, 84, 40]],
-  };
-  const leafMats = {};
-  for (const [k, pal] of Object.entries(leafPalettes)) {
-    const m = std({
-      map: T.leafClusterTexture(pal, 53 + k.length), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85,
-    });
-    m.userData.snowMask = 0.7;
-    // Crowns sway with the wind (amplitude grows with height above the trunk).
-    m.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = WX.uTime;
-      shader.uniforms.uWind = WX.uWind;
-      shader.vertexShader = 'uniform float uTime;\nuniform vec2 uWind;\n' + shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        float ws = length(uWind);
-        float hgt = max(0.0, position.y - 1.5);
-        float ph = uTime * (0.9 + 0.08 * ws) + position.x * 0.35 + position.z * 0.3;
-        float amp = (0.006 + 0.0035 * ws) * hgt;
-        transformed.x += (sin(ph) * amp + uWind.x * 0.004 * hgt) ;
-        transformed.z += (cos(ph * 0.8) * amp * 0.7 + uWind.y * 0.004 * hgt);
-        transformed.y += sin(ph * 2.3) * amp * 0.15;`,
-      );
-    };
-    leafMats[k] = m;
-  }
-  const barkTex = T.barkTextures({ bark: { fx: 8, fy: 2, sharp: 1.6, warp: 0.4, dark: [58, 50, 44], light: [118, 108, 98], lichen: true } }, 91);
-  const trunkMat = std({ map: barkTex.map, normalMap: barkTex.normal, roughnessMap: barkTex.rough, roughness: 1 });
-
-  const trees = [
-    { x: -7.6, z: 8.4, h: 9, r: 3.6, kind: 'maple' },
-    { x: 8.5, z: 17.5, h: 12, r: 4.6, kind: 'oak' },
-    { x: -5.0, z: 20.0, h: 13, r: 5.0, kind: 'maple' },
-    { x: 16.0, z: 3.0, h: 11, r: 4.2, kind: 'oak' },
-    { x: -17.0, z: -2.0, h: 10, r: 4.0, kind: 'maple' },
-    { x: 19.0, z: 21.0, h: 12, r: 4.5, kind: 'maple' },
-  ];
-  for (const t of trees) {
-    addTree(scene, t, trunkMat, leafMats[t.kind], rng);
-    if (Math.abs(t.x) < YARD.maxX && t.z < YARD.maxZ) {
-      physics.addStatic(RAPIER.ColliderDesc.cylinder(t.h * 0.3, 0.22), [t.x, t.h * 0.3, t.z]);
-    }
-  }
-  // Arborvitae privacy row along the back fence.
-  for (let x = -9.4; x <= 9.5; x += 1.55) {
-    addShrub(scene, { x: x + rng.float(-0.15, 0.15), z: 12.2, h: rng.float(3.2, 4.0), r: 0.62, cone: true }, leafMats.thuja, rng);
-  }
-  // Foundation shrubs.
+  // ---------------------------------------------------------------- foundation shrubs
+  // (yard trees and the arborvitae hedge are trees_v2 / GLB props, see js/yard.js)
+  const shrubMat = std({
+    map: T.leafClusterTexture([[56, 98, 46], [70, 116, 52], [46, 84, 40]], 58), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85,
+  });
+  shrubMat.userData.snowMask = 0.7;
   for (const x of [-6.2, 2.0, 4.6, 6.3]) {
-    addShrub(scene, { x, z: HOUSE_Z + 0.7, h: rng.float(0.9, 1.2), r: 0.6, cone: false }, leafMats.shrub, rng);
+    addShrub(nj, { x, z: HOUSE_Z + 0.7, h: rng.float(0.9, 1.2), r: 0.6, cone: false }, shrubMat, rng);
   }
 
   // ---------------------------------------------------------------- lanterns
-  buildLanterns(scene, physics, env);
+  buildLanterns(scene, physics, env, nj);
 
   // ---------------------------------------------------------------- woodpile along the left fence
   env.woodpile = buildWoodpile(scene, physics, rng);
 
   // ---------------------------------------------------------------- neighbourhood beyond the fence
-  buildNeighbours(scene, rng);
+  buildNeighbours(nj, rng);
 
   env.update = (t) => {
     for (const u of env.updaters) u(t);
@@ -372,51 +338,6 @@ export function createEnvironment({ scene, renderer, physics }) {
 }
 
 // ---------------------------------------------------------------------------------------------
-
-function addTree(scene, t, trunkMat, leafMat, rng) {
-  const g = new THREE.Group();
-  g.position.set(t.x, 0, t.z);
-  const trunkH = t.h * 0.55;
-  const trunk = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.16 + t.h * 0.008, 0.24 + t.h * 0.015, trunkH, 12, 4), trunkMat));
-  trunk.position.y = trunkH / 2;
-  g.add(trunk);
-  // Main limbs.
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 + rng.float(-0.4, 0.4);
-    const len = t.r * rng.float(0.6, 0.9);
-    const limb = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, len, 7), trunkMat));
-    const tilt = rng.float(0.6, 1.0);
-    limb.position.set(Math.cos(a) * Math.sin(tilt) * len / 2, trunkH * rng.float(0.8, 1.0) + Math.cos(tilt) * len / 2, Math.sin(a) * Math.sin(tilt) * len / 2);
-    limb.rotation.set(0, -a, 0);
-    limb.rotateZ(-tilt);
-    g.add(limb);
-  }
-  // Crown made of alpha-tested leaf cards, normals pointing outward for soft volume shading.
-  const cards = [];
-  const nCards = Math.round(260 + t.r * 60);
-  const cy = trunkH + t.r * 0.55;
-  for (let i = 0; i < nCards; i++) {
-    const u = rng.next(), v = rng.next(), w = Math.cbrt(rng.next());
-    const th = u * Math.PI * 2, ph = Math.acos(2 * v - 1);
-    const lobe = 1 + 0.25 * Math.sin(th * 3 + ph * 2);
-    const px = Math.sin(ph) * Math.cos(th) * t.r * w * lobe;
-    const py = Math.cos(ph) * t.r * 0.78 * w * lobe;
-    const pz = Math.sin(ph) * Math.sin(th) * t.r * w * lobe;
-    const size = rng.float(0.9, 1.5) * (t.r / 3.6);
-    const pg = new THREE.PlaneGeometry(size, size);
-    pg.rotateX(rng.float(0, Math.PI));
-    pg.rotateY(rng.float(0, Math.PI));
-    pg.rotateZ(rng.float(0, Math.PI));
-    pg.translate(px, cy + py, pz);
-    const nrm = pg.getAttribute('normal');
-    const n = new THREE.Vector3(px, py * 1.2 + t.r * 0.25, pz).normalize();
-    for (let k = 0; k < nrm.count; k++) nrm.setXYZ(k, n.x, n.y, n.z);
-    cards.push(pg);
-  }
-  const crown = shadowed(new THREE.Mesh(mergeGeometries(cards), leafMat));
-  g.add(crown);
-  scene.add(g);
-}
 
 function addShrub(scene, s, leafMat, rng) {
   const cards = [];
@@ -452,6 +373,7 @@ function buildHouse(scene, physics, env) {
   const litGlass = std({ color: 0x1d2a33, roughness: 0.04, metalness: 0.2, envMapIntensity: 2.2, emissive: 0xffc27a, emissiveIntensity: 0 });
   litGlass.userData.porous = 0.2;
   env.windowMat = litGlass;
+  litGlass.userData.noLow = true; // its emissive is animated at night
   const shutterMat = std({ color: 0x2a3b2e, roughness: 0.6 });
   const roofTex = T.shingleTexture();
 
@@ -603,6 +525,7 @@ function buildHouse(scene, physics, env) {
     g.position.set(-4.3, 0.1, Z + 1.3);
     g.rotation.y = 0.3;
     scene.add(g);
+    env.procGrill = g; // replaced by the grill_gas GLB once the NJ props load
     const black = std({ color: 0x1b1b1d, roughness: 0.45, metalness: 0.5 });
     const steel = std({ color: 0xb0b2b5, roughness: 0.3, metalness: 0.9 });
     box(0.9, 0.45, 0.5, black, 0, 0.55, 0, g);
@@ -622,6 +545,7 @@ function buildHouse(scene, physics, env) {
     const t = new THREE.Group();
     t.position.set(-1.2, 0.1, Z + 2.2);
     scene.add(t);
+    env.procTable = t; // replaced by the patio_set GLB
     const top = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.04, 28), wood));
     top.position.y = 0.72;
     t.add(top);
@@ -688,10 +612,10 @@ function buildWoodpile(scene, physics, rng) {
 }
 
 // Shepherd's-hook lantern by the chopping block + string lights over the patio.
-function buildLanterns(scene, physics, env) {
+function buildLanterns(scene, physics, env, nj) {
   const iron = std({ color: 0x1c1c1e, roughness: 0.55, metalness: 0.75 });
   const g = new THREE.Group();
-  g.position.set(1.35, 0, -1.3);
+  g.position.set(2.35, 0, -2.0); // clear of Sergey's stance circle around the block
   scene.add(g);
   const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 1.75, 8), iron));
   post.position.y = 0.875;
@@ -728,7 +652,7 @@ function buildLanterns(scene, physics, env) {
   const p0 = new THREE.Vector3(-4.9, 2.4, HOUSE_Z + 0.1), p1 = new THREE.Vector3(0.9, 2.3, HOUSE_Z + 3.6);
   const postS = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.4, 0.08), std({ color: 0x5a4636, roughness: 0.9 })));
   postS.position.set(p1.x, 1.2, p1.z);
-  scene.add(postS);
+  nj.add(postS);
   const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff0d0, emissive: 0xffc070, emissiveIntensity: 0.1 });
   bulbMat.userData.noWeather = true;
   const pts = [];
@@ -742,13 +666,13 @@ function buildLanterns(scene, physics, env) {
     if (i > 0 && i < N) {
       const b = new THREE.Mesh(bulbGeo, bulbMat);
       b.position.copy(p).y -= 0.05;
-      scene.add(b);
+      nj.add(b);
     }
   }
-  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x111111 })));
+  nj.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x111111 })));
   const sl = new THREE.PointLight(0xffc070, 0, 8, 2);
   sl.position.copy(pts[N / 2]).y -= 0.2;
-  scene.add(sl);
+  nj.add(sl);
   env.lamps.push({ light: sl, base: 3, mat: bulbMat, emissive: 3.5, flicker: false, phase: 0, name: 'string' });
 }
 

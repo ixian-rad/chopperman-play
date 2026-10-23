@@ -1,7 +1,7 @@
 // Game rules: progression (XP, levels, skills), economy and shop, stamina, the timing/power meter,
 // aiming error, the queue of rounds waiting on the lawn, scoring/combos and persistence.
 import * as THREE from 'three';
-import { AXES_BY_ID, SPECIES, HONE_TIERS, GLOVES_PRICE, SHARPEN_PRICE, SKILLS, TRAITS, xpForLevel } from './data.js';
+import { AXES_BY_ID, SPECIES, SPECIES_BY_ID, TREE_WOOD, HONE_TIERS, GLOVES_PRICE, SHARPEN_PRICE, SKILLS, TRAITS, xpForLevel } from './data.js';
 import { makeLogParams, makeStaticRound } from './log.js';
 import { resolveImpact, logConditions, planeFactors } from './fracture.js';
 import { ModeRun, freeVariants } from './modes.js';
@@ -10,17 +10,17 @@ import { Rng, clamp } from './rng.js';
 const SAVE_KEY = 'backyard-log-splitter-save-v2';
 const QUEUE_LEN = 5;
 // Queue slots: a row of rounds standing on the lawn to the left of the chopping block.
-const SLOTS = [[-2.15, -0.95], [-2.55, -0.55], [-2.95, -0.15], [-3.35, 0.25], [-3.75, 0.65]];
+const SLOTS = [[-2.15, -0.95], [-2.55, -0.55], [-2.95, -0.15], [-3.35, 0.25], [-3.75, 0.65], [-4.15, 1.05], [-4.55, 1.45]];
 
 function freshProgress() {
   return {
     v: 2, score: 0, level: 1, xp: 0, cash: 0, skillPoints: 0,
     skills: { strength: 0, endurance: 0, focus: 0 },
     axe: 'utility', owned: ['utility'], sharp: { utility: AXES_BY_ID.utility.sharp }, hone: 0, gloves: false,
-    bestCombo: 0, stats: { swings: 0, splits: 0, bullseyes: 0, pieces: 0, glances: 0, nails: 0, misses: 0, stuck: 0 },
+    bestCombo: 0, stats: { swings: 0, splits: 0, bullseyes: 0, pieces: 0, glances: 0, nails: 0, misses: 0, stuck: 0, trees: 0 },
     woodpile: 0, logSeq: 1, seenHelp: false,
     records: { timeattack: 0, precision: 0, daily: null, dailyPaid: null, campaign: {} },
-    settings: { quality: 'auto', weather: 'clear', hour: 16.5, timeFlow: true, sound: true, slowmo: true },
+    settings: { quality: 'auto', weather: 'clear', hour: 16.5, timeFlow: true, sound: true, slowmo: true, setting: 'nj', costume: 'tee' },
   };
 }
 
@@ -676,8 +676,42 @@ export class Game {
     this.needed = null;
     this.audio.equip?.();
     this.save();
+    this.emit('axe', this.axeStats);
     this.emit('change');
     return true;
+  }
+
+  // A tree felled in the yard: XP + cash, and its trunk is bucked into rounds that go to the
+  // front of the splitting queue (free play only; modes keep their fixed rounds).
+  onTreeFelled(species, meta, size = 1) {
+    const hits = meta.hitsToFell ?? 5;
+    const xp = Math.round(30 + 12 * hits);
+    const cash = Math.round(10 + 6 * hits);
+    this.p.cash += cash;
+    this.p.stats.trees = (this.p.stats.trees ?? 0) + 1;
+    let rounds = 0;
+    const wood = SPECIES_BY_ID[TREE_WOOD[species]] ?? SPECIES[0];
+    if (!this.mode) {
+      rounds = hits >= 8 ? 2 : 1;
+      for (let i = 0; i < rounds; i++) {
+        const seed = (this.p.logSeq++ * 7919 + ((Math.random() * 1e6) | 0)) >>> 0;
+        const params = makeLogParams(seed, { species: wood, traits: [], knotChance: Math.min(0.4, 0.1 + 0.03 * this.p.level), nailChance: 0, sizeBias: clamp(size * 0.6, 0, 1) });
+        this.addToQueue(params);
+        this.queue.unshift(this.queue.pop());
+      }
+      while (this.queue.length > QUEUE_LEN + 2) {
+        const it = this.queue.pop();
+        this.scene.remove(it.mesh);
+        it.mesh.geometry.dispose();
+      }
+      this.layoutQueue(true);
+    }
+    this.toast(`${species[0].toUpperCase() + species.slice(1)} felled: +${xp} XP, +$${cash}${rounds ? `, ${rounds} ${wood.name} round${rounds > 1 ? 's' : ''} queued` : ''}`, 'good');
+    this.addXp(xp);
+    this.save();
+    this.emit('treeFelled', { species, xp, cash, rounds });
+    this.emit('change');
+    return { xp, cash, rounds };
   }
 
   sharpen() {

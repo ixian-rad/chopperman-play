@@ -4,6 +4,8 @@
 //  * Hold LMB: charge the meter; drag horizontally to turn the blade; release to swing.
 //    A quick click starts the meter in "click mode" — click again (or Space) to stop it.
 //  * Right-drag orbits the camera (OrbitControls), wheel zooms, Shift+wheel turns the blade.
+//  * assets v2: while Sergey roams the yard (`yard` = true) the log-aiming handlers stand down and
+//    keys go to actions.yardKey first (WASD / Space / E are handled by js/player.js).
 import * as THREE from 'three';
 
 export class Input {
@@ -15,6 +17,7 @@ export class Input {
     this.hit = new THREE.Vector3();
     this.press = null;
     this.hoverLog = false;
+    this.yard = false;
     this.buildReticle();
     this.bind();
   }
@@ -74,6 +77,7 @@ export class Input {
   }
 
   onMove(e) {
+    if (this.yard) return;
     const log = this.game.logs.log;
     if (!log) return;
     if (this.press && this.press.button === 0) {
@@ -92,7 +96,7 @@ export class Input {
   }
 
   onDown(e) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || this.yard) return;
     const g = this.game;
     // Second click in click mode stops the meter.
     if (g.meter.active && !g.meter.holdMode) {
@@ -131,6 +135,14 @@ export class Input {
     const g = this.game;
     const A = this.actions;
     const step = e.shiftKey ? 0.03 : 0.01;
+    if (this.yard) {
+      if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      if (e.code === 'Escape') { A.closeModals(); return; }
+      if (A.yardKey?.(e.code, e)) return;
+      if (e.repeat) return;
+      A.key?.(e.code, e);
+      return;
+    }
     switch (e.code) {
       case 'Space':
         e.preventDefault();
@@ -156,7 +168,12 @@ export class Input {
       }
       case 'KeyQ': g.rotateBlade(-0.13); break;
       case 'KeyE': g.rotateBlade(0.13); break;
-      case 'Escape': g.cancelMeter(); A.closeModals(); break;
+      case 'Escape':
+        // Esc cancels the meter, then closes dialogs, then leaves the block for the yard.
+        if (g.meter.active) g.cancelMeter();
+        else if (A.modalOpen?.()) A.closeModals();
+        else A.leaveStump?.();
+        break;
       default:
         if (e.repeat) return;
         A.key?.(e.code, e);
@@ -167,7 +184,7 @@ export class Input {
   update() {
     const g = this.game;
     const log = g.logs.log;
-    const show = log && log.ready && !g.swing.busy && g.swing.state === 'ready';
+    const show = !this.yard && log && log.ready && !g.swing.busy && g.swing.state === 'ready';
     this.reticle.visible = !!show;
     const fog = g.weather.conditions.fog > 0.03;
     this.pith.visible = !!show && !fog;

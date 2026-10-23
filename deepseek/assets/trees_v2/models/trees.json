@@ -1,0 +1,976 @@
+{
+ "apricot": {
+  "species": "apricot",
+  "settings": [
+   "tiraspol"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "sakura_bark",
+   "leaf": "leaf_apricot"
+  },
+  "variants": [
+   {
+    "name": "apricot_v0",
+    "species": "apricot",
+    "variant": 0,
+    "seed": 5551,
+    "type": "deciduous",
+    "height": 6,
+    "chopHeight": 0.45,
+    "trunkRadius": 0.105,
+    "collisionRadius": 0.115,
+    "cutCenter": [
+     0.003,
+     -0.002
+    ],
+    "crownRadius": 3.34,
+    "crownBase": 0.61,
+    "lowestBranch": 1.46,
+    "approachDistance": 0.86,
+    "chopPoint": [
+     0,
+     0.45,
+     0
+    ],
+    "hitsToFell": 3,
+    "tris": {
+     "lod0": {
+      "stump": 40,
+      "log": 152,
+      "branches": 4164,
+      "leaves": 4480,
+      "caps": 32,
+      "total": 8836
+     },
+     "lod1": {
+      "stump": 32,
+      "log": 60,
+      "branches": 1196,
+      "leaves": 2240,
+      "total": 3528
+     }
+    }
+   },
+   {
+    "name": "apricot_v1",
+    "species": "apricot",
+    "variant": 1,
+    "seed": 812,
+    "type": "deciduous",
+    "height": 5,
+    "chopHeight": 0.45,
+    "trunkRadius": 0.087,
+    "collisionRadius": 0.095,
+    "cutCenter": [
+     -0.012,
+     0.005
+    ],
+    "crownRadius": 2.8,
+    "crownBase": 0,
+    "lowestBranch": 0.63,
+    "approachDistance": 0.84,
+    "chopPoint": [
+     0,
+     0.45,
+     0
+    ],
+    "hitsToFell": 3,
+    "tris": {
+     "lod0": {
+      "stump": 40,
+      "log": 152,
+      "branches": 4164,
+      "leaves": 4480,
+      "caps": 32,
+      "total": 8836
+     },
+     "lod1": {
+      "stump": 36,
+      "log": 60,
+      "branches": 1168,
+      "leaves": 2240,
+      "total": 3504
+     }
+    }
+   },
+   {
+    "name": "apricot_v2",
+    "species": "apricot",
+    "variant": 2,
+    "seed": 4040,
+    "type": "deciduous",
+    "height": 4.2,
+    "chopHeight": 0.45,
+    "trunkRadius": 0.07,
+    "collisionRadius": 0.076,
+    "cutCenter": [
+     0.003,
+     0.007
+    ],
+    "crownRadius": 2.23,
+    "crownBase": 0.32,
+    "lowestBranch": 0.83,
+    "approachDistance": 0.82,
+    "chopPoint": [
+     0,
+     0.45,
+     0
+    ],
+    "hitsToFell": 3,
+    "tris": {
+     "lod0": {
+      "stump": 40,
+      "log": 152,
+      "branches": 4164,
+      "leaves": 4480,
+      "caps": 32,
+      "total": 8836
+     },
+     "lod1": {
+      "stump": 30,
+      "log": 60,
+      "branches": 1182,
+      "leaves": 2240,
+      "total": 3512
+     }
+    }
+   }
+  ]
+ },
+ "birch": {
+  "species": "birch",
+  "settings": [
+   "tiraspol",
+   "nj"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "bark_birch",
+   "leaf": "leaf_birch"
+  },
+  "variants": [
+   {
+    "name": "birch_v0",
+    "species": "birch",
+    "variant": 0,
+    "seed": 30631,
+    "type": "deciduous",
+    "height": 13,
+    "chopHeight": 0.5,
+    "trunkRadius": 0.125,
+    "collisionRadius": 0.139,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 3.53,
+    "crownBase": 4.72,
+    "lowestBranch": 5.47,
+    "approachDistance": 0.88,
+    "chopPoint": [
+     0,
+     0.5,
+     0
+    ],
+    "hitsToFell": 3,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 200,
+      "branches": 2664,
+      "leaves": 2904,
+      "caps": 32,
+      "total": 5792
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 80,
+      "branches": 729,
+      "leaves": 1452,
+      "total": 2285
+     }
+    }
+   },
+   {
+    "name": "birch_v1",
+    "species": "birch",
+    "variant": 1,
+    "seed": 4411,
+    "type": "deciduous",
+    "height": 10.5,
+    "chopHeight": 0.5,
+    "trunkRadius": 0.104,
+    "collisionRadius": 0.114,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 3.28,
+    "crownBase": 4.13,
+    "lowestBranch": 4.38,
+    "approachDistance": 0.86,
+    "chopPoint": [
+     0,
+     0.5,
+     0
+    ],
+    "hitsToFell": 3,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 200,
+      "branches": 2448,
+      "leaves": 2640,
+      "caps": 32,
+      "total": 5312
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 80,
+      "branches": 688,
+      "leaves": 1320,
+      "total": 2112
+     }
+    }
+   },
+   {
+    "name": "birch_v2",
+    "species": "birch",
+    "variant": 2,
+    "seed": 6262,
+    "type": "deciduous",
+    "height": 8,
+    "chopHeight": 0.5,
+    "trunkRadius": 0.081,
+    "collisionRadius": 0.088,
+    "cutCenter": [
+     -0.001,
+     0
+    ],
+    "crownRadius": 2.2,
+    "crownBase": 3.09,
+    "lowestBranch": 3.44,
+    "approachDistance": 0.83,
+    "chopPoint": [
+     0,
+     0.5,
+     0
+    ],
+    "hitsToFell": 3,
+    "tris": {
+     "lod0": {
+      "stump": 40,
+      "log": 184,
+      "branches": 2664,
+      "leaves": 2904,
+      "caps": 32,
+      "total": 5792
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 72,
+      "branches": 767,
+      "leaves": 1452,
+      "total": 2315
+     }
+    }
+   }
+  ]
+ },
+ "maple": {
+  "species": "maple",
+  "settings": [
+   "nj"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "trident_maple_bark",
+   "leaf": "leaf_maple"
+  },
+  "variants": [
+   {
+    "name": "maple_v0",
+    "species": "maple",
+    "variant": 0,
+    "seed": 1776,
+    "type": "deciduous",
+    "height": 12,
+    "chopHeight": 0.55,
+    "trunkRadius": 0.363,
+    "collisionRadius": 0.4,
+    "cutCenter": [
+     -0.003,
+     -0.001
+    ],
+    "crownRadius": 5.54,
+    "crownBase": 3.58,
+    "lowestBranch": 3.07,
+    "approachDistance": 1.12,
+    "chopPoint": [
+     0,
+     0.55,
+     0
+    ],
+    "hitsToFell": 10,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4956,
+      "leaves": 5120,
+      "caps": 40,
+      "total": 10356
+     },
+     "lod1": {
+      "stump": 32,
+      "log": 92,
+      "branches": 1458,
+      "leaves": 2560,
+      "total": 4142
+     }
+    }
+   },
+   {
+    "name": "maple_v1",
+    "species": "maple",
+    "variant": 1,
+    "seed": 3313,
+    "type": "deciduous",
+    "height": 10,
+    "chopHeight": 0.55,
+    "trunkRadius": 0.303,
+    "collisionRadius": 0.337,
+    "cutCenter": [
+     0,
+     -0.004
+    ],
+    "crownRadius": 5.15,
+    "crownBase": 2.02,
+    "lowestBranch": 1.65,
+    "approachDistance": 1.06,
+    "chopPoint": [
+     0,
+     0.55,
+     0
+    ],
+    "hitsToFell": 8,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4956,
+      "leaves": 5120,
+      "caps": 40,
+      "total": 10356
+     },
+     "lod1": {
+      "stump": 34,
+      "log": 92,
+      "branches": 1479,
+      "leaves": 2560,
+      "total": 4165
+     }
+    }
+   },
+   {
+    "name": "maple_v2",
+    "species": "maple",
+    "variant": 2,
+    "seed": 8642,
+    "type": "deciduous",
+    "height": 7.5,
+    "chopHeight": 0.55,
+    "trunkRadius": 0.23,
+    "collisionRadius": 0.258,
+    "cutCenter": [
+     0.009,
+     -0.007
+    ],
+    "crownRadius": 3.71,
+    "crownBase": 2.01,
+    "lowestBranch": 1.21,
+    "approachDistance": 0.99,
+    "chopPoint": [
+     0,
+     0.55,
+     0
+    ],
+    "hitsToFell": 6,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4956,
+      "leaves": 5120,
+      "caps": 40,
+      "total": 10356
+     },
+     "lod1": {
+      "stump": 34,
+      "log": 92,
+      "branches": 1454,
+      "leaves": 2560,
+      "total": 4140
+     }
+    }
+   }
+  ]
+ },
+ "oak": {
+  "species": "oak",
+  "settings": [
+   "nj"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "bark_brown_02",
+   "leaf": "leaf_oak"
+  },
+  "variants": [
+   {
+    "name": "oak_v0",
+    "species": "oak",
+    "variant": 0,
+    "seed": 23399,
+    "type": "deciduous",
+    "height": 14,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.448,
+    "collisionRadius": 0.485,
+    "cutCenter": [
+     0.001,
+     0.001
+    ],
+    "crownRadius": 8.13,
+    "crownBase": 2.07,
+    "lowestBranch": 3.37,
+    "approachDistance": 1.2,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 13,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4956,
+      "leaves": 5760,
+      "caps": 40,
+      "total": 10996
+     },
+     "lod1": {
+      "stump": 36,
+      "log": 92,
+      "branches": 1486,
+      "leaves": 2880,
+      "total": 4494
+     }
+    }
+   },
+   {
+    "name": "oak_v1",
+    "species": "oak",
+    "variant": 1,
+    "seed": 5150,
+    "type": "deciduous",
+    "height": 11.5,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.357,
+    "collisionRadius": 0.388,
+    "cutCenter": [
+     0.004,
+     -0.001
+    ],
+    "crownRadius": 6.58,
+    "crownBase": 2.07,
+    "lowestBranch": 2.37,
+    "approachDistance": 1.11,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 10,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4956,
+      "leaves": 5760,
+      "caps": 40,
+      "total": 10996
+     },
+     "lod1": {
+      "stump": 40,
+      "log": 92,
+      "branches": 1479,
+      "leaves": 2880,
+      "total": 4491
+     }
+    }
+   },
+   {
+    "name": "oak_v2",
+    "species": "oak",
+    "variant": 2,
+    "seed": 90210,
+    "type": "deciduous",
+    "height": 9,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.285,
+    "collisionRadius": 0.31,
+    "cutCenter": [
+     -0.008,
+     0.011
+    ],
+    "crownRadius": 4.93,
+    "crownBase": 1.59,
+    "lowestBranch": 1.88,
+    "approachDistance": 1.04,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 8,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4956,
+      "leaves": 5760,
+      "caps": 40,
+      "total": 10996
+     },
+     "lod1": {
+      "stump": 50,
+      "log": 92,
+      "branches": 1480,
+      "leaves": 2880,
+      "total": 4502
+     }
+    }
+   }
+  ]
+ },
+ "pine": {
+  "species": "pine",
+  "settings": [
+   "nj"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "pine_bark",
+   "leaf": "leaf_pine"
+  },
+  "variants": [
+   {
+    "name": "pine_v0",
+    "species": "pine",
+    "variant": 0,
+    "seed": 44166,
+    "type": "evergreen",
+    "height": 14,
+    "chopHeight": 0.55,
+    "trunkRadius": 0.235,
+    "collisionRadius": 0.264,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 4.55,
+    "crownBase": 0.59,
+    "lowestBranch": 1.63,
+    "approachDistance": 0.99,
+    "chopPoint": [
+     0,
+     0.55,
+     0
+    ],
+    "hitsToFell": 7,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 168,
+      "branches": 2320,
+      "leaves": 3712,
+      "caps": 32,
+      "total": 6224
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 66,
+      "branches": 655,
+      "leaves": 1856,
+      "total": 2601
+     }
+    }
+   },
+   {
+    "name": "pine_v1",
+    "species": "pine",
+    "variant": 1,
+    "seed": 1207,
+    "type": "evergreen",
+    "height": 11,
+    "chopHeight": 0.55,
+    "trunkRadius": 0.178,
+    "collisionRadius": 0.2,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 3.52,
+    "crownBase": 0.41,
+    "lowestBranch": 1.22,
+    "approachDistance": 0.93,
+    "chopPoint": [
+     0,
+     0.55,
+     0
+    ],
+    "hitsToFell": 5,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 168,
+      "branches": 2080,
+      "leaves": 3328,
+      "caps": 32,
+      "total": 5600
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 66,
+      "branches": 582,
+      "leaves": 1664,
+      "total": 2336
+     }
+    }
+   },
+   {
+    "name": "pine_v2",
+    "species": "pine",
+    "variant": 2,
+    "seed": 77001,
+    "type": "evergreen",
+    "height": 8,
+    "chopHeight": 0.55,
+    "trunkRadius": 0.129,
+    "collisionRadius": 0.144,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 2.66,
+    "crownBase": 0.78,
+    "lowestBranch": 1.24,
+    "approachDistance": 0.88,
+    "chopPoint": [
+     0,
+     0.55,
+     0
+    ],
+    "hitsToFell": 4,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 168,
+      "branches": 2320,
+      "leaves": 3712,
+      "caps": 32,
+      "total": 6224
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 66,
+      "branches": 662,
+      "leaves": 1856,
+      "total": 2608
+     }
+    }
+   }
+  ]
+ },
+ "poplar": {
+  "species": "poplar",
+  "settings": [
+   "tiraspol"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "bark_willow_02",
+   "leaf": "leaf_poplar"
+  },
+  "variants": [
+   {
+    "name": "poplar_v0",
+    "species": "poplar",
+    "variant": 0,
+    "seed": 1812,
+    "type": "deciduous",
+    "height": 19,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.181,
+    "collisionRadius": 0.202,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 3.25,
+    "crownBase": 2.84,
+    "lowestBranch": 2.23,
+    "approachDistance": 0.94,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 5,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 232,
+      "branches": 3208,
+      "leaves": 3060,
+      "caps": 32,
+      "total": 6524
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 92,
+      "branches": 944,
+      "leaves": 1532,
+      "total": 2592
+     }
+    }
+   },
+   {
+    "name": "poplar_v1",
+    "species": "poplar",
+    "variant": 1,
+    "seed": 3030,
+    "type": "deciduous",
+    "height": 16,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.155,
+    "collisionRadius": 0.171,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 2.35,
+    "crownBase": 3.41,
+    "lowestBranch": 2.56,
+    "approachDistance": 0.91,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 4,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 232,
+      "branches": 2872,
+      "leaves": 2700,
+      "caps": 32,
+      "total": 5828
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 92,
+      "branches": 840,
+      "leaves": 1352,
+      "total": 2308
+     }
+    }
+   },
+   {
+    "name": "poplar_v2",
+    "species": "poplar",
+    "variant": 2,
+    "seed": 9119,
+    "type": "deciduous",
+    "height": 13,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.13,
+    "collisionRadius": 0.14,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 2.36,
+    "crownBase": 1.93,
+    "lowestBranch": 1.56,
+    "approachDistance": 0.88,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 4,
+    "tris": {
+     "lod0": {
+      "stump": 24,
+      "log": 232,
+      "branches": 3208,
+      "leaves": 3060,
+      "caps": 32,
+      "total": 6524
+     },
+     "lod1": {
+      "stump": 24,
+      "log": 92,
+      "branches": 945,
+      "leaves": 1532,
+      "total": 2593
+     }
+    }
+   }
+  ]
+ },
+ "walnut": {
+  "species": "walnut",
+  "settings": [
+   "tiraspol"
+  ],
+  "license": {
+   "generator": "ez-tree (MIT)",
+   "bark": "bark_brown_01",
+   "leaf": "leaf_walnut"
+  },
+  "variants": [
+   {
+    "name": "walnut_v0",
+    "species": "walnut",
+    "variant": 0,
+    "seed": 1991,
+    "type": "deciduous",
+    "height": 12,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.51,
+    "collisionRadius": 0.553,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 6.47,
+    "crownBase": 1.13,
+    "lowestBranch": 2.63,
+    "approachDistance": 1.26,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 14,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4404,
+      "leaves": 5040,
+      "caps": 40,
+      "total": 9724
+     },
+     "lod1": {
+      "stump": 40,
+      "log": 92,
+      "branches": 1303,
+      "leaves": 2520,
+      "total": 3955
+     }
+    }
+   },
+   {
+    "name": "walnut_v1",
+    "species": "walnut",
+    "variant": 1,
+    "seed": 2020,
+    "type": "deciduous",
+    "height": 10,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.411,
+    "collisionRadius": 0.447,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 4.91,
+    "crownBase": 0.86,
+    "lowestBranch": 2.16,
+    "approachDistance": 1.16,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 12,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4404,
+      "leaves": 5040,
+      "caps": 40,
+      "total": 9724
+     },
+     "lod1": {
+      "stump": 40,
+      "log": 92,
+      "branches": 1313,
+      "leaves": 2520,
+      "total": 3965
+     }
+    }
+   },
+   {
+    "name": "walnut_v2",
+    "species": "walnut",
+    "variant": 2,
+    "seed": 7777,
+    "type": "deciduous",
+    "height": 7.5,
+    "chopHeight": 0.6,
+    "trunkRadius": 0.334,
+    "collisionRadius": 0.362,
+    "cutCenter": [
+     0,
+     0
+    ],
+    "crownRadius": 4.06,
+    "crownBase": 0.64,
+    "lowestBranch": 1.83,
+    "approachDistance": 1.09,
+    "chopPoint": [
+     0,
+     0.6,
+     0
+    ],
+    "hitsToFell": 9,
+    "tris": {
+     "lod0": {
+      "stump": 50,
+      "log": 230,
+      "branches": 4404,
+      "leaves": 5040,
+      "caps": 40,
+      "total": 9724
+     },
+     "lod1": {
+      "stump": 50,
+      "log": 92,
+      "branches": 1315,
+      "leaves": 2520,
+      "total": 3977
+     }
+    }
+   }
+  ]
+ }
+}

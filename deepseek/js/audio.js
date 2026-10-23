@@ -1295,6 +1295,75 @@ export class SoundEngine {
     this._noiseVoice({ at: 0.7, dur: 1.75, type: 'lowpass', freq: 300, freqEnd: 55, q: 0.6, gain: 0.11 * level, attack: 0.25 });
     this._noiseVoice({ at: 0.12, dur: 1.2, type: 'lowpass', freq: 900, freqEnd: 120, q: 0.6, gain: 0.07 * level, attack: 0.1 });
   }
+
+  /* ------------------------------------------------------------------ *
+   *  Assets v2 — yard locomotion and tree foley
+   * ------------------------------------------------------------------ */
+
+  /** Surface-aware footstep: a soft body thump plus a short surface scuff. */
+  footstep(surface = 'grass', force = 0.7) {
+    const level = Math.max(0.2, Math.min(1, safeNumber(force, 0.7)));
+    const grass = surface === 'grass';
+    const mulch = surface === 'mulch';
+    this._toneVoice({
+      dur: 0.09,
+      type: 'sine',
+      f0: grass ? 92 : mulch ? 78 : 68,
+      f1: 44,
+      gain: 0.05 * level,
+      attack: 0.003,
+      pan: (Math.random() - 0.5) * 0.35,
+    });
+    this._noiseVoice({
+      dur: grass ? 0.1 : 0.075,
+      type: 'bandpass',
+      freq: grass ? 1750 : mulch ? 1150 : 720,
+      freqEnd: grass ? 520 : mulch ? 430 : 300,
+      q: 0.7,
+      gain: (grass ? 0.03 : mulch ? 0.038 : 0.028) * level,
+      attack: 0.002,
+      pan: (Math.random() - 0.5) * 0.4,
+    });
+  }
+
+  /** A deep trunk thunk when the axe bites a standing tree. */
+  treeHit(species = 'oak', force = 0.8) {
+    const level = Math.max(0.25, Math.min(1.2, safeNumber(force, 0.8)));
+    const heavy = species === 'oak' || species === 'walnut' || species === 'maple';
+    this._toneVoice({
+      dur: 0.3,
+      type: 'sine',
+      f0: heavy ? 96 : 128,
+      f1: heavy ? 38 : 52,
+      gain: 0.22 * level,
+      attack: 0.003,
+    });
+    this._noiseVoice({
+      dur: 0.24,
+      type: 'bandpass',
+      freq: heavy ? 780 : 1100,
+      freqEnd: 260,
+      q: 0.8,
+      gain: 0.075 * level,
+      attack: 0.002,
+    });
+  }
+
+  /** The long, dry crack of a hinge before the tree commits to the fall. */
+  treeCreak() {
+    this._noiseVoice({ dur: 0.55, type: 'bandpass', freq: 540, freqEnd: 190, q: 3.2, gain: 0.065, attack: 0.05 });
+    this._toneVoice({ dur: 0.5, type: 'sawtooth', f0: 132, f1: 74, gain: 0.022, attack: 0.04, lp: 700 });
+  }
+
+  /** A heavy ground-shaking crash when the crown lands. */
+  treeFall() {
+    this._toneVoice({ dur: 0.65, type: 'sine', f0: 74, f1: 28, gain: 0.3, attack: 0.004 });
+    this._noiseVoice({ dur: 0.75, type: 'lowpass', freq: 680, freqEnd: 80, q: 0.7, gain: 0.15, attack: 0.008 });
+    this._noiseVoice({ at: 0.12, dur: 0.5, type: 'bandpass', freq: 1900, freqEnd: 500, q: 0.8, gain: 0.06, attack: 0.01 });
+    for (let i = 0; i < 3; i += 1) {
+      this._noiseVoice({ at: 0.2 + i * 0.1, dur: 0.16, type: 'bandpass', freq: 1500 + i * 300, freqEnd: 600, q: 1.2, gain: 0.03, pan: -0.4 + i * 0.4 });
+    }
+  }
 }
 
 export { WOOD_PROFILES, midiToFreq };

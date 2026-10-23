@@ -58,19 +58,27 @@ export const SPECIES_BY_ID = Object.fromEntries(SPECIES.map((s) => [s.id, s]));
 
 // Axes. headMass / handleMass in kg; sharp = factory edge (0..1); wedge = splitting geometry
 // factor (fat cheeks push the halves apart and stick less); paint = head colour.
+// model: which v2 GLB Sergey holds (js/sergey.js AXE_MODELS); treePower: felling hits per swing.
 export const AXES = [
-  { id: 'utility', name: 'Hardware-store axe', price: 0, headMass: 1.6, handleMass: 0.75, sharp: 0.62, wedge: 0.86,
-    paint: [0.55, 0.08, 0.06], handle: 'hickory', blurb: 'Thin felling bit. Bites deep, sticks often.' },
-  { id: 'splitter', name: 'Splitting axe', price: 350, headMass: 2.6, handleMass: 0.9, sharp: 0.74, wedge: 1.0,
-    paint: [0.07, 0.07, 0.075], handle: 'hickory', blurb: 'Classic 5.7 lb splitter. Good all-rounder.' },
-  { id: 'maul', name: 'Splitting maul', price: 900, headMass: 3.6, handleMass: 1.0, sharp: 0.55, wedge: 1.22,
+  { id: 'utility', name: "Sergey's axe", model: 'sergey', price: 0, headMass: 1.6, handleMass: 0.75, sharp: 0.62, wedge: 0.86, treePower: 1,
+    paint: [0.55, 0.08, 0.06], handle: 'hickory', blurb: 'His own hatchet-weight axe. Bites deep, sticks often.' },
+  { id: 'splitter', name: 'Double-bit splitter', model: 'double_bit', price: 350, headMass: 2.6, handleMass: 0.9, sharp: 0.74, wedge: 1.0, treePower: 1.25,
+    paint: [0.07, 0.07, 0.075], handle: 'hickory', blurb: 'Two bits, 5.7 lb head. Good all-rounder for rounds and trunks.' },
+  { id: 'maul', name: 'Splitting maul', model: 'maul', price: 900, headMass: 3.6, handleMass: 1.0, sharp: 0.55, wedge: 1.22, treePower: 1.35,
     paint: [0.62, 0.42, 0.05], handle: 'hickory', blurb: '8 lb maul. Brute force, tiring to swing.' },
-  { id: 'composite', name: 'Composite splitter', price: 1600, headMass: 2.4, handleMass: 0.55, sharp: 0.9, wedge: 1.16,
-    paint: [0.08, 0.08, 0.09], handle: 'composite', blurb: 'Light fibreglass handle, convex grind. Efficient.' },
-  { id: 'monster', name: 'Monster maul', price: 2800, headMass: 5.4, handleMass: 1.1, sharp: 0.5, wedge: 1.32,
+  { id: 'composite', name: 'Composite double-bit', model: 'double_bit', price: 1600, headMass: 2.4, handleMass: 0.55, sharp: 0.9, wedge: 1.16, treePower: 1.5,
+    paint: [0.08, 0.08, 0.09], handle: 'composite', blurb: 'Light handle, convex grind. Efficient.' },
+  { id: 'monster', name: 'Monster maul', model: 'maul', price: 2800, headMass: 5.4, handleMass: 1.1, sharp: 0.5, wedge: 1.32, treePower: 1.7,
     paint: [0.18, 0.2, 0.55], handle: 'steel', blurb: '12 lb wedge-maul. For elm and the stubborn stuff.' },
+  { id: 'golden', name: 'Golden axe', model: 'golden', price: 4500, headMass: 2.5, handleMass: 0.6, sharp: 0.97, wedge: 1.28, treePower: 2.2,
+    paint: [0.8, 0.62, 0.15], handle: 'composite', blurb: 'The upgrade: gilded, balanced, razor-edged. Fells trees in half the swings.' },
 ];
 export const AXES_BY_ID = Object.fromEntries(AXES.map((a) => [a.id, a]));
+// First shop axe that uses a given model (test hooks / model-based selection).
+export const AXE_FOR_MODEL = (model) => AXES.find((a) => a.model === model) ?? AXES[0];
+
+// Tree species (trees_v2) → the wood their rounds become in the splitting queue.
+export const TREE_WOOD = { pine: 'pine', oak: 'oak', maple: 'maple', birch: 'ash', walnut: 'hickory', apricot: 'cherry', poplar: 'pine' };
 
 export const HONE_TIERS = [
   { price: 200, bonus: 0.06 },

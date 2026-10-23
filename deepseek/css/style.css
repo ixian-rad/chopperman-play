@@ -3129,3 +3129,237 @@ body.perf-lite .keys-hint {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* ==========================================================================
+ *  ASSETS V2 — free-roam HUD
+ * --------------------------------------------------------------------------
+ *  The yard layer gets its own panels instead of squeezing walk/run prompts
+ *  into the log-splitting HUD. Every rule below keeps body copy at 16 px and
+ *  primary numbers at 20 px so the operator legibility scan stays green.
+ * ========================================================================== */
+
+:root {
+  /* The task's floor is 16 px for every visible label. The older 14 px
+     "micro" step is kept in the cascade above for historical context, then
+     raised here so no visible string can fall below the requirement. */
+  --fs-micro: 16px;
+}
+
+.yard-hud,
+.yard-prompt,
+.yard-block-prompt,
+.yard-hint {
+  position: absolute;
+  z-index: 14;
+  color: var(--ink);
+  background: rgba(9, 13, 7, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.36);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.yard-hud {
+  left: 14px;
+  bottom: 18px;
+  width: 390px;
+  max-width: calc(100vw - 28px);
+  padding: 12px 14px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.yard-loc { display: flex; flex-direction: column; gap: 1px; }
+.yard-kicker {
+  color: var(--amber-bright);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.yard-loc strong { font-size: 26px; line-height: 1.15; }
+.yard-loc > span:last-child {
+  color: var(--ink-dim);
+  font-size: 16px;
+  line-height: 1.3;
+}
+.yard-stats {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.yard-stats div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.yard-stats span {
+  font-size: 16px;
+  line-height: 1.3;
+  color: var(--ink-dim);
+}
+.yard-stats strong {
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.yard-controls {
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-size: 16px;
+  line-height: 1.45;
+}
+.yard-controls kbd,
+.yard-block-prompt kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 5px;
+  border: 1px solid var(--line-bright);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.yard-crosshair {
+  position: absolute;
+  z-index: 13;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 223, 176, 0.92);
+  background: rgba(10, 14, 8, 0.55);
+  box-shadow: 0 0 0 2px rgba(10, 14, 8, 0.45);
+  pointer-events: none;
+}
+
+.yard-prompt,
+.yard-block-prompt {
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+.yard-prompt { bottom: 116px; flex-direction: column; gap: 2px; }
+.yard-prompt strong { font-size: 20px; line-height: 1.25; }
+.yard-prompt span { font-size: 16px; line-height: 1.35; color: var(--ink-dim); }
+.yard-prompt .yard-prompt-action {
+  margin-top: 3px;
+  padding: 2px 10px;
+  background: var(--amber-bright);
+  color: #171b13;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.yard-block-prompt { bottom: 170px; font-size: 18px; font-weight: 600; }
+
+.yard-hint {
+  right: 14px;
+  bottom: 18px;
+  max-width: min(330px, calc(100vw - 28px));
+  padding: 9px 13px;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+/* In free-roam the splitting HUD is not relevant. Keep the top bar, mode
+   strip and atmosphere panel; hide only the block/telemetry stack. */
+body.mode-yard #app > .log-card,
+body.mode-yard #app > .telemetry,
+body.mode-yard #app > .grain-panel,
+body.mode-yard #app > .aim-chip,
+body.mode-yard #app > .stamina-card,
+body.mode-yard #app > .control-deck,
+body.mode-yard #app > .keys-hint,
+body.mode-yard #app > .contract-strip {
+  display: none !important;
+}
+body.mode-stump .yard-hud,
+body.mode-stump .yard-prompt,
+body.mode-stump .yard-block-prompt,
+body.mode-stump .yard-hint,
+body.mode-stump .yard-crosshair {
+  display: none !important;
+}
+
+/* Settings: setting/costume segmented controls are two-up, not four-up. */
+#settingButtons,
+#costumeButtons { grid-template-columns: repeat(2, 1fr); }
+
+@media (max-width: 980px) {
+  .yard-hud { width: 330px; }
+}
+@media (max-width: 780px) {
+  .yard-hud {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-width: none;
+  }
+  .yard-loc strong { font-size: 22px; }
+  .yard-stats { grid-template-columns: 1fr 1fr; }
+  .yard-hint { display: none; }
+  .yard-prompt { bottom: 188px; white-space: normal; width: calc(100vw - 20px); text-align: center; }
+  .yard-block-prompt { bottom: 246px; white-space: normal; width: calc(100vw - 20px); justify-content: center; text-align: center; }
+}
+
+/* Key art on the loading screen. The gradient keeps the 16 px status line at
+   WCAG AA over the photograph. */
+.loading {
+  background:
+    linear-gradient(180deg, rgba(8, 11, 6, 0.72) 0%, rgba(8, 11, 6, 0.9) 62%, rgba(8, 11, 6, 0.97) 100%),
+    url("../assets/art/common/keyart_deepseek.webp") center / cover no-repeat,
+    #10130c;
+}
+.loading .loading-copy strong { text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85); }
+
+/* The software flat-paint path must not blur the new panels either. */
+body.perf-lite .yard-hud,
+body.perf-lite .yard-prompt,
+body.perf-lite .yard-block-prompt,
+body.perf-lite .yard-hint {
+  background-color: rgba(9, 13, 7, 0.96) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  contain: layout paint style;
+}
+
+/* The 16 px legibility floor made the old 170 px XP block and the nowrap
+   atmosphere meta row collide at 1280. Give both the room they need. */
+.xp-block { width: 200px; }
+.xp-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+.atmosphere { width: 340px; }
+.atmosphere-meta {
+  flex-wrap: wrap;
+  white-space: normal;
+  row-gap: 2px;
+  column-gap: 10px;
+}
+@media (min-width: 781px) and (max-width: 1366px) {
+  .xp-block { width: 196px; }
+  .topbar { gap: 8px; }
+}
+@media (max-width: 780px) {
+  .xp-block { width: 172px; }
+}
+
+
