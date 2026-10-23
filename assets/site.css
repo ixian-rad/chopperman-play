@@ -202,12 +202,12 @@ p { margin: 0 0 1em; }
 
 /* score badge: ring fills to score/10 */
 .badge {
-  --s: 0; flex: none; width: 84px; height: 84px; border-radius: 50%;
+  --s: 0; flex: none; width: 100px; height: 100px; border-radius: 50%;
   display: grid; place-items: center; align-content: center; text-align: center;
   background: radial-gradient(closest-side, var(--bark) 78%, transparent 80% 100%), conic-gradient(var(--ember) calc(var(--s) * 10%), #4A3524 0);
 }
 .badge__num { font-family: var(--f-display); font-size: 2.125rem; line-height: 1; color: var(--chalk); }
-.badge__word { font-family: var(--f-label); font-weight: 700; font-size: .9375rem; letter-spacing: .1em; text-transform: uppercase; color: var(--sap); margin-top: 2px; }
+.badge__word { font-family: var(--f-label); font-weight: 700; font-size: 1rem; line-height: 1; letter-spacing: .06em; text-transform: uppercase; color: var(--sap); margin-top: 4px; }
 
 /* ---------- scoreboard ---------- */
 .tablewrap { width: 100%; }
@@ -233,11 +233,11 @@ p { margin: 0 0 1em; }
   .scoreboard tbody th[scope="row"] { padding-left: 12px; font-size: 1rem; }
   .scoreboard .col-metric { width: 31%; }
   .sb-game { font-size: 1.0625rem; }
-  .sb-sub { font-size: .9375rem; letter-spacing: .02em; }
+  .sb-sub { font-size: 1rem; letter-spacing: 0; }
   .scoreboard td { font-size: 1rem; }
   .sb-total td { font-size: 1.0625rem; }
-  .scoreboard .word { display: block; margin: 0; font-size: .9375rem; }
-  .scoreboard td.small { font-size: .9375rem; word-break: break-word; }
+  .scoreboard .word { display: block; margin: 0; font-size: 1rem; }
+  .scoreboard td.small { font-size: 1rem; word-break: break-word; }
   .scoreboard td.top::after { display: block; margin: 0; height: 0; overflow: hidden; }
   .sb-group th { font-size: 1rem; letter-spacing: .05em; padding-left: 12px; }
 }
@@ -426,3 +426,32 @@ summary .kicker { margin: 0; }
 .costs td.v2col b { font-weight: 500; }
 .costs td.v2col .v2col__sub { font-family: var(--f-body); font-size: 1rem; color: var(--muted); white-space: nowrap; }
 .footnote { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 18px; }
+
+/* ---------- behind the build (blog post) ---------- */
+.blog { max-width: 1040px; }
+.blog > summary { font-family: var(--f-label); font-size: 1.375rem; letter-spacing: .04em; min-height: 56px; background: var(--panel-2); border-color: var(--cedar); }
+.blog__body { padding: 24px 0 8px; }
+.blog__body .lede { max-width: 72ch; }
+.blog__prose { max-width: 72ch; }
+.blog__prose p { margin: 0 0 1em; }
+.blog__prose strong { color: var(--sap); }
+.blog__list { max-width: 76ch; margin: 0 0 1.5em; padding-left: 1.2em; }
+.blog__list li { margin: .6em 0; }
+.blog__runs { margin: 12px 0; max-width: none; }
+.blog__runs > summary { font-size: 1.1875rem; }
+.blog .tablewrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); -webkit-overflow-scrolling: touch; }
+.blog .tablewrap:focus-visible { outline: 3px solid var(--ember-hi); outline-offset: 2px; }
+.blogtable { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 1rem; }
+.blogtable--runs { min-width: 1100px; }
+.blogtable th, .blogtable td { padding: 10px 12px; text-align: right; border-bottom: 1px solid #3A2C21; vertical-align: top; font-size: 1rem; line-height: 1.4; }
+.blogtable thead th { background: var(--bark); font-family: var(--f-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--sap); border-bottom: 3px solid var(--cedar); vertical-align: bottom; }
+.blogtable tbody th { text-align: left; font-weight: 700; color: var(--chalk); }
+.blogtable td { font-family: var(--f-mono); font-weight: 500; color: var(--chalk); }
+.blogtable td.txt { font-family: var(--f-body); font-weight: 400; text-align: left; min-width: 16ch; }
+.blogtable thead th:first-child { text-align: left; }
+.blogtable td strong { color: var(--chalk); }
+.blogtotal th, .blogtotal td { background: rgba(143,214,148,.10); }
+.tag { display: inline-block; font-family: var(--f-body); font-size: 1rem; font-weight: 600; line-height: 1.3; padding: 1px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.tag--rep { color: #A9E6AE; border-color: #5E8F63; background: rgba(143,214,148,.10); }
+.tag--tok { color: #8FDCFA; border-color: #3E86A6; background: rgba(92,200,242,.10); }
+.tag--est { color: #FFD28A; border-color: #A57A2E; background: rgba(255,197,107,.12); }
