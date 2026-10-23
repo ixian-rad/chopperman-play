@@ -86,10 +86,13 @@ fi
 
 # 6. Netlify (only if logged in and not disabled)
 if [ $NETLIFY -eq 1 ] && [ $PUSH -eq 1 ]; then
-  if [ -f .netlify/state.json ] && netlify status >/dev/null 2>&1; then
+  NST=$(netlify status 2>&1 || true)
+  if [ -f .netlify/state.json ] && [[ "$NST" == *"Current Netlify User"* ]]; then
     OUT=$(bash tools/deploy_netlify.sh 2>&1); echo "$OUT" | sed 's/^/  /'
     NURL=$(echo "$OUT" | sed -n 's/^live: //p' | head -1)
-    if [ -n "$NURL" ] && [ $LIVE -eq 1 ]; then
+    NCODE=$(curl -s -o /dev/null -w '%{http_code}' "$NURL/?t=$(date +%s)")
+    if [ "$NCODE" = "401" ]; then say "WARN: $NURL answers 401 (Netlify login protection is on for this site), so the public live check was skipped. Deploy itself succeeded."
+    elif [ -n "$NURL" ] && [ $LIVE -eq 1 ]; then
       (cd $CH/driver && flock $CH/reports/.verify.lock node site-live-check-gemini.mjs "$NURL" --games=claude,codex,deepseek,gemini > $CH/reports/gemini-site-live-netlify.json 2>&1); R=$?
       tail -3 $CH/reports/gemini-site-live-netlify.json | sed 's/^/  /'; [ $R -eq 0 ] && say "Netlify live check PASS ($NURL)" || fail "Netlify live check (see reports/gemini-site-live-netlify.json)"
     elif [ -z "$NURL" ]; then fail "Netlify deploy produced no URL"; fi

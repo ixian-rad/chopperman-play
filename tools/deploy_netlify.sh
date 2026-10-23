@@ -9,7 +9,7 @@ SITE_DIR=$(cd "$(dirname "$0")/.." && pwd); cd "$SITE_DIR"
 SITE_NAME=${SITE_NAME:-chopperman-play}; PROD=--prod; [ "${1:-}" = "--draft" ] && PROD=""
 command -v netlify >/dev/null || { echo "netlify CLI missing: npm install -g netlify-cli --prefix ~/.local" >&2; exit 2; }
 AUTHARG=(); [ -n "${NETLIFY_AUTH_TOKEN:-}" ] && AUTHARG=(--auth "$NETLIFY_AUTH_TOKEN")
-netlify status "${AUTHARG[@]}" >/dev/null 2>&1 || { echo "Not logged in to Netlify. Run 'netlify login' (browser approval) or export NETLIFY_AUTH_TOKEN." >&2; exit 3; }
+ST=$(netlify status "${AUTHARG[@]}" 2>&1 || true); case "$ST" in *"Current Netlify User"*) ;; *) echo "Not logged in to Netlify. Run 'netlify login' (browser approval) or export NETLIFY_AUTH_TOKEN." >&2; exit 3;; esac
 
 if [ "${1:-}" != "--no-build-dist" ]; then
   rm -rf dist; mkdir dist
