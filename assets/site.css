@@ -455,3 +455,10 @@ summary .kicker { margin: 0; }
 .tag--rep { color: #A9E6AE; border-color: #5E8F63; background: rgba(143,214,148,.10); }
 .tag--tok { color: #8FDCFA; border-color: #3E86A6; background: rgba(92,200,242,.10); }
 .tag--est { color: #FFD28A; border-color: #A57A2E; background: rgba(255,197,107,.12); }
+
+/* Gemini (in progress) additions */
+.playrow--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gemini-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--gap); align-items: start; margin-bottom: 20px; }
+@media (max-width: 900px) { .gemini-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .playrow--4 { grid-template-columns: 1fr; } }
+#sb-gemini td.small { font-size: 1rem; }

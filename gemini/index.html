@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backyard Lumberjack RPG &bull; 3D Wood-Splitting Simulation</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- ES Module Import Map loading Three.js (with postprocessing addons) and cannon-es from CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container" aria-label="3D Wood Splitting Simulation Viewport"></div>
+
+  <!-- Top RPG Game HUD Bar -->
+  <header class="rpg-hud-bar" aria-label="Player RPG Stats and Score">
+    <div class="hud-stat-group">
+      <div class="hud-card score-card">
+        <span class="hud-label">Score</span>
+        <span id="hud-score" class="hud-big-val">0</span>
+      </div>
+      <div class="hud-card combo-card">
+        <span class="hud-label">Streak</span>
+        <span id="hud-combo" class="hud-combo-val">0&times;</span>
+      </div>
+      <div class="hud-card credits-card">
+        <span class="hud-label">Shop Credits</span>
+        <span id="hud-credits" class="hud-credits-val">&#9733; 0</span>
+      </div>
+    </div>
+
+    <!-- Level & XP Bar + Stamina Bar -->
+    <div class="hud-bars-group">
+      <div class="hud-bar-item">
+        <div class="bar-label-row">
+          <span id="hud-level" class="level-badge">LVL 1</span>
+          <span id="hud-xp-text" class="bar-subtext">0 / 100 XP</span>
+        </div>
+        <div class="progress-track xp-track">
+          <div id="hud-xp-fill" class="progress-fill xp-fill" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="hud-bar-item">
+        <div class="bar-label-row">
+          <span class="bar-title">&#9889; Stamina</span>
+          <span id="hud-stamina-text" class="bar-subtext">100 / 100</span>
+        </div>
+        <div class="progress-track stamina-track">
+          <div id="hud-stamina-fill" class="progress-fill stamina-fill" style="width: 100%"></div>
+        </div>
+      </div>
+
+      <div class="hud-bar-item">
+        <div class="bar-label-row">
+          <span id="hud-log-name" class="bar-title">Eastern White Pine</span>
+          <span id="hud-log-hp-text" class="bar-subtext">85 / 85 HP</span>
+        </div>
+        <div class="progress-track log-hp-track">
+          <div id="hud-log-hp-fill" class="progress-fill log-hp-fill" style="width: 100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shop & Reset Progress Actions -->
+    <div class="hud-actions-group">
+      <button id="open-shop-btn" type="button" class="btn btn-shop">
+        &#9874; Upgrade Shop <kbd>U</kbd>
+      </button>
+      <button id="reset-progress-btn" type="button" class="btn btn-danger-outline" title="Clear saved localStorage RPG progress">
+        Reset Progress
+      </button>
+    </div>
+  </header>
+
+  <!-- Floating Strike Rating / Feedback Callout -->
+  <div id="hit-banner" class="hit-banner hidden" aria-live="polite">
+    <div id="hit-banner-title" class="hit-banner-title">PERFECT GRAIN CLEAVE!</div>
+    <div id="hit-banner-sub" class="hit-banner-sub">+180 PTS &bull; +45 XP</div>
+  </div>
+
+  <!-- Bottom-Center Timing / Power Meter & Mouse Gesture Guide -->
+  <section class="timing-hud" aria-label="Swing Power and Timing Meter">
+    <div class="timing-header">
+      <span id="aim-readout" class="aim-readout">Aim: Center (0.0 cm) &bull; Grain Aligned</span>
+      <span id="meter-status" class="meter-status">Click Log &amp; Flick Down, or Press <kbd>Space</kbd> for Power Meter</span>
+    </div>
+    <div id="timing-meter-track" class="timing-meter-track" title="Click to start/stop timing needle">
+      <div class="meter-zone zone-weak">WEAK</div>
+      <div class="meter-zone zone-solid">SOLID</div>
+      <div class="meter-zone zone-sweet">PERFECT 135%</div>
+      <div class="meter-zone zone-over">WILD</div>
+      <div id="timing-needle" class="timing-needle" style="left: 78%"></div>
+    </div>
+    <div class="timing-controls-row">
+      <button id="meter-swing-btn" type="button" class="btn btn-meter">
+        &#9654; Timing Swing <kbd>Space</kbd>
+      </button>
+      <button id="swing-btn" type="button" class="btn btn-primary" title="Immediate aimed swing">
+        &#9874; Quick Swing <kbd>F</kbd>
+      </button>
+      <button id="rot-left-btn" type="button" class="btn btn-secondary btn-sm" title="Rotate log counter-clockwise (Q)">
+        &#8634; Rotate Log <kbd>Q</kbd>
+      </button>
+      <button id="rot-right-btn" type="button" class="btn btn-secondary btn-sm" title="Rotate log clockwise (E)">
+        &#8635; <kbd>E</kbd>
+      </button>
+      <button id="reset-btn" type="button" class="btn btn-secondary btn-sm" title="Spawn fresh log (R)">
+        New Log <kbd>R</kbd>
+      </button>
+    </div>
+  </section>
+
+  <!-- Left Control Panel -->
+  <aside class="ui-panel" aria-label="Simulation & Environment Controls">
+    <header class="panel-header">
+      <div class="header-top">
+        <h1>Backyard Wood Splitter</h1>
+        <span id="status-badge" class="status-badge status-ready">Ready</span>
+      </div>
+      <p class="subtitle">Suburban NJ Backyard &bull; Physics &amp; RPG</p>
+    </header>
+
+    <!-- Log Species Progression Selector -->
+    <div class="control-group">
+      <div class="label-row">
+        <label for="log-select">Target Log Species</label>
+        <label class="inline-check" title="Automatically cycle unlocked logs as you split them">
+          <input type="checkbox" id="auto-log-toggle" checked /> Auto-Cycle
+        </label>
+      </div>
+      <select id="log-select" class="ui-select"></select>
+      <small id="log-desc" class="control-hint">Soft conifer. Splits cleanly with one solid hit.</small>
+    </div>
+
+    <!-- Weather Conditions -->
+    <div class="control-group">
+      <div class="label-row">
+        <span>Weather Condition</span>
+        <span id="weather-effect-pill" class="value-pill">Dry Grip</span>
+      </div>
+      <div class="chip-grid-5" id="weather-grid">
+        <button type="button" class="btn btn-chip active" data-weather="sun">&#9728; Sun</button>
+        <button type="button" class="btn btn-chip" data-weather="rain">&#127783; Rain</button>
+        <button type="button" class="btn btn-chip" data-weather="snow">&#10052; Snow</button>
+        <button type="button" class="btn btn-chip" data-weather="wind">&#127788; Wind</button>
+        <button type="button" class="btn btn-chip" data-weather="fog">&#127787; Fog</button>
+      </div>
+    </div>
+
+    <!-- Dynamic Time of Day -->
+    <div class="control-group">
+      <div class="label-row">
+        <label for="time-slider">Time of Day</label>
+        <span id="time-value" class="value-pill">17:10 (Golden Hr)</span>
+      </div>
+      <input
+        type="range"
+        id="time-slider"
+        min="0"
+        max="24"
+        step="0.1"
+        value="17.15"
+      />
+      <div class="chip-grid-4">
+        <button type="button" class="btn btn-chip" data-tod="6.5">Dawn</button>
+        <button type="button" class="btn btn-chip" data-tod="12.5">Noon</button>
+        <button type="button" class="btn btn-chip active" data-tod="17.15">Golden</button>
+        <button type="button" class="btn btn-chip" data-tod="22.0">Night</button>
+      </div>
+    </div>
+
+    <!-- Swing Force Override Slider -->
+    <div class="control-group">
+      <div class="label-row">
+        <label for="force-slider">Base Swing Power</label>
+        <span id="force-value" class="value-pill">100%</span>
+      </div>
+      <input
+        type="range"
+        id="force-slider"
+        min="25"
+        max="150"
+        step="5"
+        value="100"
+      />
+    </div>
+
+    <!-- Graphics Quality Preset & Toggles -->
+    <div class="control-group">
+      <div class="label-row">
+        <label for="quality-select">Graphics Quality</label>
+        <span id="quality-badge" class="value-pill">High</span>
+      </div>
+      <select id="quality-select" class="ui-select">
+        <option value="ultra">Ultra (SSAO + Bloom + 2K Shadows)</option>
+        <option value="high" selected>High (Bloom + Soft Shadows)</option>
+        <option value="medium">Medium (1K Shadows + Fast Render)</option>
+        <option value="low">Low (Software Renderer Safe)</option>
+      </select>
+    </div>
+
+    <div class="toggles-section">
+      <label class="toggle-row" for="slowmo-toggle">
+        <span class="toggle-text">
+          <strong>Slow-Motion (0.22&times;)</strong>
+          <small>Inspect cleavage &amp; chips <kbd>M</kbd></small>
+        </span>
+        <input type="checkbox" id="slowmo-toggle" />
+        <span class="toggle-switch"></span>
+      </label>
+
+      <label class="toggle-row" for="wireframe-toggle">
+        <span class="toggle-text">
+          <strong>Physics Wireframes</strong>
+          <small>Show cannon-es colliders <kbd>D</kbd></small>
+        </span>
+        <input type="checkbox" id="wireframe-toggle" />
+        <span class="toggle-switch"></span>
+      </label>
+    </div>
+
+    <!-- Camera Presets -->
+    <div class="control-group">
+      <span class="section-label">Camera Angles (Right-Drag Orbit / Scroll Zoom)</span>
+      <div class="cam-grid">
+        <button type="button" class="btn btn-chip" data-cam-preset="default">3/4 Action</button>
+        <button type="button" class="btn btn-chip" data-cam-preset="side">Side Profile</button>
+        <button type="button" class="btn btn-chip" data-cam-preset="closeup">Block Close-Up</button>
+        <button type="button" class="btn btn-chip" data-cam-preset="yard">Full Backyard</button>
+      </div>
+    </div>
+
+    <!-- Live Physics Telemetry -->
+    <div class="telemetry-grid">
+      <div class="stat-box">
+        <span class="stat-label">Impact Speed</span>
+        <span id="stat-speed" class="stat-val">&mdash;</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Split Pieces</span>
+        <span id="stat-pieces" class="stat-val">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Physics Bodies</span>
+        <span id="stat-bodies" class="stat-val">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Frame Rate</span>
+        <span id="stat-fps" class="stat-val">60</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Upgrade Shop Modal -->
+  <div id="shop-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="shop-title">
+    <div class="modal-card">
+      <header class="modal-header">
+        <div>
+          <h2 id="shop-title">&#9874; Lumberjack Upgrade Shop &amp; Forge</h2>
+          <p class="modal-sub">Spend credits earned from accurate center-grain splits to upgrade your stats &amp; axes.</p>
+        </div>
+        <div class="modal-header-right">
+          <span id="shop-credits-display" class="shop-credits-pill">&#9733; 0 Credits</span>
+          <button id="close-shop-btn" type="button" class="btn btn-close" aria-label="Close Shop">&times;</button>
+        </div>
+      </header>
+
+      <div class="shop-columns">
+        <!-- Column 1: Core Stat Upgrades -->
+        <div class="shop-section">
+          <h3>Core Lumberjack Stats</h3>
+          <div class="upgrade-list">
+            <div class="upgrade-item">
+              <div class="upgrade-info">
+                <strong>Blade Sharpness <span id="upg-sharp-lvl" class="lvl-tag">Lv 1</span></strong>
+                <small>Deeper edge penetration &amp; slices cleanly through stubborn knots.</small>
+              </div>
+              <button id="upg-sharp-btn" type="button" class="btn btn-buy">Upgrade (90)</button>
+            </div>
+
+            <div class="upgrade-item">
+              <div class="upgrade-info">
+                <strong>Axe Head Weight <span id="upg-weight-lvl" class="lvl-tag">Lv 1</span></strong>
+                <small>Higher impact momentum, stronger wedge split force &amp; wind stability.</small>
+              </div>
+              <button id="upg-weight-btn" type="button" class="btn btn-buy">Upgrade (90)</button>
+            </div>
+
+            <div class="upgrade-item">
+              <div class="upgrade-info">
+                <strong>Stamina Conditioning <span id="upg-stam-lvl" class="lvl-tag">Lv 1</span></strong>
+                <small>Increases max stamina, faster recovery &amp; lower drain per swing.</small>
+              </div>
+              <button id="upg-stam-btn" type="button" class="btn btn-buy">Upgrade (90)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 2: Unlockable Axes -->
+        <div class="shop-section">
+          <h3>Forged Axes &amp; Splitting Mauls</h3>
+          <div id="axe-shop-list" class="upgrade-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

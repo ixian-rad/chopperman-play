@@ -1,0 +1,73 @@
+# Netlify config for the Chopperman play site (static, no build step).
+# tools/deploy_netlify.sh assembles ./dist (game + site files only: no tools/, DESIGN.md, .git) and deploys it.
+[build]
+  publish = "dist"
+  # no build command: dist is assembled by tools/deploy_netlify.sh
+
+# No redirects are needed: /classic/<harness>/ are real folders, so they resolve as-is.
+
+# Everything: basic hardening. (Netlify serves correct MIME types for html/js/css/webp/png/svg/woff/mp4 by extension.)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# HTML and the small live data files must always revalidate so refreshes show up at once.
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Content-Type = "application/json; charset=utf-8"
+
+[[headers]]
+  for = "/*/BUILD.txt"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Content-Type = "text/plain; charset=utf-8"
+
+[[headers]]
+  for = "/classic/*/BUILD.txt"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Content-Type = "text/plain; charset=utf-8"
+
+# Fonts never change under the same name.
+[[headers]]
+  for = "/assets/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Images, art and brand files: cache a day, then revalidate (some names, like shots/gemini/latest.webp, are overwritten on refresh).
+[[headers]]
+  for = "/assets/shots/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+[[headers]]
+  for = "/assets/art/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+[[headers]]
+  for = "/assets/brand/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+[[headers]]
+  for = "/assets/stills/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+# Videos: explicit type; Netlify's CDN answers HTTP Range requests (206 Partial Content) itself, so seeking works.
+[[headers]]
+  for = "/assets/video/*"
+  [headers.values]
+    Content-Type = "video/mp4"
+    Accept-Ranges = "bytes"
+    Cache-Control = "public, max-age=86400"
+
+# Game models: .glb is not in every MIME table, so name the type. Game folders are versioned by deploy, so keep a short cache.
+[[headers]]
+  for = "/*.glb"
+  [headers.values]
+    Content-Type = "model/gltf-binary"
+    Cache-Control = "public, max-age=3600, must-revalidate"
