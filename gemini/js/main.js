@@ -60,6 +60,7 @@ class AxeSplittingSimulation {
 
     this.sound = new SoundEffects();
     this.gameState = new GameStateManager(this.sound);
+    this._lastActionTime = 0;
 
     this._initThree();
     this._initLights();
@@ -818,6 +819,9 @@ class AxeSplittingSimulation {
           .forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         this.atmosphere.setWeather(w);
+        if (this.sound && typeof this.sound.setWeatherAmbience === 'function') {
+          this.sound.setWeatherAmbience(w, this.atmosphere.timeOfDay);
+        }
         this._updateWeatherBadge(w);
       });
     });
@@ -827,6 +831,9 @@ class AxeSplittingSimulation {
       this.timeSlider.addEventListener('input', () => {
         const tod = Number(this.timeSlider.value);
         this.atmosphere.setTimeOfDay(tod);
+        if (this.sound && typeof this.sound.setWeatherAmbience === 'function') {
+          this.sound.setWeatherAmbience(this.atmosphere.weather, tod);
+        }
         this._updateTimeLabel(tod);
       });
     }
@@ -840,6 +847,9 @@ class AxeSplittingSimulation {
         btn.classList.add('active');
         if (this.timeSlider) this.timeSlider.value = String(tod);
         this.atmosphere.setTimeOfDay(tod);
+        if (this.sound && typeof this.sound.setWeatherAmbience === 'function') {
+          this.sound.setWeatherAmbience(this.atmosphere.weather, tod);
+        }
         this._updateTimeLabel(tod);
       });
     });
@@ -849,6 +859,51 @@ class AxeSplittingSimulation {
         this.setQualityPreset(this.qualitySelect.value);
       });
     }
+
+    // Audio & Soundtrack Volume Sliders and Mute Toggles
+    this.musicVolSlider = document.getElementById('music-volume-slider');
+    this.musicVolValue = document.getElementById('music-volume-value');
+    this.musicMuteBtn = document.getElementById('music-mute-btn');
+    this.sfxVolSlider = document.getElementById('sfx-volume-slider');
+    this.sfxVolValue = document.getElementById('sfx-volume-value');
+    this.sfxMuteBtn = document.getElementById('sfx-mute-btn');
+
+    if (this.musicVolSlider) {
+      this.musicVolSlider.addEventListener('input', () => {
+        const pct = Number(this.musicVolSlider.value);
+        if (this.sound) {
+          this.sound.setMusicVolume(pct / 100);
+        }
+        this._syncAudioSettingsUI();
+      });
+    }
+
+    if (this.musicMuteBtn) {
+      this.musicMuteBtn.addEventListener('click', () => {
+        this.toggleMusicMuteUI();
+      });
+    }
+
+    if (this.sfxVolSlider) {
+      this.sfxVolSlider.addEventListener('input', () => {
+        const pct = Number(this.sfxVolSlider.value);
+        if (this.sound) {
+          this.sound.setSfxVolume(pct / 100);
+        }
+        this._syncAudioSettingsUI();
+      });
+    }
+
+    if (this.sfxMuteBtn) {
+      this.sfxMuteBtn.addEventListener('click', () => {
+        if (this.sound) {
+          this.sound.toggleSfxMute();
+        }
+        this._syncAudioSettingsUI();
+      });
+    }
+
+    this._syncAudioSettingsUI();
 
     // Camera preset buttons
     document.querySelectorAll('[data-cam-preset]').forEach((btn) => {
@@ -926,6 +981,22 @@ class AxeSplittingSimulation {
       });
     }
 
+    // Bind UI hover & click SFX across interactive controls
+    document
+      .querySelectorAll('.btn, select.ui-select, .toggle-row')
+      .forEach((el) => {
+        el.addEventListener('pointerenter', () => {
+          if (this.sound && typeof this.sound.playUIHover === 'function') {
+            this.sound.playUIHover();
+          }
+        });
+        el.addEventListener('click', () => {
+          if (this.sound && typeof this.sound.playUIClick === 'function') {
+            this.sound.playUIClick();
+          }
+        });
+      });
+
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
@@ -976,7 +1047,9 @@ class AxeSplittingSimulation {
           this.choppingStation.aimAngle
         );
         this._updateAimReadout();
-      } else if (e.code === 'KeyM') {
+      } else if (e.code === 'KeyM' && !e.shiftKey) {
+        this.toggleMusicMuteUI();
+      } else if (e.code === 'KeyZ' || (e.code === 'KeyM' && e.shiftKey)) {
         this.setSlowMotion(!this.slowMotion);
       } else if (e.code === 'KeyD') {
         const next = this.debugWireframe.toggle();
@@ -994,6 +1067,41 @@ class AxeSplittingSimulation {
         this.bundleFirewoodContract();
       }
     });
+  }
+
+  toggleMusicMuteUI() {
+    if (!this.sound) return false;
+    const muted = this.sound.toggleMusicMute();
+    this._syncAudioSettingsUI();
+    return muted;
+  }
+
+  _syncAudioSettingsUI() {
+    if (!this.sound) return;
+    const mPct = Math.round(this.sound.musicVolume * 100);
+    const sPct = Math.round(this.sound.sfxVolume * 100);
+    if (this.musicVolSlider) {
+      this.musicVolSlider.value = String(mPct);
+    }
+    if (this.musicVolValue) {
+      this.musicVolValue.textContent = this.sound.musicMuted ? 'Muted' : `${mPct}%`;
+    }
+    if (this.musicMuteBtn) {
+      this.musicMuteBtn.classList.toggle('muted-active', Boolean(this.sound.musicMuted));
+      this.musicMuteBtn.innerHTML = this.sound.musicMuted
+        ? 'Unmute <kbd>M</kbd>'
+        : 'Mute <kbd>M</kbd>';
+    }
+    if (this.sfxVolSlider) {
+      this.sfxVolSlider.value = String(sPct);
+    }
+    if (this.sfxVolValue) {
+      this.sfxVolValue.textContent = this.sound.sfxMuted ? 'Muted' : `${sPct}%`;
+    }
+    if (this.sfxMuteBtn) {
+      this.sfxMuteBtn.classList.toggle('muted-active', Boolean(this.sound.sfxMuted));
+      this.sfxMuteBtn.textContent = this.sound.sfxMuted ? 'Unmute' : 'Mute';
+    }
   }
 
   /**
@@ -1214,6 +1322,9 @@ class AxeSplittingSimulation {
       this.meterActive = true;
       this.meterPos = 0.08;
       this.meterDir = 1;
+      if (this.sound && typeof this.sound.playMeterStart === 'function') {
+        this.sound.playMeterStart();
+      }
       if (statusEl) {
         statusEl.innerHTML = '<strong>LOCK NOW!</strong> Stop needle in Golden 135% Zone!';
       }
@@ -1230,9 +1341,11 @@ class AxeSplittingSimulation {
     }
 
     let powerMult = 1.0;
+    let meterZone = 'weak';
     if (this.meterPos >= 0.68 && this.meterPos <= 0.86) {
       // Sweet spot! 135% power & tightened aim accuracy!
       powerMult = 1.35;
+      meterZone = 'sweet';
       this.choppingStation.setAim(
         this.choppingStation.aimOffsetX * 0.5,
         this.choppingStation.aimAngle * 0.5
@@ -1240,10 +1353,12 @@ class AxeSplittingSimulation {
       if (statusEl) statusEl.textContent = 'PERFECT TIMING! (135% Cleave Power)';
     } else if (this.meterPos >= 0.35 && this.meterPos < 0.68) {
       powerMult = 1.05;
+      meterZone = 'solid';
       if (statusEl) statusEl.textContent = 'Solid Timing (105% Power)';
     } else if (this.meterPos > 0.86) {
       // Wild overcharge: high power but slight aim scatter
       powerMult = 1.15;
+      meterZone = 'wild';
       this.choppingStation.setAim(
         this.choppingStation.aimOffsetX + (Math.random() - 0.5) * 0.06,
         this.choppingStation.aimAngle
@@ -1251,7 +1366,12 @@ class AxeSplittingSimulation {
       if (statusEl) statusEl.textContent = 'Overcharged Wild Swing!';
     } else {
       powerMult = 0.62;
+      meterZone = 'weak';
       if (statusEl) statusEl.textContent = 'Weak Early Release (62% Power)';
+    }
+
+    if (this.sound && typeof this.sound.playMeterLock === 'function') {
+      this.sound.playMeterLock(meterZone);
     }
 
     this._commitPlayerSwing(this.baseSwingForce * powerMult, false);
@@ -1265,6 +1385,10 @@ class AxeSplittingSimulation {
     skipWindup = false,
     isAutomatedSwing = false
   ) {
+    this._lastActionTime = performance.now();
+    if (this.sound) {
+      this.sound.unlockAndStart();
+    }
     // If previous swing was still mid-flight without having impacted yet, flush its physics first
     if (this.pendingStrikeResult && !this.humanoid.hasTriggeredSplit) {
       if (this.pendingStrikeResult.logType === this.gameState.logType) {
@@ -1469,6 +1593,41 @@ class AxeSplittingSimulation {
     return this.gameState.getGameStateSnapshot();
   }
 
+  /**
+   * Returns current Web Audio synthesizer & procedural soundtrack state snapshot.
+   * Exposed globally as `window.getAudioState()`.
+   */
+  getAudioState() {
+    if (!this.sound || typeof this.sound.getAudioState !== 'function') {
+      return {
+        ctxState: 'suspended',
+        musicOn: false,
+        musicPlaying: false,
+        musicSection: 'menu',
+        intensity: 0,
+        activeVoices: 0,
+        sfxVolume: 0,
+        musicVolume: 0,
+        eventsPlayed: {}
+      };
+    }
+    return this.sound.getAudioState();
+  }
+
+  /**
+   * Runs an automated audio & woodchopping showcase (`window.audioDemo(seconds)`)
+   * driving the procedural soundtrack, weather beds, and full SFX palette.
+   */
+  audioDemo(seconds = 60) {
+    this._lastActionTime = performance.now();
+    if (!this.sound || typeof this.sound.runAudioDemo !== 'function') {
+      return this.getAudioState();
+    }
+    const res = this.sound.runAudioDemo(seconds, this);
+    this._syncAudioSettingsUI();
+    return res;
+  }
+
   _exposeGlobalAPI() {
     window.swing = (power) => this.swing(power);
     window.plantWedge = () => this.plantSplittingWedge();
@@ -1480,6 +1639,8 @@ class AxeSplittingSimulation {
     window.triggerLightning = () => this.triggerThunderstormBolt();
     window.resetScene = () => this.resetScene();
     window.getGameState = () => this.getGameState();
+    window.getAudioState = () => this.getAudioState();
+    window.audioDemo = (seconds) => this.audioDemo(seconds);
     window.sim = this;
   }
 
@@ -1933,6 +2094,9 @@ class AxeSplittingSimulation {
         this.meterPos = 0.02;
         this.meterDir = 1;
       }
+      if (this.sound && typeof this.sound.playMeterTick === 'function') {
+        this.sound.playMeterTick(this.meterPos);
+      }
       this._updateTimingNeedleDOM();
     }
 
@@ -1981,13 +2145,33 @@ class AxeSplittingSimulation {
     }
 
     this.atmosphere.update(dt, this.gameState.logsSplitCount);
-    if (this.sound && typeof this.sound.tickAmbientSoundscape === 'function') {
-      this.sound.tickAmbientSoundscape(
-        rawDt,
-        this.atmosphere.weather,
-        this.atmosphere.timeOfDay,
-        this.gameState.bonfireLevel
-      );
+    if (this.sound) {
+      if (typeof this.sound.updateMusicState === 'function') {
+        const shopModalEl = document.getElementById('shop-modal');
+        const shopOpen = Boolean(shopModalEl && !shopModalEl.classList.contains('hidden'));
+        const isBoss = Boolean(this.gameState.getCurrentLogDef()?.isBoss);
+        const isSwinging = this.humanoid.state !== 'IDLE';
+        const isActiveGameplay =
+          this._lastActionTime > 0 &&
+          (now - this._lastActionTime < 14000 || isSwinging || this.gameState.combo > 0);
+        this.sound.updateMusicState({
+          isBoss,
+          combo: this.gameState.combo,
+          isSwinging,
+          shopOpen,
+          gameMode: this.gameState.gameMode,
+          isActiveGameplay
+        });
+      }
+      if (typeof this.sound.tickAmbientSoundscape === 'function') {
+        this.sound.tickAmbientSoundscape(
+          rawDt,
+          this.atmosphere.weather,
+          this.atmosphere.timeOfDay,
+          this.gameState.bonfireLevel,
+          this.atmosphere.windVector ? this.atmosphere.windVector.length() : 0.2
+        );
+      }
     }
     this.debugWireframe.update();
 

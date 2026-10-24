@@ -261,11 +261,49 @@
       </select>
     </div>
 
+    <!-- Procedural Audio & Folk Soundtrack Controls -->
+    <div class="control-group audio-control-group" aria-label="Audio and Soundtrack Controls">
+      <div class="label-row">
+        <label for="music-volume-slider">&#127928; Folk Music Volume</label>
+        <div class="audio-row-actions">
+          <span id="music-volume-value" class="value-pill">45%</span>
+          <button id="music-mute-btn" type="button" class="btn btn-chip" title="Mute or unmute procedural folk soundtrack (M)">
+            Mute <kbd>M</kbd>
+          </button>
+        </div>
+      </div>
+      <input
+        type="range"
+        id="music-volume-slider"
+        min="0"
+        max="100"
+        step="1"
+        value="45"
+      />
+      <div class="label-row" style="margin-top: 4px;">
+        <label for="sfx-volume-slider">&#128266; SFX &amp; Ambience</label>
+        <div class="audio-row-actions">
+          <span id="sfx-volume-value" class="value-pill">80%</span>
+          <button id="sfx-mute-btn" type="button" class="btn btn-chip" title="Mute or unmute sound effects and backyard ambience">
+            Mute
+          </button>
+        </div>
+      </div>
+      <input
+        type="range"
+        id="sfx-volume-slider"
+        min="0"
+        max="100"
+        step="1"
+        value="80"
+      />
+    </div>
+
     <div class="toggles-section">
       <label class="toggle-row" for="slowmo-toggle">
         <span class="toggle-text">
           <strong>Slow-Motion (0.22&times;)</strong>
-          <small>Inspect cleavage &amp; chips <kbd>M</kbd></small>
+          <small>Inspect cleavage &amp; chips <kbd>Z</kbd></small>
         </span>
         <input type="checkbox" id="slowmo-toggle" />
         <span class="toggle-switch"></span>

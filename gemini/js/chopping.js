@@ -464,6 +464,9 @@ export class ChoppingStation {
       this.intactLog.body.quaternion.setFromEuler(0, this.logRotationY, 0);
       this.intactLog.mesh.quaternion.copy(this.intactLog.body.quaternion);
     }
+    if (this.sound && typeof this.sound.playLogRotate === 'function') {
+      this.sound.playLogRotate();
+    }
     this._refreshAimReticleVisual();
   }
 
@@ -1522,6 +1525,10 @@ export class ChoppingStation {
           logPos.z
         );
 
+    if (this.sound && strikeResult && typeof this.sound.playStrikeImpact === 'function') {
+      this.sound.playStrikeImpact(strikeResult, effectiveForce);
+    }
+
     // CASE 1: Glancing, Embedded Nail, or Embedded Granite Rock Hazard Hit
     if (
       strikeResult &&
@@ -1954,6 +1961,9 @@ export class ChoppingStation {
    * Pops all planted 3D steel splitting wedges out as dynamic rigid bodies when the log cleaves apart.
    */
   _popPlantedWedgeBody(logPos, effectiveForce = 1.0) {
+    if (this.sound && typeof this.sound.playWedgeExtract === 'function') {
+      this.sound.playWedgeExtract(false);
+    }
     const forgedMat = new THREE.MeshStandardMaterial({
       color: 0x3b424c,
       roughness: 0.32,
@@ -2230,18 +2240,23 @@ export class ChoppingStation {
       const pitchX = def.sideZ * (2.6 + Math.random() * 1.8) * effectiveForce * collarRestraint;
       const yawY = (Math.random() - 0.5) * 3.2 * collarRestraint;
       body.angularVelocity.set(pitchX, yawY, rollZ);
-      body.userData = { label: `SplitLogPiece_${idx}`, hasKnocked: false };
+      body.userData = { label: `SplitLogPiece_${idx}`, hasKnocked: false, hasRolled: false };
 
       body.addEventListener('collide', (ev) => {
-        if (
-          !body.userData.hasKnocked &&
-          Math.abs(ev.contact.getImpactVelocityAlongNormal()) > 1.8
-        ) {
+        const impactVel = Math.abs(ev.contact.getImpactVelocityAlongNormal());
+        if (!body.userData.hasKnocked && impactVel > 1.4) {
           body.userData.hasKnocked = true;
           if (this.sound) {
-            this.sound.playWoodKnock(
-              Math.min(1.0, Math.abs(ev.contact.getImpactVelocityAlongNormal()) / 6.0)
-            );
+            this.sound.playWoodKnock(Math.min(1.15, impactVel / 5.5), false);
+          }
+        } else if (
+          body.userData.hasKnocked &&
+          !body.userData.hasRolled &&
+          impactVel > 0.65
+        ) {
+          body.userData.hasRolled = true;
+          if (this.sound) {
+            this.sound.playWoodKnock(Math.min(0.85, impactVel / 5.5), true);
           }
         }
       });

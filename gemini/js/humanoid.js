@@ -538,6 +538,9 @@ export class HumanoidChopper {
     this.dragWindupRatio = Math.max(0, Math.min(1, ratio));
     this.state = 'DRAG_WINDUP';
     this.stateTime = 0;
+    if (this.sound && typeof this.sound.playWindupCreak === 'function') {
+      this.sound.playWindupCreak(this.dragWindupRatio);
+    }
   }
 
   cancelDragWindup() {
@@ -565,7 +568,7 @@ export class HumanoidChopper {
     this.whooshPlayed = false;
     if (skipWindup && this.sound) {
       this.whooshPlayed = true;
-      this.sound.playWhoosh(this.swingForce);
+      this.sound.playWhoosh(this.swingForce, true);
     }
     return true;
   }

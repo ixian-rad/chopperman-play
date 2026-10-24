@@ -1,28 +1,29 @@
 {
- "generated": "2026-10-24 03:27 EDT",
+ "generated": "2026-10-24 06:06 EDT",
  "status": "in progress",
  "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est., login-based, not billed; NOT included in data/costs.json totals",
- "driver_phase": "iter-8-audio",
- "driver_updated_et": "2026-10-24 02:06:00 EDT",
+ "driver_phase": "iter-9-legibility",
+ "driver_updated_et": "2026-10-24 05:55:29 EDT",
  "finished_rounds": [
   "v1",
   "v2",
-  "loop"
+  "loop",
+  "audio"
  ],
  "playable": {
-  "commit": "9bdbf17",
-  "tag": "iter-7"
+  "commit": "0a67cfe",
+  "tag": "iter-8"
  },
  "classic": null,
- "runs": 12,
- "wall_h": 11.44,
- "input_uncached": 5872887,
- "input_cached": 69876980,
- "output": 727511,
- "reasoning": 144353,
- "cost_usd_est": 26.01,
- "per_agent_hour_est": 2.27,
+ "runs": 14,
+ "wall_h": 15.01,
+ "input_uncached": 9130992,
+ "input_cached": 85174805,
+ "output": 859283,
+ "reasoning": 217219,
+ "cost_usd_est": 35.37,
+ "per_agent_hour_est": 2.36,
  "runs_detail": [
   {
    "phase": "v1",
@@ -95,6 +96,18 @@
    "wall_s": 3481.0,
    "cost_usd_est": 1.0467,
    "result": "quota exhausted; reverted"
+  },
+  {
+   "phase": "iter-8 (audio)",
+   "wall_s": 6518.0,
+   "cost_usd_est": 3.489,
+   "result": "quota exhausted"
+  },
+  {
+   "phase": "iter-8 (audio)",
+   "wall_s": 6320.0,
+   "cost_usd_est": 5.8747,
+   "result": "ok; tests n/a"
   }
  ]
 }

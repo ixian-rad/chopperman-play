@@ -937,9 +937,19 @@ export class GameStateManager {
 
   upgradeHandleWrap() {
     const nextLvl = (this.handleWrapLevel || 0) + 1;
-    if (nextLvl >= HANDLE_WRAPS.length) return false;
+    if (nextLvl >= HANDLE_WRAPS.length) {
+      if (this.sound && typeof this.sound.playErrorBuzz === 'function') {
+        this.sound.playErrorBuzz();
+      }
+      return false;
+    }
     const cost = HANDLE_WRAPS[nextLvl].cost;
-    if (this.credits < cost) return false;
+    if (this.credits < cost) {
+      if (this.sound && typeof this.sound.playErrorBuzz === 'function') {
+        this.sound.playErrorBuzz();
+      }
+      return false;
+    }
     this.credits -= cost;
     this.handleWrapLevel = nextLvl;
     if (this.sound) this.sound.playUpgrade();
@@ -1167,6 +1177,9 @@ export class GameStateManager {
       this.saveToStorage();
       return { unlocked: true, active: true };
     }
+    if (this.sound && typeof this.sound.playErrorBuzz === 'function') {
+      this.sound.playErrorBuzz();
+    }
     return { unlocked: false, active: false };
   }
 
@@ -1224,8 +1237,12 @@ export class GameStateManager {
     const pryDamage = 24 + this.weightLevel * 4;
     this.currentLogHp = Math.max(0, this.currentLogHp - pryDamage);
 
-    if (this.sound && typeof this.sound.playFiberCreak === 'function') {
-      this.sound.playFiberCreak(1.2);
+    if (this.sound) {
+      if (typeof this.sound.playWedgeExtract === 'function') {
+        this.sound.playWedgeExtract(this.currentLogHp <= 32);
+      } else if (typeof this.sound.playFiberCreak === 'function') {
+        this.sound.playFiberCreak(1.2);
+      }
     }
 
     if (this.currentLogHp <= 32) {
@@ -1385,7 +1402,12 @@ export class GameStateManager {
 
   upgradeStat(statName) {
     const cost = this.getUpgradeCost(statName);
-    if (cost === null || this.credits < cost) return false;
+    if (cost === null || this.credits < cost) {
+      if (this.sound && typeof this.sound.playErrorBuzz === 'function') {
+        this.sound.playErrorBuzz();
+      }
+      return false;
+    }
 
     this.credits -= cost;
     if (statName === 'sharpness') {
@@ -1425,6 +1447,9 @@ export class GameStateManager {
       this.saveToStorage();
       return true;
     }
+    if (this.sound && typeof this.sound.playErrorBuzz === 'function') {
+      this.sound.playErrorBuzz();
+    }
     return false;
   }
 
@@ -1432,6 +1457,9 @@ export class GameStateManager {
     if (!LOG_TYPES[typeId]) return false;
     const def = LOG_TYPES[typeId];
     if (!forceUnlock && def.unlockLevel > this.level) {
+      if (this.sound && typeof this.sound.playErrorBuzz === 'function') {
+        this.sound.playErrorBuzz();
+      }
       return false;
     }
     this.logType = typeId;
@@ -1491,7 +1519,6 @@ export class GameStateManager {
       this.gameMode === 'campaign' &&
       this.logsSplitCount > 0 &&
       this.logsSplitCount % 6 === 0 &&
-      this.level >= 4 &&
       !LOG_TYPES[this.logType]?.isBoss
     ) {
       const bossCycle = Math.floor(this.logsSplitCount / 6) % 6;
@@ -1566,6 +1593,7 @@ export class GameStateManager {
   }) {
     const logDef = this.getCurrentLogDef();
     const handleWrap = this.getHandleWrap();
+    const prevCombo = this.combo;
     this.currentLogSwings++;
 
     // Ensure automated test swings always have stamina & sharp blade condition to perform a clean hit
@@ -2102,11 +2130,25 @@ export class GameStateManager {
     if (pointsAwarded > 0) {
       this.credits += pointsAwarded;
       this.challengeScore += pointsAwarded;
+      if (this.sound && typeof this.sound.playPointsGain === 'function') {
+        this.sound.playPointsGain(pointsAwarded);
+      }
       if (
         this.gameMode === 'time_attack' &&
         this.challengeScore > this.bestTimeAttackScore
       ) {
         this.bestTimeAttackScore = this.challengeScore;
+      }
+    }
+
+    if (this.sound) {
+      if (didSplit && this.combo > 0 && typeof this.sound.playComboIncrement === 'function') {
+        this.sound.playComboIncrement(this.combo);
+      } else if (prevCombo > 0 && this.combo === 0 && typeof this.sound.playComboBreak === 'function') {
+        this.sound.playComboBreak();
+      }
+      if (rating === 'PERFECT GRAIN CLEAVE!' && typeof this.sound.playPerfectHit === 'function') {
+        this.sound.playPerfectHit();
       }
     }
 

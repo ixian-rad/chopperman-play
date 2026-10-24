@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-24 03:27 EDT",
+ "generated": "2026-10-24 06:06 EDT",
  "rows": [
   {
    "key": "v1",
@@ -833,16 +833,16 @@
     },
     "classic": {
      "state": "live",
-     "tag": "iter-7",
+     "tag": "iter-8",
      "iter": null,
-     "commit": "9bdbf17",
-     "at": "2026-10-23T21:45:26-04:00",
-     "at_text": "Oct 23 21:45",
+     "commit": "0a67cfe",
+     "at": "2026-10-24T05:55:26-04:00",
+     "at_text": "Oct 24 05:55",
      "cost": {
-      "total": 22.02,
-      "est": 22.02,
+      "total": 35.37,
+      "est": 35.37,
       "basis": "est.",
-      "runs": 10,
+      "runs": 14,
       "phases": [
        "v1",
        "v2",
@@ -853,11 +853,15 @@
        "iter-5",
        "iter-6 (audio) quota-blocked",
        "iter-6",
-       "iter-7"
+       "iter-7",
+       "iter-8",
+       "iter-8",
+       "iter-8 (audio)",
+       "iter-8 (audio)"
       ]
      },
-     "cost_short": "est. $22.02 cum.",
-     "cost_long": "Cost to here: est. $22.02 over 10 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_short": "est. $35.37 cum.",
+     "cost_long": "Cost to here: est. $35.37 over 14 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
      "img": "assets/milestones/gemini/classic",
      "hud_min_px": 9.92,
      "hud_small": true,
@@ -936,9 +940,18 @@
      "at_text": "Oct 23 21:45",
      "same_as_prev": false,
      "img": "assets/milestones/gemini/iter-7"
+    },
+    {
+     "n": 8,
+     "tag": "iter-8",
+     "commit": "0a67cfe",
+     "at": "2026-10-24T05:55:26-04:00",
+     "at_text": "Oct 24 05:55",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-8"
     }
    ],
-   "iter_tags": 7
+   "iter_tags": 8
   }
  },
  "note": "Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (login-based, not billed).",
