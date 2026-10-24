@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Co-op + proximity voice chat section (published 2026-10-23 after the coop-v1 merges). Writes the block between <!-- COOP START/END --> in index.html
-(before the ASSETS V2 section) and data/coop.json. Sources: reports/voice/<h>/release-main-result.json (release verify on the merged main),
+(the home page, after the Play picker) and data/coop.json. Sources: reports/voice/<h>/release-main-result.json (release verify on the merged main),
 reports/usage.csv (coop-v1 rows), <site>/<h>/BUILD.txt. Idempotent; safe to rerun."""
 import csv, json, os, re, html
 CH = '/workspace/chopperman'; SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); E = html.escape
@@ -28,8 +28,8 @@ trs = ''.join(f'<tr><th scope="row">{NAME[h]}</th><td class="txt">{E(TITLE[h])}<
 cards = ''.join(f'<li><a class="btn btn--play" href="{h}/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play co-op </em><b>{NAME[h].split()[0]} </b><small>{E(TITLE[h])}</small></span></a></li>' for h in H)
 block = f"""<section class="section" id="coop" aria-labelledby="coop-title">
   <div class="wrap">
-    <p class="kicker">New</p>
-    <h2 id="coop-title">New: online co-op and proximity voice chat</h2>
+    <p class="kicker">Play together</p>
+    <h2 id="coop-title">Online co-op and proximity voice chat</h2>
     <p class="lede">The Codex, Claude and DeepSeek games now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. All three got the same co-op brief, then the same voice chat brief. Gemini’s co-op round has not run yet.</p>
     <ul class="v2facts">
       <li><strong>Two players, one yard.</strong> Fell trees together. Damage adds up on the same tree, and it falls on both screens.</li>
@@ -46,10 +46,10 @@ block = f"""<section class="section" id="coop" aria-labelledby="coop-title">
     </ol>
     <p class="v2note"><strong>Connection notes.</strong> Co-op is peer-to-peer (WebRTC). It uses the free PeerJS cloud server only to introduce the two browsers, and STUN to find a route between them. There is no relay (TURN) server, so players behind a strict NAT, such as some office, school or mobile networks, may not be able to connect. It works best in two different browsers or on two devices. Two tabs of the same browser on one machine also work for a quick try.</p>
     <ul class="playrow playrow--3" aria-label="Play the co-op builds">{cards}</ul>
-    <h3 class="h-mid">Release check</h3>
+    <details class="coop-check"><summary>Release check: automated test results on the merged builds</summary>
     <div class="tablewrap" role="region" aria-label="Co-op release check, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Co-op and voice chat: release check on the merged build</caption><thead><tr>
       <th scope="col">Harness</th><th scope="col">Game</th><th scope="col">Build</th><th scope="col">Automated check</th><th scope="col">FPS NJ low / Tiraspol low / Tiraspol high</th><th scope="col">Co-op + voice rounds</th></tr></thead><tbody>{trs}</tbody></table></div>
-    <p class="fine">The check ran on each merged build after release. It replays the Assets v2 check, plays a full two-player co-op session including every voice chat step, and runs the voice module’s 360 unit checks. It ran in headless Chrome with software rendering and no GPU, so FPS are far below what a real graphics card gives. Voice was tested with a simulated microphone, and the two players were linked by an in-page loopback, not a real network. Round costs are in the totals under <a href="#cost">The bill</a>. Claude’s are reported by the tool, and Codex’s and DeepSeek’s are token-priced (list-price equivalents).</p>
+    <p class="fine">The check ran on each merged build after release. It replays the Assets v2 check, plays a full two-player co-op session including every voice chat step, and runs the voice module’s 360 unit checks. It ran in headless Chrome with software rendering and no GPU, so FPS are far below what a real graphics card gives. Voice was tested with a simulated microphone, and the two players were linked by an in-page loopback, not a real network. Round costs are in the totals under <a href="cost/">The bill</a>. Claude’s are reported by the tool, and Codex’s and DeepSeek’s are token-priced (list-price equivalents).</p></details>
   </div>
 </section>"""
 p = f'{SITE}/index.html'; s = open(p).read()

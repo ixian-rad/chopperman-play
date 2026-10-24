@@ -1,10 +1,10 @@
 {
- "generated": "2026-10-23 22:10 EDT",
+ "generated": "2026-10-23 23:10 EDT",
  "status": "in progress",
  "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est., login-based, not billed; NOT included in data/costs.json totals",
  "driver_phase": "iter-8",
- "driver_updated_et": "2026-10-23 21:58:58 EDT",
+ "driver_updated_et": "2026-10-23 22:26:26 EDT",
  "finished_rounds": [
   "v1",
   "v2"

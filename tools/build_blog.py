@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build the 'Behind the build' blog post from the real logs and inject it into index.html.
+"""Build the 'Behind the build' blog post from the real logs and inject it into cost/index.html, plus the Gemini blocks on the other pages
+(Play-picker card on index.html, scoreboard note on results/index.html, est. cost block on cost/index.html, progress line on milestones/index.html).
 Sources: reports/usage.csv, reports/v2-state-*.json, reports/assets-v2-*.log, assets/logs/spend.jsonl,
 plus (Gemini 4 Argon, in progress, kept OUT of the reported totals) reports/usage-gemini.csv, reports/gemini-state.json, data/gemini-refs.json, <site>/gemini/BUILD.txt.
 Run: python3 tools/build_blog.py  (idempotent: replaces everything between the BLOG markers)."""
@@ -10,49 +11,12 @@ E = html.escape
 H = ['claude', 'codex', 'deepseek']
 NAME = {'claude': 'Claude Code', 'codex': 'Codex CLI', 'deepseek': 'DeepSeek Harness'}
 
-def num(x):
-    try: return float(x)
-    except: return None
-rows = list(csv.DictReader(open(f'{CH}/reports/usage.csv')))
-# Co-op / voice rounds (phase 'coop-v1 ...'): merged to main and published on the site on 2026-10-23 (tag coop-voice-release), so they now count in the
-# published totals by default. INCLUDE_COOP=0 drops them again (pre-release view).
-if os.environ.get('INCLUDE_COOP', '1') == '0':
-    rows = [r for r in rows if not r['phase'].startswith('coop-v1')]
-for r in rows:
-    for k in ('wall_s', 'input_uncached', 'input_cached', 'cache_write', 'output', 'cost_usd'):
-        r[k] = num(r[k])
-    b = r['cost_basis'].lower()
-    if r['cost_usd'] is None: r['basis'] = 'n/a'
-    elif b.startswith('measured'): r['basis'] = 'reported'
-    else: r['basis'] = 'token-priced'     # tokens recorded, dollars = tokens x list price (API-equivalent)
-    r['est'] = False
-
-# ---- unrecorded runs: estimates, clearly flagged ----
-cx = [r for r in rows if r['harness'] == 'codex' and re.fullmatch(r'iter-[1-6]', r['phase'])]
-avg = lambda k: sum(r[k] for r in cx) / len(cx)
-for r in rows:
-    if r['harness'] == 'codex' and r['phase'] == 'iter-7':
-        r.update(input_uncached=avg('input_uncached'), input_cached=avg('input_cached'), output=avg('output'),
-                 cost_usd=avg('cost_usd'), basis='est.', est=True,
-                 note='No turn.completed event was recorded. Tokens and cost are est.: the mean of Codex iter-1 to iter-6.')
-    if r['harness'] == 'codex' and r['phase'] == 'v2-aborted':
-        r.update(basis='est.', est=True, note='Aborted after 72 s; tokens not recorded. Cost est. under $0.05, not added to totals.')
-extra = [
-    dict(harness='claude', phase='assets-v2 attempt-3 (first pass, killed)', start_local='2026-10-22 16:24', wall_s=None,
-         input_uncached=None, input_cached=None, cache_write=None, output=None, cost_usd=7.15, basis='est.', est=True,
-         result='killed mid-run at about 21:14 ET; unverified work saved as WIP commit e02702d',
-         note='Tokens not recorded (the run was killed). Cost est. at about the same as the resumed attempt-3 pass ($7.15).'),
-    dict(harness='deepseek', phase='assets-v2 attempt-2 (first pass, killed)', start_local='2026-10-22 16:04', wall_s=None,
-         input_uncached=None, input_cached=None, cache_write=None, output=None, cost_usd=0.29, basis='measured via balance', est=False,
-         result='killed mid-run at about 21:14 ET; unverified work saved as WIP commit b4431ff',
-         note='Tokens not recorded. $0.29 is the rise of the driver spend counter (balance based) from $8.0918 at 16:04 to $8.3818 at 21:15.'),
-]
-byh = {h: [r for r in rows if r['harness'] == h] for h in H}
-for e in extra: byh[e['harness']].append(e)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from runlog import num, load_rows, load_gemini_rows, NONGAME   # shared with tools/build_milestones.py
+rows, byh = load_rows()
 
 def s(rs, k): return sum((r[k] or 0) for r in rs if not r.get('est') or k == 'cost_usd')
 def cost(rs, basis): return sum((r['cost_usd'] or 0) for r in rs if r['basis'] == basis and not (r['harness'] == 'codex' and r['phase'] == 'v2-aborted'))
-NONGAME = lambda r: 'site' in r['phase'] or r['phase'] == 'channel-art'
 T = {}
 for h in H:
     rs = byh[h]; rec = [r for r in rs if r['wall_s'] is not None and r['input_cached'] is not None and not r['est']]
@@ -115,12 +79,7 @@ GEM_NAME = 'Gemini 4 Argon'
 def _read(path, default=None):
     try: return open(path).read()
     except Exception: return default
-grows = []
-try:
-    for r in csv.DictReader(open(f'{CH}/reports/usage-gemini.csv')):
-        for k in ('wall_s', 'input_uncached', 'input_cached', 'output', 'reasoning', 'cost_usd'): r[k] = num(r.get(k))
-        grows.append(r)
-except FileNotFoundError: pass
+grows = load_gemini_rows()
 gstate = {}
 try: gstate = json.load(open(f'{CH}/reports/gemini-state.json'))
 except Exception: pass
@@ -158,7 +117,7 @@ def gstat_line():
 def gem_blog():
     o = []
     A_ = o.append
-    A_('<h3 class="h-mid">A fourth harness: Gemini 4 Argon <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>')
+    A_('<h3 class="h-mid" id="gemini-runs">A fourth harness: Gemini 4 Argon <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>')
     A_(f'<p class="fine"><strong>In progress, updated as the build continues.</strong> Gemini 4 Argon (high reasoning, through the Antigravity CLI) is building the same game from the same prompts in the same order. '
        f'It is <strong>not included in any total above</strong>. {E(G_BASIS)} Driver state as of {E(g_updated)} ET: phase <span class="mono">{E(g_phase)}</span>. {E(gstat_line())}</p>')
     A_('<div class="tablewrap" role="region" aria-label="Gemini totals, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Gemini totals so far (est.)</caption><thead><tr>'
@@ -180,10 +139,10 @@ def gem_blog():
 out = []
 A = out.append
 A('<!-- BLOG START (generated by tools/build_blog.py from reports/usage.csv, v2-state-*.json, spend.jsonl) -->')
-A('<section class="section" id="behind-the-build" aria-labelledby="blog-title"><div class="wrap">')
-A('<p class="kicker"><img src="assets/brand/icon-cost.svg" alt="" width="28" height="28"> Behind the build</p>')
+A('<section class="section" id="log" aria-labelledby="blog-title"><span class="anchor" id="behind-the-build"></span><div class="wrap">')
+A('<p class="kicker"><img src="../assets/brand/icon-cost.svg" alt="" width="28" height="28"> Behind the build</p>')
 A('<h2 id="blog-title">How three AI harnesses made Chopperman</h2>')
-A('<details class="blog"><summary>Read the build log: totals, every run, and the honest story</summary><div class="blog__body">')
+A('<details class="blog" open><summary>Read the build log: totals, every run, and the honest story</summary><div class="blog__body">')
 A('<p class="lede">Every number below comes from the project’s own logs. Three kinds of figure appear and they are labelled: '
   '<span class="tag tag--rep">reported</span> by the tool itself, <span class="tag tag--tok">token-priced</span> (recorded token counts times the public list price, an API-equivalent figure), and '
   '<span class="tag tag--est">est.</span> where a run’s tokens were not recorded and I estimated it. Where nothing could be recovered the cell says n/a. All times are US Eastern.</p>')
@@ -288,88 +247,91 @@ A('</div></details></div></section>')
 A('<!-- BLOG END -->')
 frag = '\n'.join(out)
 
-p = f'{SITE}/index.html'; s_ = open(p).read()
-if '<!-- BLOG START' in s_:
-    s_ = re.sub(r'<!-- BLOG START.*?<!-- BLOG END -->', lambda m: frag, s_, flags=re.S)
-else:
-    assert s_.count('</main>') == 1
-    s_ = s_.replace('</main>', frag + '\n</main>')
-open(p, 'w').write(s_)
+# The site is split into pages (tools/build_chrome.py): the blog and Gemini's est. cost block go to cost/index.html, the scoreboard note to
+# results/index.html, Gemini's progress line to milestones/index.html and its Play-picker card to index.html. Every block sits between markers.
+PAGE = {'home': f'{SITE}/index.html', 'results': f'{SITE}/results/index.html', 'cost': f'{SITE}/cost/index.html', 'milestones': f'{SITE}/milestones/index.html'}
 
 
-# ---- Gemini card / scoreboard / cost block / classic link, written between markers in index.html (no hand edits needed on refresh) ----
-def put_block(doc, name, frag_html, anchor, where='before'):
+def put_block(path, name, frag_html):
+    doc = open(path).read()
     start, end = f'<!-- {name} START', f'<!-- {name} END -->'
-    block = f'{start} (generated by tools/build_blog.py) -->\n{frag_html}\n{end}' if frag_html else f'{start} (generated by tools/build_blog.py) -->{end}'
-    if start in doc:
-        return re.sub(re.escape(start) + r'.*?' + re.escape(end), lambda m: block, doc, flags=re.S)
-    assert anchor in doc, f'anchor for {name} not found'
-    return doc.replace(anchor, (block + '\n' + anchor) if where == 'before' else (anchor + '\n' + block), 1)
+    assert start in doc, f'{name} markers not found in {path}'
+    block = f'{start} (generated by tools/build_blog.py) -->\n{frag_html}\n{end}'
+    open(path, 'w').write(re.sub(re.escape(start) + r'.*?' + re.escape(end), lambda m: block, doc, flags=re.S))
+
+
+s_ = open(PAGE['cost']).read()
+assert '<!-- BLOG START' in s_, 'BLOG markers missing in cost/index.html'
+open(PAGE['cost'], 'w').write(re.sub(r'<!-- BLOG START.*?<!-- BLOG END -->', lambda m: frag, s_, flags=re.S))
+
 
 def fmtk(v): return f'{v/1e6:.1f}M' if v >= 1e6 else (f'{v/1e3:.1f}k' if v >= 1e3 else str(int(v)))
-has_shot = os.path.exists(f'{SITE}/assets/shots/gemini/latest.webp')
 est_u = lambda v: 'est. ' + usd(v) if v is not None else 'n/a'
 def sbrow(label, val, cls=''): return f'<tr><th scope="row">{label}</th><td class="{cls}">{val}</td></tr>'
-shot = ('<a class="card__shot" href="gemini/" tabindex="-1" aria-hidden="true"><img src="assets/shots/gemini/latest.webp" alt="" width="960" height="600" loading="lazy"></a>' if has_shot else '')
+
+# shot + tag date for the live build come from data/milestones.json (tools/build_milestones.py); fall back to the refresh smoke-test shot
+ms = {}
+try: ms = json.load(open(f'{SITE}/data/milestones.json'))['harness']['gemini']
+except Exception: pass
+live_img = live_at = live_at_text = None
+if g_live:
+    for c in list((ms.get('cells') or {}).values()) + list(ms.get('iterations') or []):
+        if c.get('commit') == g_live['commit']:
+            live_at, live_at_text = c.get('at'), c.get('at_text')
+            if c.get('img') and os.path.exists(f'{SITE}/{c["img"]}-480.webp') and 'iter-' not in c['img'].rsplit('/', 1)[-1]: live_img = c['img']
+            if live_img: break
+if live_img:
+    pic = (f'<picture><source type="image/avif" srcset="{live_img}-480.avif 480w, {live_img}-960.avif 960w" sizes="(max-width: 720px) 38vw, (max-width: 1100px) 46vw, 280px">'
+           f'<img src="{live_img}-480.webp" srcset="{live_img}-480.webp 480w, {live_img}-960.webp 960w" sizes="(max-width: 720px) 38vw, (max-width: 1100px) 46vw, 280px" width="480" height="300" alt=""></picture>')
+elif os.path.exists(f'{SITE}/assets/shots/gemini/latest.webp'):
+    pic = '<img src="assets/shots/gemini/latest.webp" width="960" height="600" alt="">'
+else: pic = ''
 cur = f'{g_live["commit"]} · {E(g_live["tag"])}' if g_live else 'not published yet'
-play = ('<a class="btn btn--primary" href="gemini/">Play ' + ('v2' if g_assets else 'latest') + '</a>' if g_live else '')
-play_c = '<a class="btn btn--ghost" href="classic/gemini/">Play Classic</a>' if g_classic else ''
-acts = f'<div class="card__actions card__actions--even">{play}{play_c}</div>' if (play or play_c) else ''
-if g_live and not g_assets:
-    what = ('This is the classic-phase build (the original brief, before any 3D assets). The Assets v2 round and the co-op and Alex round come next; '
-            'when they are published, <span class="mono">/gemini/</span> switches to that build and the classic build moves to <span class="mono">/classic/gemini/</span>.')
-elif g_live: what = 'This is the Assets v2 build. Classic and co-op builds are listed as they are published.'
+upd = (f' · updated <time datetime="{live_at}" data-rel>{E(live_at_text)} ET</time>' if live_at else f' · snapshot {E(grefs.get("snapshot_at", ""))}')
+chip_t = (E(g_live['tag']) if g_live else 'not playable yet')
+if g_live and not g_assets: what = 'Classic phase: the original brief, before any 3D assets.'
+elif g_live: what = 'Assets v2 build.'
 else: what = 'Nothing is playable yet.'
-coop_note = ' A co-op branch exists in its repo but is not published here yet.' if grefs.get('coop_branch') else ''
-gem_html = f"""<section class="section section--alt" id="gemini" aria-labelledby="gemini-title"><div class="wrap">
-<p class="kicker">Fourth harness · in progress</p>
-<h2 id="gemini-title">Gemini 4 Argon: still being built</h2>
-<p class="flag flag--wide"><strong>In progress, updated as the build continues.</strong> Gemini 4 Argon (high reasoning, through Google’s Antigravity CLI) is building the same game from the same prompts in the same order as the other three, so what you can play here is a snapshot of its latest published build. {what}{coop_note} Its cost figures are <strong>est.</strong> (login-based, never billed) and are kept out of the totals for the other three. Last updated {E(g_updated)} ET.</p>
-<div class="gemini-grid">
-<article class="card" id="card-gemini">
-{shot}
-<div class="card__body">
-<div class="card__head"><div><p class="card__who">Gemini 4 Argon (high) · Antigravity CLI</p><h3>{E(g_title)}</h3></div></div>
-<p class="card__build">Playing now <span class="mono">{cur}</span>{('<br>Classic build <span class="mono">' + g_classic['commit'] + ' · pre-assets (' + E(g_classic['tag']) + ')</span>') if g_classic else ''}</p>
-<ul class="tags"><li><span class="tag tag--est">in progress</span></li><li>Not reviewed</li></ul>
-<p class="card__note">Not reviewed on video and not scored. Like the other builds it loads three.js from a CDN, so it needs internet access to play. WebGL 2 and a desktop mouse recommended.</p>
-{acts}
-</div></article>
+gem_html = f"""<article class="pcard pcard--wip" id="gemini" style="--hc:var(--h-gemini)" aria-labelledby="pc-gemini">
+  {('<a class="pcard__shot" href="gemini/" tabindex="-1" aria-hidden="true">' + pic + '</a>') if pic else ''}
+  <div class="pcard__b">
+    <h3 class="pcard__who" id="pc-gemini">Gemini</h3>
+    <p class="pcard__title">{E(g_title)}</p>
+    <p class="pcard__meta">Gemini 4 Argon · Antigravity CLI<br>Live build <span class="mono">{cur}</span>{upd}</p>
+    <ul class="chips" aria-label="About this build"><li class="chip chip--live">In progress · {chip_t}</li><li class="chip">Not reviewed</li></ul>
+    <p class="pcard__note">{what} Same prompts, same order as the other three. Cost so far: <strong>{est_u(GT['cost'])}</strong> (login-based, not billed).</p>
+    {('<a class="btn btn--ghost pcard__play" href="gemini/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg>Play ' + ('v2' if g_assets else 'latest') + '<span class="sr-only"> Gemini</span></a>') if g_live else ''}
+    <p class="pcard__alt">{'<a href="classic/gemini/">Classic<span class="sr-only"> Gemini</span></a>' if g_classic else ''}<a href="milestones/?view=harness&amp;h=gemini">Progress<span class="sr-only"> of Gemini</span></a></p>
+  </div>
+</article>"""
+put_block(PAGE['home'], 'GEMINI', gem_html)
+
+status_html = (f'<p class="flag flag--wide ms-gemini"><strong>Gemini 4 Argon is in progress.</strong> Finished rounds: {E(", ".join(x for x in g_done if x != "repo")) or "none yet"}. '
+               f'Running now: <span class="mono">{E(g_phase)}</span>. Playable build: <span class="mono">{cur}</span>. Driver state as of {E(g_updated)} ET. '
+               f'Its column shows its newest tag as “in progress” until the next milestone is tagged. Its dollars are <strong>est.</strong> (login-based, not billed).</p>')
+put_block(PAGE['milestones'], 'GEMINI-STATUS', status_html)
+
+sc_note = ('<p class="fine">A fourth harness, <a href="../#gemini">Gemini 4 Argon</a>, is still being built and is not reviewed or scored. '
+           'Its progress is in the <a href="../milestones/?view=harness&amp;h=gemini">milestones gallery</a> and its est. cost on the <a href="../cost/#gemini-cost">cost page</a>, kept apart from this table.</p>')
+put_block(PAGE['results'], 'GEMINI-SCORES-NOTE', sc_note)
+
+co_html = f"""<section class="gemcost" id="gemini-cost" aria-labelledby="gemcost-title">
+<h3 class="h-mid" id="gemcost-title">Gemini 4 Argon so far <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>
+<p class="fine">Gemini 4 Argon is <strong>not</strong> in the table or totals above: it is still being built, and its dollars are <strong>est.</strong> (login-based, not billed). Driver state as of {E(g_updated)} ET.</p>
 <div class="tablewrap"><table class="scoreboard" id="sb-gemini">
-<caption class="sr-only">Gemini 4 Argon: progress and estimated cost so far</caption>
+<caption class="sr-only">Gemini 4 Argon: estimated cost so far</caption>
 <colgroup><col class="col-metric"><col></colgroup>
 <thead><tr><th scope="col"><span class="sr-only">Metric</span></th><th scope="col"><span class="sb-game">Gemini</span><span class="sb-sub">4 Argon · high</span></th></tr></thead>
-<tbody>
-<tr class="sb-group"><th scope="rowgroup" colspan="2">Review scores</th></tr>
-{sbrow('Gameplay · Graphics · Physics', 'not reviewed', 'small')}
-<tr class="sb-group"><th scope="rowgroup" colspan="2">Progress · driver state</th></tr>
-{sbrow('Finished rounds', E(', '.join(x for x in g_done if x not in ('repo',))) or 'none yet', 'small')}
-{sbrow('Running now', E(g_phase), 'small')}
-{sbrow('Playable build', cur, 'small')}
-</tbody>
 <tbody id="sb-gemini-cost">
-<tr class="sb-group"><th scope="rowgroup" colspan="2">What it cost so far · est., not billed</th></tr>
 {sbrow('Cost (USD, est.)', est_u(GT['cost']))}
 {sbrow('Agent hours', f"{GT['wall'] / 3600:.1f} h")}
 {sbrow('Cost per agent hour (est.)', (est_u(GT['per_h']) + '/h') if GT['per_h'] else 'n/a')}
 {sbrow('Tokens in (uncached + cached)', f"{fmtk(GT['inp'])} + {fmtk(GT['cached'])}", 'small')}
 {sbrow('Tokens out (incl. thinking)', fmtk(GT['out']), 'small')}
 </tbody></table></div>
-</div>
-<p class="fine">{E(G_BASIS)} Full run table and the ways this replay differs from the others are in <a href="#behind-the-build">Behind the build</a>.</p>
-</div></section>"""
-
-s_ = open(f'{SITE}/index.html').read()
-s_ = put_block(s_, 'GEMINI', gem_html, '<!-- ============================== CLASSIC', 'before')
-# anchor above is a comment line starting with that text: make sure we inserted before the whole comment line
-cl_html = (f'<li><a class="btn btn--ghost" href="classic/gemini/">Classic Gemini</a> <span class="card__build">{E(g_title)} · <span class="mono">{g_classic["commit"]} · pre-assets ({E(g_classic["tag"])})</span> '
-           f'<span class="tag tag--est">in progress</span></span></li>') if g_classic else ''
-s_ = put_block(s_, 'GEMINI-CLASSIC', cl_html, '</ul>\n  </div>\n</section>\n\n<!-- ============================== SCORES', 'before') if '<!-- GEMINI-CLASSIC START' not in s_ else put_block(s_, 'GEMINI-CLASSIC', cl_html, '', 'before')
-sc_note = (f'<p class="fine">A fourth harness, <a href="#gemini">Gemini 4 Argon</a>, is still being built and is not reviewed or scored. Its progress and est. cost are in <a href="#gemini">its own section</a>, kept apart from this table.</p>')
-s_ = put_block(s_, 'GEMINI-SCORES-NOTE', sc_note, 'See <a href="#cost">the cost section</a> for the split per harness.</p>', 'after') if '<!-- GEMINI-SCORES-NOTE START' not in s_ else put_block(s_, 'GEMINI-SCORES-NOTE', sc_note, '', 'before')
-co_note = (f'<p class="fine">Gemini 4 Argon is not in this table or its totals: it is still being built, and its dollars are <strong>est.</strong> (login-based, not billed). Running figure so far: <strong>{est_u(GT["cost"])}</strong> over {GT["wall"]/3600:.1f} agent hours. See <a href="#gemini">its section</a>.</p>')
-s_ = put_block(s_, 'GEMINI-COST-NOTE', co_note, '<p class="fine footnote" id="cost-balance"></p>', 'after') if '<!-- GEMINI-COST-NOTE START' not in s_ else put_block(s_, 'GEMINI-COST-NOTE', co_note, '', 'before')
-open(f'{SITE}/index.html', 'w').write(s_)
+<p class="fine">{E(G_BASIS)} Every Gemini run is in <a href="#gemini-runs">its run table</a> in the build log below.</p>
+</section>"""
+put_block(PAGE['cost'], 'GEMINI-COST-NOTE', co_html)
 
 # data/gemini.json: machine-readable snapshot of what the site shows (kept apart from data/costs.json)
 import datetime as _dt2
