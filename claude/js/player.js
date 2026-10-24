@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { Sergey, SWINGS } from './sergey.js';
 import { clamp } from './rng.js';
+import { WIND } from '../assets/trees_v2/runtime/wind.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const WALK_SPEED = 1.75, RUN_SPEED = 4.6;
@@ -42,6 +43,7 @@ export class Player {
     this.drag = null;
     this.lastSurface = 'grass';
     this.pending = []; // timed callbacks
+    this.coop = null; // co-op adapter (js/coopgame.js): tree hits go to the host while a session exists
     this.buildHighlight();
     this.bind();
     this.sergey.onFootstep = (i, run) => this.footstep(run);
@@ -237,27 +239,79 @@ export class Player {
     const g = this.game;
     const power = (g.axeStats.treePower ?? 1) * (1 + 0.04 * g.p.skills.strength) * (a.tired ? 0.5 : 1);
     const before = tree.hits;
-    const res = field.hit(tree, dir, power);
+    // Co-op: chips / sound / wobble play right away; hp and the fall come back from the host.
+    const shared = !!this.coop?.active();
+    const res = shared ? this.wobble(tree) : field.hit(tree, dir, power);
     a.result = res;
-    const point = tree.position.clone().addScaledVector(dir, -tree.radius);
-    point.y = tree.position.y + tree.meta.chopHeight * tree.scale;
-    this.woodchips.burst(point, dir, 18 + Math.round(10 * power), 0.9 + 0.2 * power);
-    this.dust.burst(point, 18, 0.35, this.game.rng);
-    this.audio.treeHit?.(tree.species, Math.min(1, 0.55 + 0.25 * power), tree.meta.trunkRadius);
+    this.chipFx(tree, dir, power, 1);
     this.shake = Math.max(this.shake, 0.3);
     g.sharpness = g.sharpness - 0.002;
     const need = tree.meta.hitsToFell;
     if (!res.felled && before + 2 * power >= need) this.audio.treeCreak?.(0.45, false);
-    if (res.felled) {
-      this.audio.treeCreak?.(1, true);
-      const size = clamp(tree.meta.height * tree.scale / 14, 0.3, 1.2);
-      tree.anim.onLand = (t) => this.onTreeLanded(t, size);
-      this.game.toast(`Timber! ${cap(tree.species)} coming down`, 'good');
-    }
+    if (res.felled) this.onFell(tree, true);
+    if (shared) this.coop.hitTree(tree, power);
     this.game.emit('change');
   }
 
-  onTreeLanded(t, size) {
+  // Hit feedback at the trunk: chips, dust and the species' thunk (vol < 1 for the partner's hits).
+  chipFx(tree, dir, power, vol) {
+    const point = tree.position.clone().addScaledVector(dir, -tree.radius);
+    point.y = tree.position.y + tree.meta.chopHeight * tree.scale;
+    this.woodchips.burst(point, dir, Math.round((18 + 10 * power) * (vol < 1 ? 0.7 : 1)), 0.9 + 0.2 * power);
+    this.dust.burst(point, vol < 1 ? 10 : 18, 0.35, this.game.rng);
+    this.audio.treeHit?.(tree.species, Math.min(1, 0.55 + 0.25 * power) * vol, tree.meta.trunkRadius);
+  }
+
+  // The trunk shudder of a hit without touching its hp (co-op: the host owns the hp).
+  wobble(tree) {
+    const field = this.world.field;
+    field.activate(tree);
+    tree.anim.shake = 1;
+    tree.obj.wind.uWindStrength.value = WIND.uWindStrength.value + 2.5;
+    return { felled: false, hits: tree.hits, hitsToFell: tree.meta.hitsToFell };
+  }
+
+  // Co-op: the host reports a hit (hp left). The partner's hits get their own chips and sound.
+  applyHit(tree, hp, { mine = false, from = null, instant = false } = {}) {
+    if (tree.state !== 'standing' && tree.state !== 'chopping') return;
+    const need = tree.meta.hitsToFell;
+    if (!instant && !mine) {
+      this.wobble(tree);
+      const src = from ?? this.pos;
+      const dir = new THREE.Vector3(tree.position.x - src.x, 0, tree.position.z - src.z);
+      if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
+      dir.normalize();
+      const d = Math.hypot(tree.position.x - this.pos.x, tree.position.z - this.pos.z);
+      this.chipFx(tree, dir, 1, clamp(1.4 - d / 14, 0.25, 0.9));
+    } else if (instant && hp < need) this.world.field.activate(tree);
+    tree.hits = Math.max(tree.hits, need - hp);
+  }
+
+  // Co-op: the host says this tree falls (toward dir). instant = it was felled before we joined.
+  applyFell(tree, dir, { mine = false, by = '', instant = false } = {}) {
+    const field = this.world.field;
+    if (tree.state !== 'standing' && tree.state !== 'chopping') return;
+    tree.hits = Math.max(tree.hits, tree.meta.hitsToFell);
+    field.fell(tree, dir);
+    if (instant) {
+      // Snap to the felled pose, with the log already bucked (cleared) as it would be by now.
+      const A = tree.anim;
+      A.th = A.rest; A.w = 0; A.bounces = 4; tree.state = 'fallen';
+      tree.obj.hinge.quaternion.setFromAxisAngle(A.axis, A.th);
+      field.clearLog(tree);
+      return;
+    }
+    this.onFell(tree, mine, by);
+  }
+
+  onFell(tree, mine, by = '') {
+    this.audio.treeCreak?.(1, true);
+    const size = clamp(tree.meta.height * tree.scale / 14, 0.3, 1.2);
+    tree.anim.onLand = (t) => this.onTreeLanded(t, size, mine);
+    this.game.toast(mine ? `Timber! ${cap(tree.species)} coming down` : `${by || 'Your partner'} felled a ${tree.species}. Timber!`, 'good');
+  }
+
+  onTreeLanded(t, size, mine = true) {
     this.audio.treeFall?.(size);
     this.shake = Math.max(this.shake, 0.6 + 0.6 * size);
     // dust + chips where the crown hits the ground
@@ -270,11 +324,12 @@ export class Player {
       this.dust.burst(p, Math.round(60 * size), 1.2, this.game.rng);
       this.woodchips.burst(p, dir, 10, 0.6);
     }
-    this.cheer = 2.6;
-    const reward = this.game.onTreeFelled(t.species, t.meta, size);
+    const field = this.world.field;
     // The log is bucked into rounds for the queue: clear it after a while.
-    this.later(22, () => this.world.settings[this.world.id] && t.obj && this.world.field?.clearLog(t));
-    return reward;
+    this.later(22, () => this.world.field === field && t.obj && field.clearLog(t));
+    if (!mine) return null; // the partner's tree: their reward, our shared half arrives via onAward
+    this.cheer = 2.6;
+    return this.game.onTreeFelled(t.species, t.meta, size);
   }
 
   later(sec, fn) { this.pending.push({ t: sec, fn }); }

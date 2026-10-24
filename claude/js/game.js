@@ -20,7 +20,7 @@ function freshProgress() {
     bestCombo: 0, stats: { swings: 0, splits: 0, bullseyes: 0, pieces: 0, glances: 0, nails: 0, misses: 0, stuck: 0, trees: 0 },
     woodpile: 0, logSeq: 1, seenHelp: false,
     records: { timeattack: 0, precision: 0, daily: null, dailyPaid: null, campaign: {} },
-    settings: { quality: 'auto', weather: 'clear', hour: 16.5, timeFlow: true, sound: true, slowmo: true, setting: 'nj', costume: 'tee' },
+    settings: { quality: 'auto', weather: 'clear', hour: 16.5, timeFlow: true, sound: true, slowmo: true, setting: 'nj', costume: 'tee', character: 'sergey', playerName: '' },
   };
 }
 
@@ -44,6 +44,9 @@ export class Game {
     this.needed = null;
     this.fx = { shake: 0 };
     this.mode = null; // null = free play (endless); otherwise a ModeRun
+    // Co-op adapter (js/coopgame.js). While a session exists, XP / cash go through the host
+    // (coop.session.award) and come back in onAward, so they are never added here directly.
+    this.coop = null;
     this.swing.strength = this.strengthMult;
     this.swing.setAxe(this.axeStats);
     this.swing.onContact = (c) => this.onContact(c);
@@ -612,7 +615,10 @@ export class Game {
       this.combo = 0;
     }
     this.p.score = Math.max(0, this.p.score + points);
-    this.p.cash += cash;
+    const shared = !!this.coop?.active();
+    if (shared && out.kind === 'split') this.coop.split(P, { xp, cash });
+    else if (shared) this.coop.award({ xp, cash, reason: out.kind });
+    else this.p.cash += cash;
     if (this.combo >= 3 && this.combo > this.p.bestCombo) this.audio.achievement?.();
     this.p.bestCombo = Math.max(this.p.bestCombo, this.combo);
     this.lastHit = {
@@ -630,7 +636,7 @@ export class Game {
       forkAligned: out.forked ? !!out.forkAligned : null,
     };
     this.mode?.onHit(this.lastHit);
-    this.addXp(xp);
+    if (!shared) this.addXp(xp);
     this.emit('hit', this.lastHit);
     this.emit('change');
   }
@@ -687,10 +693,19 @@ export class Game {
     const hits = meta.hitsToFell ?? 5;
     const xp = Math.round(30 + 12 * hits);
     const cash = Math.round(10 + 6 * hits);
-    this.p.cash += cash;
     this.p.stats.trees = (this.p.stats.trees ?? 0) + 1;
     let rounds = 0;
     const wood = SPECIES_BY_ID[TREE_WOOD[species]] ?? SPECIES[0];
+    if (this.coop?.active()) {
+      // Co-op: the host turns the felled tree into shared rounds (onTreeFell) and the reward
+      // comes back through onAward (full for the feller, half for the partner).
+      this.coop.award({ xp, cash, reason: 'tree', species });
+      this.save();
+      this.emit('treeFelled', { species, xp, cash, rounds: 0 });
+      this.emit('change');
+      return { xp, cash, rounds: 0 };
+    }
+    this.p.cash += cash;
     if (!this.mode) {
       rounds = hits >= 8 ? 2 : 1;
       for (let i = 0; i < rounds; i++) {
@@ -712,6 +727,43 @@ export class Game {
     this.emit('treeFelled', { species, xp, cash, rounds });
     this.emit('change');
     return { xp, cash, rounds };
+  }
+
+  // Co-op: a round both players see on their lawn (a log of a felled tree, spawned by the host).
+  addSharedRound(params) {
+    if (this.mode || this.queue.some((it) => it.params.coopLog === params.coopLog)) return null;
+    const it = this.addToQueue(params);
+    this.queue.unshift(this.queue.pop());
+    while (this.queue.length > QUEUE_LEN + 2) {
+      const i = this.queue.findLastIndex((q) => !q.params.coopLog);
+      const [x] = this.queue.splice(i >= 0 ? i : this.queue.length - 1, 1);
+      this.scene.remove(x.mesh);
+      x.mesh.geometry.dispose();
+    }
+    this.layoutQueue(true);
+    this.emit('log');
+    return it;
+  }
+
+  // Co-op: the partner split this round first; take it off our lawn.
+  removeSharedRound(id) {
+    const i = this.queue.findIndex((it) => it.params.coopLog === id);
+    if (i < 0) return false;
+    const [it] = this.queue.splice(i, 1);
+    this.scene.remove(it.mesh);
+    it.mesh.geometry.dispose();
+    while (this.queue.length < QUEUE_LEN) { const pr = this.makeParams(); if (!pr) break; this.addToQueue(pr); }
+    this.layoutQueue(true);
+    this.emit('log');
+    return true;
+  }
+
+  // XP / cash granted by the co-op host (ours in full, or the partner's shared half).
+  applyAward(xp, cash) {
+    this.p.cash += cash;
+    this.addXp(xp);
+    this.save();
+    this.emit('change');
   }
 
   sharpen() {

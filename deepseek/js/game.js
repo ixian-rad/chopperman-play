@@ -751,6 +751,11 @@ function defaultState() {
       // with the same bench.
       setting: 'nj',
       costume: 'tee',
+      // Co-op v1: playable character, persisted display name (empty = the
+      // character's default name), and the local player's choice for the
+      // start-screen picker.
+      character: 'sergey',
+      playerName: '',
     },
     createdAt: Date.now(),
   };
@@ -1309,7 +1314,16 @@ export class GameState {
     merged.settings.musicVolume = clamp(finite(merged.settings.musicVolume, 0.35), 0, 1);
     merged.settings.sfxVolume = clamp(finite(merged.settings.sfxVolume, 0.8), 0, 1);
     merged.settings.setting = merged.settings.setting === 'tiraspol' ? 'tiraspol' : 'nj';
-    merged.settings.costume = merged.settings.costume === 'jacket' ? 'jacket' : 'tee';
+    merged.settings.character = merged.settings.character === 'alex' ? 'alex' : 'sergey';
+    const characterCostumes =
+      merged.settings.character === 'alex' ? ['camo', 'bomber'] : ['tee', 'jacket'];
+    merged.settings.costume = characterCostumes.includes(merged.settings.costume)
+      ? merged.settings.costume
+      : characterCostumes[0];
+    merged.settings.playerName = String(merged.settings.playerName || '')
+      .replace(/[^\p{L}\p{N} _.'-]/gu, '')
+      .trim()
+      .slice(0, 16);
     merged.treesFelled = Math.max(0, Math.round(finite(merged.treesFelled, 0)));
     merged.stamina = clamp(finite(merged.stamina, 100), 0, 200);
     merged.lastHit =
@@ -1385,7 +1399,7 @@ export class GameState {
    * @param {number} report.aimX        aim offset in metres
    * @param {number} report.aimZ        aim offset in metres
    */
-  registerSplit(report) {
+  registerSplit(report, { deferXpCoins = false } = {}) {
     const species = this.species;
     const center = clamp(finite(report.center, 0), 0, 1);
     const grain = clamp(finite(report.grain, 0), 0, 1);
@@ -1499,7 +1513,7 @@ export class GameState {
       Math.round(points * (partial ? 0.3 : 0.34) + (clean ? (partial ? 6 : 18) : 6)),
     );
     const coinGain = Math.max(1, Math.round(points * (partial ? 0.07 : 0.11)));
-    this.state.coins += coinGain;
+    if (!deferXpCoins) this.state.coins += coinGain;
 
     if (!partial) {
       if (clean) {
@@ -1529,18 +1543,20 @@ export class GameState {
     this.state.attempts += 1;
 
     const levelBefore = this.state.level;
-    this.state.xp += xpGain;
     let levelsGained = 0;
-    while (this.state.xp >= xpToNext(this.state.level) && this.state.level < 99) {
-      this.state.xp -= xpToNext(this.state.level);
-      this.state.level += 1;
-      levelsGained += 1;
-    }
-    if (levelsGained > 0) {
-      this.state.stamina = Math.min(
-        this.maxStamina,
-        this.state.stamina + levelsGained * 22,
-      );
+    if (!deferXpCoins) {
+      this.state.xp += xpGain;
+      while (this.state.xp >= xpToNext(this.state.level) && this.state.level < 99) {
+        this.state.xp -= xpToNext(this.state.level);
+        this.state.level += 1;
+        levelsGained += 1;
+      }
+      if (levelsGained > 0) {
+        this.state.stamina = Math.min(
+          this.maxStamina,
+          this.state.stamina + levelsGained * 22,
+        );
+      }
     }
 
     const campaignRunComplete =
@@ -1758,6 +1774,52 @@ export class GameState {
       coins: coinGain,
       xp: xpGain,
       hits: Math.round(finite(hits, 0)),
+      treesFelled: this.state.treesFelled,
+      level: this.state.level,
+      levelsGained,
+    };
+    this.emit('tree', detail);
+    if (levelsGained > 0) {
+      this.emit('level', {
+        level: this.state.level,
+        from: before,
+        levelsGained,
+        unlocked: LOG_TYPES.filter((t) => t.unlockLevel === this.state.level),
+      });
+    }
+    return detail;
+  }
+
+  /**
+   * Co-op reward application. The session's host decides the split (actor
+   * 100 %, partner 50 %); this only applies the amount the module delivered to
+   * this client, so there is no double counting. `countTree` is true only for
+   * the actor's full felled-tree award.
+   */
+  applyCoopAward({ xp = 0, gold = 0, loot = 0, reason = '', countTree = false } = {}) {
+    const coinGain = Math.max(0, Math.round(finite(gold, 0)));
+    const xpGain = Math.max(0, Math.round(finite(xp, 0)));
+    const lootGain = Math.max(0, Math.round(finite(loot, 0)));
+    const before = this.state.level;
+    this.state.coins += coinGain;
+    this.state.xp += xpGain;
+    if (lootGain) this.state.coopLoot = Math.max(0, Math.round(finite(this.state.coopLoot, 0))) + lootGain;
+    if (countTree && reason === 'tree') this.state.treesFelled = (this.state.treesFelled || 0) + 1;
+    let levelsGained = 0;
+    while (this.state.xp >= xpToNext(this.state.level) && this.state.level < 99) {
+      this.state.xp -= xpToNext(this.state.level);
+      this.state.level += 1;
+      levelsGained += 1;
+    }
+    if (levelsGained > 0) {
+      this.state.stamina = Math.min(this.maxStamina, this.state.stamina + levelsGained * 22);
+    }
+    this.save();
+    const detail = {
+      species: reason === 'tree' ? 'tree' : reason,
+      coins: coinGain,
+      xp: xpGain,
+      loot: lootGain,
       treesFelled: this.state.treesFelled,
       level: this.state.level,
       levelsGained,

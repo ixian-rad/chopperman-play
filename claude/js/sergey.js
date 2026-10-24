@@ -1,4 +1,8 @@
-// Sergey: the rigged, animated player character from the v2 asset pack.
+// Sergey (and, since co-op v1, Alex): the rigged, animated player characters.
+//
+// * Both characters share the 24-bone Meshy skeleton, bone names and six clips, so one rig class
+//   drives either; a costume id (tee / jacket = Sergey, camo / bomber = Alex) picks the GLB.
+//   Only the selected costume is loaded; the others load on demand.
 //
 // * Two costumes (black tee / blue jacket) share one 24-bone Meshy skeleton. Each costume GLB
 //   brings its own six clips; the walking/running armature files add locomotion cycles.
@@ -15,10 +19,23 @@ import { loadGLB, floatGeometry, simplifiedGeometry } from './assets.js';
 import { setLowShading, patchScene } from './matpatch.js';
 
 const BASE = 'assets/models/common/';
+const ART = 'assets/art/';
+// Costume ids are unique across characters, so a costume id alone picks the model.
+// art / pos: preview picture for the character picker (object-position of the crop).
 export const COSTUMES = {
-  tee: { name: 'Black tee', url: BASE + 'char_sergey_animated_pbr.glb', walk: BASE + 'char_sergey_walking_armature.glb', run: BASE + 'char_sergey_running_armature.glb' },
-  jacket: { name: 'Blue jacket', url: BASE + 'char_sergey_jacket_animated_pbr.glb', walk: BASE + 'char_sergey_jacket_walking_armature.glb', run: BASE + 'char_sergey_jacket_running_armature.glb' },
+  tee: { char: 'sergey', name: 'Black tee', url: BASE + 'char_sergey_animated_pbr.glb', walk: BASE + 'char_sergey_walking_armature.glb', run: BASE + 'char_sergey_running_armature.glb', art: ART + 'common/keyart_claude.webp', pos: '50% 30%' },
+  jacket: { char: 'sergey', name: 'Blue jacket', url: BASE + 'char_sergey_jacket_animated_pbr.glb', walk: BASE + 'char_sergey_jacket_walking_armature.glb', run: BASE + 'char_sergey_jacket_running_armature.glb', art: ART + 'nj/nj_keyart_jacket.webp', pos: '19% 40%' },
+  camo: { char: 'alex', name: 'Camo tee', url: BASE + 'char_alex_animated_pbr.glb', walk: BASE + 'char_alex_walking_armature.glb', run: BASE + 'char_alex_running_armature.glb', art: ART + 'nj/alex_nj_keyart.webp', pos: '54% 35%' },
+  bomber: { char: 'alex', name: 'Navy bomber', url: BASE + 'char_alex_jacket_animated_pbr.glb', walk: BASE + 'char_alex_jacket_walking_armature.glb', run: BASE + 'char_alex_jacket_running_armature.glb', art: ART + 'nj/alex_nj_keyart_jacket.webp', pos: '18% 35%' },
 };
+// Per-character tuning. Alex's rig is the same 1.78 m as Sergey's and the axe-attach test in
+// assets/ALEX.md matched the blade path within 0.003 body heights, so both use the same grip;
+// the fields exist so a later model can be tuned without touching the rig code.
+export const CHARACTERS = {
+  sergey: { name: 'Sergey', costumes: ['tee', 'jacket'], scale: 1, grip: [-1.5, 3.5, 0], portrait: ART + 'common/keyart_claude.webp', ppos: '50% 18%' },
+  alex: { name: 'Alex', costumes: ['camo', 'bomber'], scale: 1, grip: [-1.5, 3.5, 0], portrait: ART + 'common/alex_portrait.webp', ppos: '50% 20%' },
+};
+export const charOf = (costume) => COSTUMES[costume]?.char ?? 'sergey';
 
 // Axe models. rot: native → "handle along +Y, head up" (radians about Z). len: real length (m).
 export const AXE_MODELS = {
@@ -102,7 +119,7 @@ async function buildAxe(id) {
 }
 
 // Clean up clips: only quaternions + Hips position; optional root-drift removal / hip rescale.
-function cleanClip(clip, name, { inPlace = false, hipScale = 1 } = {}) {
+export function cleanClip(clip, name, { inPlace = false, hipScale = 1 } = {}) {
   const tracks = [];
   for (const t of clip.tracks) {
     const [bone, prop] = t.name.split('.');
@@ -125,11 +142,19 @@ function cleanClip(clip, name, { inPlace = false, hipScale = 1 } = {}) {
   return c;
 }
 
+// Low-poly skins are shared by every rig that uses the same source geometry (local player and a
+// co-op partner wearing the same costume).
+const loGeo = new WeakMap();
+function lowSkin(geo) {
+  if (!loGeo.has(geo)) loGeo.set(geo, simplifiedGeometry(geo, { ratio: 0.3, error: 0.01, maxTris: 6500 }).catch(() => geo));
+  return loGeo.get(geo);
+}
+
 export class Sergey {
-  constructor(scene) {
+  constructor(scene, { name = 'Sergey' } = {}) {
     this.scene = scene;
     this.root = new THREE.Group(); // world placement (yaw only); feet at y = 0
-    this.root.name = 'Sergey';
+    this.root.name = name;
     scene.add(this.root);
     this.models = {}; // costume id -> { model, mixer, actions, hand, mount, clips }
     this.costume = null;
@@ -145,6 +170,7 @@ export class Sergey {
   }
 
   get cur() { return this.models[this.costume]; }
+  get character() { return charOf(this.costume); }
   get axe() { return this.axes[this.axeId]; }
   get handBone() { return this.cur?.hand ?? null; }
 
@@ -156,7 +182,11 @@ export class Sergey {
   async _loadCostume(id) {
     const def = COSTUMES[id];
     const [g, gw, gr] = await Promise.all([loadGLB(def.url), loadGLB(def.walk), loadGLB(def.run)]);
-    const model = g.scene;
+    // Every rig gets its own skinned clone (own skeleton, mixer and axe), so the local player and a
+    // co-op partner can wear the same costume; the GLB's scene itself stays untouched.
+    const model = cloneSkinned(g.scene);
+    const C = CHARACTERS[def.char];
+    model.scale.setScalar(C.scale);
     model.updateMatrixWorld(true);
     let hipsRestY = 97;
     const hips = model.getObjectByName('Hips');
@@ -195,7 +225,7 @@ export class Sergey {
     const mount = new THREE.Group();
     mount.name = 'axeMount';
     mount.scale.setScalar(100);
-    mount.position.copy(GRIP);
+    mount.position.fromArray(C.grip ?? [GRIP.x, GRIP.y, GRIP.z]);
     // canonical axe (X blade, Y handle) → hand bone. The Meshy swing clips carry the handle as an
     // extension of the hand's +Y (finger) axis with the edge leading toward −Z.
     mount.quaternion.setFromRotationMatrix(_m.makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0)));
@@ -215,7 +245,7 @@ export class Sergey {
     model.traverse((o) => { if (o.isSkinnedMesh) rec.skins.push(o); });
     await Promise.all(rec.skins.map(async (m) => {
       m.userData.geoHi = m.geometry;
-      try { m.userData.geoLo = await simplifiedGeometry(m.geometry, { ratio: 0.3, error: 0.01, maxTris: 6500 }); } catch { m.userData.geoLo = m.geometry; }
+      m.userData.geoLo = await lowSkin(m.geometry);
     }));
     patchScene(model); // weather shading on the PBR skin before a Low Lambert copy is made of it
     this.applyLow(rec);
@@ -242,7 +272,9 @@ export class Sergey {
   // Switch costume (keeps the current animation state and the axe).
   async setCostume(id) {
     if (!COSTUMES[id]) id = 'tee';
+    this._want = id;
     const rec = await this.loadCostume(id);
+    if (this._want !== id) return this.cur ?? rec; // a newer request superseded this one
     if (this.costume === id && rec.model.parent === this.root) return rec;
     const prev = this.cur;
     const prevName = this.current;
@@ -322,13 +354,15 @@ export class Sergey {
     if (!rec) return;
     rec.mixer.update(dt);
     // Slide the grip along the handle: swings hold the knob end, walking carries it by the throat.
-    const want = this.scrub || this.current === 'cheer' ? 0 : 1;
+    // (A co-op partner's rig plays the swing clips as plain actions instead of scrubbing them.)
+    const swingClip = this.scrub || this.current === 'chop' || this.current === 'hammer';
+    const want = swingClip || this.current === 'cheer' ? 0 : 1;
     this.carry += (want - this.carry) * Math.min(1, dt * 10);
     const len = AXE_MODELS[this.axeId]?.len ?? 0.8;
     rec.inner.position.y = -GRIP_ALONG - this.carry * (len - 0.2);
     // Two-handed swings: the clips swing a one-handed tool, so pull the left hand onto the handle
     // with a two-bone IK (blended in as the grip slides down to the knob).
-    const w = this.scrub && this.ikOn !== false ? 1 - this.carry : 0;
+    const w = swingClip && this.ikOn !== false ? 1 - this.carry : 0;
     if (w > 0.02) twoBoneIK(this.root, rec.leftArm, rec.leftGrip, w);
     // Footsteps: a toe reaching its lowest point (descending → rising) while walking/running.
     if (this.onFootstep && (this.current === 'walk' || this.current === 'walk2' || this.current === 'run')) {

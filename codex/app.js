@@ -3,6 +3,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createWoodMaterials, standard, mesh } from './environment.js';
 import { createHumanoid } from './humanoid.js';
+import { integrateCoop } from './coop-game.js';
+import { mountCharacterPicker } from './character-picker.js';
 import { AssetBackyard } from './assets-v2.js';
 import { Simulation } from './physics.js';
 import { Game, WEATHER, CHAPTERS } from './game.js';
@@ -35,7 +37,7 @@ function resetCamera(){
 const wood=createWoodMaterials();
 // The original hand-built character remains an asset-load fallback.
 const actor=createHumanoid(scene);actor.group.visible=false;
-let backyard;
+let backyard,coopGame;
 let storage;try{if(!new URLSearchParams(location.search).has('test'))storage=localStorage;}catch{/* Session play is available without storage. */}
 const audio=new AudioManager({storage});
 const campaignGame=new Game(storage);let game=campaignGame,contract=null,contractLastTick=performance.now();
@@ -54,8 +56,12 @@ const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let impactEffects=!reducedMotion,hitStopUntil=0,perfectUntil=0,shakeUntil=0,shakeStrength=0;
 $('impact-effects').checked=impactEffects;
 const simulation=new Simulation(scene,wood,result=>{
+  if(coopGame){coopGame.beforeImpact(result,()=>handleImpact(result));}else handleImpact(result);
+});
+function handleImpact(result){
   if(contract?.finished)return;
   const previousLevel=game.level,previousBestCombo=game.bestCombo;
+  if(contract)game.award=coopGame?.coop.inSession()?award=>coopGame.coop.session.award(award):null;
   const graded=contract?.grade(result,currentLog)??{};const hit=game.hit({...result,...graded,contract:!!contract},currentLog);contract?.hit(hit,game.score);
   const perfectPrecision=!!hit.precisionGrade?.bullseye&&result.split;
   $('energy').textContent=Math.round(result.energy);$('fracture').textContent=result.panelBroken&&!result.split?`${result.remainingPanels} ${currentLog.burl?'stump sections':currentLog.mineral?'stone-bound sections':currentLog.rotten?'pieces':currentLog.forked?'sections':'walls'} remain`:result.split?`Split into ${simulation.dynamic.length}`:result.source==='miss'?'Missed':result.hazard?result.hazardKind==='stone'?'Embedded stone!':'Steel staple!':`${Math.round(result.damage*100)}% · grain holding`;$('penetration').textContent=`${Math.round(result.penetration*1000)} mm`;
@@ -76,7 +82,7 @@ const simulation=new Simulation(scene,wood,result=>{
   if(result.split&&hit.boss){audio.play('bossDefeated');audio.play('chapterComplete',{delay:.7});}
   if(hit.campaignVictory)audio.play('campaignComplete',{delay:1.1});
   updateHUD();
-});
+}
 simulation.onSoundEvent=(name,data)=>audio.play(name,data);
 simulation.configure({log:currentLog,recoil:impactEffects});simulation.reset();
 
@@ -140,7 +146,7 @@ function updateHUD(){
 }
 function clearTelemetry(){$('energy').textContent='—';$('speed').textContent='0.0';$('fracture').textContent='Intact';$('penetration').textContent='0 mm';}
 function prepareLog(){
-  currentLog=contract?contract.log:game.log;
+  coopGame?.clearSelection();currentLog=contract?contract.log:game.log;
   if(contract){atmosphere.setWeather(currentLog.weather);$('weather').value=currentLog.weather;condition={moisture:currentLog.weather==='rain'?.65:.08,frost:currentLog.weather==='snow'?.65:0};}
   simulation.configure({log:currentLog,weather:physicalWeather(),...equippedToolStats()});simulation.reset();
   const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;clearTelemetry();updateGuide();
@@ -396,7 +402,7 @@ function animate(now){
   condition=evolveCondition(condition,atmosphere.weather,Math.min(elapsed,5));
   simulation.configure({weather:simulation.running?simulation.settings.weather:physicalWeather()});
   if(wasRunning&&!simulation.running)updateHUD();if(actor.group.visible)actor.update(simulation.time,simulation.effort,...simulation.handPositions());
-  atmosphere.update(Math.min(dt,.1),quality,simulation.time,backyard?.player.position);if(backyard?.mode!=='yard')controls.update();updateGuide();if(backyard?.mode==='yard')guide.visible=false;backyard?.update(dt,atmosphere,simulation);
+  atmosphere.update(Math.min(dt,.1),quality,simulation.time,backyard?.player.position);if(backyard?.mode!=='yard')controls.update();updateGuide();if(backyard?.mode==='yard')guide.visible=false;backyard?.update(dt,atmosphere,simulation);coopGame?.coop.update(now);
   if(pointer)previewPull({clientX:pointer.lastX,clientY:pointer.lastY});
   if(armed&&!pointer){meter=(Math.sin((now-meterStart)/1000*4.4-Math.PI/2)+1)/2;$('timing-needle').style.left=`${meter*100}%`;if(!pointer)$('timing-value').textContent=`${Math.round(45+(1-Math.min(1,Math.abs(meter-.81)/.81))*75)}%`;}
   if(!armed||pointer){lastMeterBucket=-1;lastPerfectZone=false;}
@@ -428,7 +434,7 @@ backyard=new AssetBackyard({scene,camera,controls,renderer,storage,audio,
   onStatus:text=>{$('scene-status').textContent=text;},
   onShake:(strength,ms)=>{if(impactEffects){shakeStrength=strength;shakeUntil=performance.now()+ms;}},
   onMode:mode=>{armed=false;pointer=null;clearPull();document.body.dataset.playMode=mode;if(mode==='stump')resetCamera();$('scene-status').textContent=mode==='yard'?'Explore the yard. Face a trunk and click or press Space.':'Find the grain. Esc returns to the yard.';},
-  onReward:tree=>{const level=campaignGame.level;campaignGame.xp+=35;campaignGame.coins+=20;campaignGame.save();if(campaignGame.level>level)audio.play('levelUp');audio.play('points');updateHUD();},
+  onReward:tree=>{if(coopGame?.coop.inSession()){coopGame.coop.session.award({xp:35,gold:20,reason:'Tree felled'});return;}const level=campaignGame.level;campaignGame.xp+=35;campaignGame.coins+=20;campaignGame.save();if(campaignGame.level>level)audio.play('levelUp');audio.play('points');updateHUD();},
 });
 backyard.softwareRenderer=softwareRenderer;
 atmosphere.softwareRenderer=softwareRenderer;
@@ -441,10 +447,17 @@ $('buy-golden-axe').addEventListener('click',()=>{if(contract||backyard.goldenUn
 if(new URLSearchParams(location.search).has('assetdebug'))window.assetDebug={backyard,scene,renderer,simulation};
 window.chopperTest={
   ready:()=>backyard.loaded,
-  setSetting:value=>backyard.setSetting(value),setCostume:value=>backyard.setCostume(value),setAxe:value=>backyard.setAxe(value),
+  setSetting:value=>{if(coopGame?.coop.inSession())return Promise.resolve();return backyard.setSetting(value);},setCharacter:value=>backyard.setCharacter(value),setCostume:value=>backyard.setCostume(value),setAxe:value=>backyard.setAxe(value),
   setQuality:value=>{qualityMode=value;$('quality').value=value;return setQuality(value);},
   enterYard:()=>backyard.enterYard(),enterStump:()=>backyard.enterStump(),teleportNearTree:()=>backyard.teleportNearTree(),chopTree:()=>backyard.chopTree(),state:()=>backyard.state()
 };
+coopGame=integrateCoop({backyard,scene,camera,renderer,campaignGame,audio,updateHUD,resetLog:resetScene,loadLog:species=>{
+  currentLog={...game.log,name:species[0].toUpperCase()+species.slice(1),boss:false,burl:false,mineral:false,stony:false,hollow:false,forked:false,rotten:false,threshold:species==='pine'?42:72,mass:3.6,radius:.225,knot:false,grain:.15};
+  simulation.configure({log:currentLog,weather:physicalWeather(),...equippedToolStats()});simulation.reset();const target=simulation.goodAim();aim={x:target.x,z:target.z};yaw=target.yaw;clearTelemetry();updateGuide();updateHUD();
+}});
+campaignGame.award=award=>{if(coopGame.coop.inSession())coopGame.coop.session.award(award);else{campaignGame.xp+=award.xp;campaignGame.coins+=award.gold;}};
+window.chopperTest.coop=coopGame.coop.testHook({fellTree:()=>window.chopperTest.chopTree()});
+mountCharacterPicker(backyard,coopGame.coop);
 resetScene();qualityMode=backyard.qualityMode;$('quality').value=qualityMode;setQuality(qualityMode==='auto'?(softwareRenderer?'low':'medium'):qualityMode);$('reset-button').disabled=false;
 backyard.init().then(()=>{simulation.axeMesh.visible=false;simulation.stumpVisual.visible=false;window.simulationReady=true;document.documentElement.dataset.simulation='ready';}).catch(error=>{actor.group.visible=true;$('asset-loading').hidden=true;$('load-error').hidden=false;$('error-detail').textContent=`An asset could not load: ${error.message}`;console.error(error);});
 if(new URLSearchParams(location.search).has('debug')){simulation.setDebug(true);$('debug-physics').checked=true;console.assert(window.runPhysicsChecks().ok,'Continuous collision stress check failed');}

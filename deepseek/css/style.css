@@ -3363,3 +3363,176 @@ body.perf-lite .yard-hint {
 }
 
 
+
+/* ------------------------------------------------------------------ *
+ *  Co-op v1 + Alex
+ * ------------------------------------------------------------------ */
+
+/* Keep the shared Co-op button clear of the game's top-right actions and the
+   bottom control deck. These selectors beat coop/ui.js's injected base rules. */
+body .coop-root .coop-btn {
+  top: auto;
+  left: auto;
+  right: 14px;
+  bottom: 92px;
+  min-height: 46px;
+  padding: 9px 16px;
+  font-size: 18px;
+  color: #fff;
+  background: rgba(14, 18, 23, 0.97);
+  border-color: #7fd8ff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+body .coop-root .coop-panel {
+  top: auto;
+  right: 14px;
+  bottom: 150px;
+  max-height: calc(100vh - 176px);
+}
+@media (max-width: 900px) {
+  body .coop-root .coop-btn { bottom: 158px; }
+  body .coop-root .coop-panel { bottom: 216px; max-height: calc(100vh - 240px); }
+}
+
+/* The module docks the voice HUD bottom-left (see placeCoopVoiceHud() in
+   main.js for the free-roam lift above .yard-hud and the stump lift above
+   .stamina-card). When a narrow screen's Co-op panel covers nearly the full
+   width, the panel wins: the HUD is still there, but behind the open menu it
+   would just overlap. */
+@media (max-width: 900px) {
+  body .coop-root .coop-panel:not([hidden]) ~ .coop-voice-hud { display: none; }
+}
+/* Stump mode parks the voice HUD in the free right-hand column between the
+   atmosphere panel and the log card on large screens; on the small stump
+   layout main.js lifts it above the stamina card instead. The open menu hides
+   it, since the panel covers that column. */
+@media (min-width: 1100px) and (min-height: 800px) {
+  body.mode-stump .coop-root .coop-voice-hud { left: auto; right: 14px; top: 355px; bottom: auto; }
+}
+body.mode-stump .coop-root .coop-panel:not([hidden]) ~ .coop-voice-hud { display: none; }
+/* At the narrowest phones (<= 360 px) the game's own top and bottom HUD already
+   use the full height, so there is no non-overlapping slot for the two-row
+   voice HUD. Hide it there; the Co-op menu's voice switch still works. */
+@media (max-width: 360px) {
+  body .coop-root .coop-voice-hud { display: none; }
+}
+
+/* HUD: three compact stats so the shared log counter never squeezes a label. */
+.yard-stats { grid-template-columns: 1fr 1.35fr 1.1fr; }
+
+/* Big, high-contrast co-op notices (join / leave / lost). */
+.coop-toast {
+  position: fixed;
+  z-index: 2147483647;
+  left: 50%;
+  top: 17%;
+  transform: translateX(-50%);
+  width: min(680px, calc(100vw - 28px));
+  padding: 14px 20px;
+  border: 2px solid #7fd8ff;
+  border-radius: 10px;
+  background: rgba(9, 13, 7, 0.97);
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.6);
+}
+.coop-toast[hidden] { display: none; }
+.coop-toast[data-kind="good"] { border-color: #5be37d; }
+.coop-toast[data-kind="warn"] { border-color: #ffd24a; }
+
+/* Start screen character picker. */
+.character-overlay {
+  position: fixed;
+  z-index: 64;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow: auto;
+  background: rgba(4, 7, 3, 0.72);
+}
+.character-overlay.hidden { display: none; }
+.character-card {
+  width: min(620px, 100%);
+  padding: 22px;
+  color: var(--ink);
+  border: 1px solid var(--line-bright);
+  border-radius: 14px;
+  background: rgba(12, 17, 9, 0.98);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.66);
+}
+.character-card h2 {
+  margin: 6px 0 6px;
+  font-family: var(--serif);
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 400;
+  line-height: 1.1;
+}
+.character-sub,
+.character-note {
+  margin: 0 0 14px;
+  color: var(--ink-dim);
+  font-size: 16px;
+  line-height: 1.45;
+}
+.character-note { margin: 12px 0 0; }
+.character-tabs { grid-template-columns: repeat(2, 1fr); margin-top: 10px; }
+.character-tabs button,
+#characterButtons button,
+#costumeButtons button,
+#startCostumeButtons button { min-height: 44px; font-size: 17px; font-weight: 700; }
+.character-preview {
+  display: block;
+  width: 100%;
+  height: min(32vh, 250px);
+  margin: 12px 0;
+  object-fit: cover;
+  object-position: center 28%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0a0d11;
+}
+.character-outfit { display: grid; gap: 7px; }
+.character-outfit-label,
+.character-name-label {
+  color: var(--ink-dim);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.character-outfit small { font-size: 16px; color: var(--amber-bright); }
+.character-name-input {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 6px;
+  padding: 9px 12px;
+  color: #fff;
+  background: #0a0d11;
+  border: 2px solid #7fd8ff;
+  border-radius: 8px;
+  font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-size: 20px;
+}
+.character-play {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 14px;
+  padding: 11px 16px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.player-name-label { display: block; margin-top: 12px; }
+.settings-section .text-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 12px;
+  color: #fff;
+  background: #0a0d11;
+  border: 2px solid #7fd8ff;
+  border-radius: 8px;
+  font-size: 20px;
+}

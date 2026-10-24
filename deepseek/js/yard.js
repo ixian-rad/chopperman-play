@@ -10,7 +10,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { SergeyCharacter, AXE_SKINS, GAME_AXE_TO_SKIN } from './character.js';
+import {
+  PlayableCharacter,
+  AXE_SKINS,
+  GAME_AXE_TO_SKIN,
+  CHARACTER_DEFS,
+  CHARACTER_COSTUMES,
+  normaliseCharacter,
+  normaliseCostume,
+  costumeName,
+  spawnRemoteAvatar,
+} from './character.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadTreeLibrary, TreeField } from '../assets/trees_v2/runtime/trees.js';
 import { updateWind, WIND } from '../assets/trees_v2/runtime/wind.js';
@@ -339,8 +349,18 @@ export class YardMode {
     this.loaded = false;
     this.mode = 'yard';
     this.setting = 'nj';
+    this.characterId = 'sergey';
     this.costume = 'tee';
     this.axeSkin = 'sergey';
+    /** Session seed shared by host and guest. null in plain single-player. */
+    this.worldSeed = null;
+    this.coop = null;
+    this.remoteAvatars = new Set();
+    this.remoteAssetCache = new Map();
+    this.coopLogs = new Map();
+    this.coopTeamSplits = 0;
+    this.coopSplitSeq = 0;
+    this.characterLabel = 'Sergey';
     this.elapsed = 0;
     this.yards = new Map();
     this.activeYard = null;
@@ -392,6 +412,7 @@ export class YardMode {
       location: id('yardLocation'),
       modeLabel: id('yardModeLabel'),
       felled: id('yardFelled'),
+      coopTeamSplits: id('coopTeamSplits'),
       nearest: id('yardNearest'),
       prompt: id('yardPrompt'),
       promptTitle: id('yardPromptTitle'),
@@ -406,14 +427,18 @@ export class YardMode {
   async init(onProgress = null) {
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const report = (value, label) => onProgress?.(clamp(value, 0, 1), label);
-    report(0.02, 'Calling Sergey in from the woodpile…');
-    this.character = new SergeyCharacter({
+    report(0.02, 'Calling the lumberjack in from the woodpile…');
+    const savedCharacter = normaliseCharacter(this.game?.settings?.character);
+    this.characterId = savedCharacter;
+    this.characterLabel = CHARACTER_DEFS[savedCharacter].name;
+    this.character = new PlayableCharacter({
       scene: this.scene,
       loader: this.loader,
       sound: this.sound,
-      onProgress: (p) => report(0.02 + p * 0.25, 'Fitting Sergey’s boots…'),
+      character: savedCharacter,
+      onProgress: (p) => report(0.02 + p * 0.25, `Fitting ${CHARACTER_DEFS[savedCharacter].name}’s boots…`),
     });
-    await this.character.load();
+    await this.character.load(savedCharacter);
     report(0.3, 'Loading the axes and yard props…');
 
     const entries = this.assetList();
@@ -486,7 +511,7 @@ export class YardMode {
     const savedSetting = this.game?.settings?.setting;
     const savedCostume = this.game?.settings?.costume;
     this.setting = savedSetting === 'tiraspol' ? 'tiraspol' : 'nj';
-    this.costume = savedCostume === 'jacket' ? 'jacket' : 'tee';
+    this.costume = normaliseCostume(this.characterId, savedCostume);
     const savedAxe = GAME_AXE_TO_SKIN[this.game?.state?.axeId] || 'sergey';
     this.axeSkin = AXE_SKINS[savedAxe] ? savedAxe : 'sergey';
     await this.character.setCostume(this.costume);
@@ -497,7 +522,7 @@ export class YardMode {
     this.prewarmTextures();
     this.attachEvents();
     this.enterYard({ instant: true, spawn: true });
-    report(1, 'Sergey is ready.');
+    report(1, `${this.characterLabel} is ready.`);
     return true;
   }
 
@@ -706,6 +731,22 @@ export class YardMode {
     this.targetBand = band;
   }
 
+  /**
+   * Every tree-placement decision is driven by this 32-bit seed. In plain
+   * single-player the historical fixed seeds keep the yards exactly as they
+   * looked in Assets v2; online both peers derive the same seed from the
+   * host's `(seed, setting)` pair.
+   */
+  treeSeedFor(setting) {
+    const base = this.worldSeed;
+    if (base == null) return setting === 'nj' ? 517 : 991;
+    if (base === 517 && setting === 'nj') return 517;
+    if (base === 991 && setting === 'tiraspol') return 991;
+    const salt = setting === 'nj' ? 0x9e3779b9 : 0x85ebca6b;
+    const mixed = mulberry32(((Number(base) >>> 0) ^ salt) >>> 0)();
+    return (Math.floor(mixed * 4294967296) >>> 0) || 1;
+  }
+
   buildYard(setting) {
     const group = new THREE.Group();
     group.name = `yard-${setting}`;
@@ -718,7 +759,7 @@ export class YardMode {
       colliders: [],
       backdrop: null,
       field: null,
-      treeSeed: setting === 'nj' ? 517 : 991,
+      treeSeed: this.treeSeedFor(setting),
       label: SETTING_LABELS[setting],
     };
     this.yards.set(setting, yard);
@@ -1378,13 +1419,41 @@ export class YardMode {
   }
 
   setCostume(costume) {
-    const next = costume === 'jacket' ? 'jacket' : 'tee';
+    const next = normaliseCostume(this.characterId, costume);
+    if (next !== costume) {
+      // Ignore a costume id that belongs to the other character (e.g. the
+      // start-screen controls racing a character swap).
+      return Promise.resolve(this.costume);
+    }
     this.costume = next;
     this.game?.setSetting('costume', next);
     return this.character.setCostume(next).then(() => {
       this.character.setQuality(this.quality);
-      this.onToast?.(`Costume: ${next === 'jacket' ? 'Blue jacket' : 'Black tee'}`, 'gold');
+      const label = costumeName(this.characterId, next);
+      this.onToast?.(`Costume: ${label}`, 'gold');
       return next;
+    });
+  }
+
+  /** Swap between Sergey and Alex; both use the same axes/economy. */
+  setCharacter(character) {
+    const next = normaliseCharacter(character);
+    if (next === this.characterId && this.character?.isLoaded) {
+      return Promise.resolve(this.characterId);
+    }
+    this.characterId = next;
+    this.characterLabel = CHARACTER_DEFS[next].name;
+    const defaultCostume = CHARACTER_DEFS[next].defaultCostume;
+    this.costume = defaultCostume;
+    this.game?.setSetting('character', next);
+    this.game?.setSetting('costume', defaultCostume);
+    return this.character.setCharacter(next).then(async () => {
+      await this.character.setCostume(defaultCostume);
+      await this.character.setAxe(this.axeSkin);
+      this.character.setQuality(this.quality);
+      this.prewarmTextures();
+      this.onToast?.(`Character: ${this.characterLabel} · ${costumeName(next, defaultCostume)}`, 'gold');
+      return this.characterId;
     });
   }
 
@@ -1833,6 +1902,24 @@ export class YardMode {
     return true;
   }
 
+  playTreeHitFeedback(tree, dir, power, felled, { remote = false } = {}) {
+    const point = new THREE.Vector3(
+      tree.position.x,
+      tree.position.y + tree.meta.chopHeight * tree.scale,
+      tree.position.z,
+    );
+    const species = tree.species;
+    this.chips?.spawn(point, dir, felled ? 22 : remote ? 11 : 13);
+    const weather = this.weather?.weather || 'clear';
+    this.sound?.impact?.(remote ? 0.62 : 0.7 + power * 0.2, 1.1, weather, {
+      wood: species === 'walnut' || species === 'apricot' || species === 'poplar' ? 'oak' : species,
+      pan: (Math.random() - 0.5) * 0.4,
+    });
+    this.shake = Math.max(this.shake, felled ? 0.12 : remote ? 0.03 : 0.055);
+    if (!felled && tree.hits >= tree.meta.hitsToFell - 1) this.sound?.treeCreak?.();
+    return point;
+  }
+
   async doTreeSwing(tree, { power = 1 } = {}) {
     if (!tree || this.swingLock) return null;
     this.swingLock = true;
@@ -1845,23 +1932,18 @@ export class YardMode {
       0,
       tree.position.z - this.player.z,
     ).normalize();
-    const point = new THREE.Vector3(
-      tree.position.x,
-      tree.position.y + tree.meta.chopHeight * tree.scale,
-      tree.position.z,
-    );
-    const result = this.activeYard?.field?.hit(tree, dir, power) || { felled: false };
     const species = tree.species;
-    this.chips?.spawn(point, dir, result.felled ? 22 : 13);
-    const weather = this.weather?.weather || 'clear';
-    this.sound?.impact?.(0.7 + power * 0.2, 1.1, weather, {
-      wood: species === 'walnut' || species === 'apricot' || species === 'poplar' ? 'oak' : species,
-      pan: (Math.random() - 0.5) * 0.4,
-    });
-    this.shake = Math.max(this.shake, result.felled ? 0.12 : 0.055);
-    if (!result.felled && tree.hits >= tree.meta.hitsToFell - 1) {
-      this.sound?.treeCreak?.();
+    if (this.coop?.inSession()) {
+      // Co-op: feedback now, hp and the fall come back from the host. The
+      // local TreeField is not mutated here, or the two worlds would diverge.
+      this.playTreeHitFeedback(tree, dir, power, false);
+      this.coop.session.hitTree(tree.id, power);
+      await this.wait(0.3);
+      this.swingLock = false;
+      return { felled: false, hits: tree.hits, authority: 'host' };
     }
+    const result = this.activeYard?.field?.hit(tree, dir, power) || { felled: false };
+    this.playTreeHitFeedback(tree, dir, power, result.felled);
     if (result.felled) {
       this.sound?.treeCreak?.();
       // The runtime clamps its fall integration to 1/30 s per frame, so at
@@ -1990,20 +2072,15 @@ export class YardMode {
       0,
       tree.position.z - this.player.z,
     ).normalize();
-    const point = new THREE.Vector3(
-      tree.position.x,
-      tree.position.y + tree.meta.chopHeight * tree.scale,
-      tree.position.z,
-    );
+    if (this.coop?.inSession()) {
+      this.playTreeHitFeedback(tree, dir, 1, false);
+      this.coop.session.hitTree(tree.id, 1);
+      await this.wait(0.22);
+      this.swingLock = false;
+      return { felled: false, hits: tree.hits, authority: 'host' };
+    }
     const result = this.activeYard?.field?.hit(tree, dir, 1) || { felled: false };
-    this.chips?.spawn(point, dir, result.felled ? 22 : 12);
-    this.sound?.impact?.(0.82, 1.1, this.weather?.weather || 'clear', {
-      wood: tree.species === 'walnut' || tree.species === 'apricot' || tree.species === 'poplar'
-        ? 'oak'
-        : tree.species,
-    });
-    this.shake = Math.max(this.shake, result.felled ? 0.12 : 0.05);
-    if (!result.felled && tree.hits >= tree.meta.hitsToFell - 1) this.sound?.treeCreak?.();
+    this.playTreeHitFeedback(tree, dir, 1, result.felled);
     if (result.felled) {
       this.sound?.treeCreak?.();
       if (tree.anim) {
@@ -2197,6 +2274,7 @@ export class YardMode {
       this.ui.modeLabel.textContent = this.mode === 'stump' ? 'At the chopping block' : 'Yard · free roam';
     }
     if (this.ui.felled) this.ui.felled.textContent = String(felled);
+    if (this.ui.coopTeamSplits) this.ui.coopTeamSplits.textContent = String(this.coopTeamSplits);
     if (this.ui.nearest) {
       const best = this.nearestTree();
       this.ui.nearest.textContent = best
@@ -2225,6 +2303,7 @@ export class YardMode {
       for (const yard of this.yards.values()) this.updateTreeShadows(yard);
     }
     this.character?.update(dt);
+    for (const avatar of this.remoteAvatars) avatar.update?.(dt);
     if (this.characterShadow) {
       this.characterShadow.position.set(this.player.x, 0.032, this.player.z);
       this.characterShadow.visible = Boolean(this.character?.isLoaded);
@@ -2241,6 +2320,305 @@ export class YardMode {
     this.blockDistance = Math.hypot(this.player.x - BLOCK.x, this.player.z - BLOCK.z);
   }
 
+  /* ---------------------------------------------------------------- *
+   *  Co-op: deterministic world, shared trees/logs, remote avatar
+   * ---------------------------------------------------------------- */
+
+  /** Coop module hook: rebuild both yards from the host's (seed, setting). */
+  async onCoopWorld({ seed, setting, isHost = false, fresh = false } = {}) {
+    if (seed != null) this.worldSeed = Number(seed) >>> 0;
+    const nextSetting = setting === 'tiraspol' ? 'tiraspol' : 'nj';
+    this.coopLogs.clear();
+    this.coopTeamSplits = 0;
+    this.coopSplitSeq = 0;
+    this.target = null;
+    this.aftermath = null;
+    this.swingLock = false;
+    for (const key of ['nj', 'tiraspol']) {
+      const yard = this.yards.get(key);
+      if (!yard) continue;
+      yard.treeSeed = this.treeSeedFor(key);
+      this.buildTrees(key, yard);
+    }
+    // A guest discards local felled/damaged trees here: the host's snapshot
+    // is applied right after this hook (felled[] and damaged{}).
+    this.applyQuality(this.quality, { silent: true });
+    if (nextSetting !== this.setting) this.applySetting(nextSetting, { silent: true });
+    this.activeYard = this.yards.get(nextSetting) || this.activeYard;
+    this.updateUi();
+    this.onHud?.();
+    return { seed: this.worldSeed, setting: nextSetting, fresh, isHost };
+  }
+
+  coopTrees() {
+    const field = this.activeYard?.field;
+    if (!field) return [];
+    return field.trees.map((tree) => ({
+      id: String(tree.id),
+      hp: Math.max(1, tree.meta.hitsToFell - tree.hits),
+      x: Number(tree.position.x.toFixed(3)),
+      z: Number(tree.position.z.toFixed(3)),
+    }));
+  }
+
+  findCoopTree(id) {
+    const field = this.activeYard?.field;
+    if (!field) return null;
+    const numeric = Number(id);
+    if (Number.isInteger(numeric) && field.trees[numeric]) return field.trees[numeric];
+    return field.trees.find((tree) => String(tree.id) === String(id)) || null;
+  }
+
+  /** Network snapshot of the local playable state (feet on the ground). */
+  localNetState() {
+    const character = this.character;
+    let anim = 'Idle';
+    if (character?.oneShotName === 'Victory_Cheer') anim = 'Victory_Cheer';
+    else if (character?.oneShotName === 'Heavy_Hammer_Swing' || character?.oneShotName === 'Charged_Axe_Chop') {
+      anim = character.oneShotName;
+    } else if (character?.locomotion === 'run') anim = 'Run';
+    else if (character?.locomotion === 'walk') anim = 'Casual_Walk';
+    else if (character?.stance) anim = 'Axe_Stance';
+    return {
+      x: Number(this.player.x.toFixed(3)),
+      y: Number(this.player.y.toFixed(3)),
+      z: Number(this.player.z.toFixed(3)),
+      yaw: Number(this.playerYaw.toFixed(4)),
+      anim,
+      swinging: Boolean(
+        this.swingLock ||
+          character?.oneShotName === 'Heavy_Hammer_Swing' ||
+          character?.oneShotName === 'Charged_Axe_Chop',
+      ),
+      running: character?.locomotion === 'run',
+    };
+  }
+
+  /** Coop module hook: independent remote clone, own mixer and axe. */
+  async spawnCoopAvatar(info = {}) {
+    const avatar = await spawnRemoteAvatar({
+      scene: this.scene,
+      loader: this.loader,
+      character: info.character,
+      costume: info.costume,
+      axe: info.axe,
+      cache: this.remoteAssetCache,
+      quality: this.quality,
+    });
+    this.remoteAvatars.add(avatar);
+    const dispose = avatar.dispose.bind(avatar);
+    avatar.dispose = () => {
+      this.remoteAvatars.delete(avatar);
+      dispose();
+    };
+    return avatar;
+  }
+
+  coopRewardFor(tree) {
+    return {
+      xp: 26 + Math.round((tree.meta.hitsToFell || 5) * 4),
+      gold: 12 + Math.round((tree.meta.height || 10) * 1.5),
+      loot: 0,
+      reason: 'tree',
+    };
+  }
+
+  onCoopTreeHit(ev, mine) {
+    const tree = this.findCoopTree(ev.tree);
+    if (!tree) return;
+    const max = Number(ev.max) || tree.meta.hitsToFell;
+    const hp = Math.max(0, Number(ev.hp) || 0);
+    tree.hits = Math.max(0, max - hp);
+    if (!ev.instant) {
+      const field = this.activeYard?.field;
+      if (tree.state === 'standing' && field) field.activate(tree);
+      if (tree.anim) tree.anim.shake = 1;
+      if (!mine) {
+        const dir = new THREE.Vector3(
+          tree.position.x - this.player.x,
+          0,
+          tree.position.z - this.player.z,
+        );
+        if (dir.lengthSq() < 1e-5) dir.set(1, 0, 0);
+        dir.normalize();
+        this.playTreeHitFeedback(tree, dir, 1, false, { remote: true });
+      }
+    }
+    this.updateUi();
+  }
+
+  startCoopFall(tree, dir) {
+    const field = this.activeYard?.field;
+    if (!field) return;
+    if (tree.state === 'fallen' || tree.state === 'stump') return;
+    field.fell(tree, dir);
+    if (tree.anim) {
+      tree.anim.k *= 2.2;
+      tree.anim.w = Math.max(tree.anim.w, 0.22);
+      tree.anim.onLand = () => {
+        this.sound?.treeFall?.();
+        this.shake = Math.max(this.shake, 0.22);
+      };
+    }
+    field._dirty = true;
+  }
+
+  /** Late-join sync: show the tree already down without replaying the fall. */
+  snapCoopFelled(tree, dir) {
+    const field = this.activeYard?.field;
+    if (!field) return;
+    field.fell(tree, dir);
+    if (!tree.anim) return;
+    tree.anim.th = tree.anim.rest;
+    tree.anim.w = 0;
+    tree.anim.bounces = 1;
+    if (tree.obj) {
+      tree.obj.hinge.quaternion.setFromAxisAngle(tree.anim.axis, tree.anim.rest);
+      tree.obj.inner.rotation.set(0, tree.anim.twist, 0);
+    }
+    tree.state = 'stump';
+    tree.anim.shake = 0;
+    field._dirty = true;
+  }
+
+  onCoopTreeFell(ev, mine) {
+    const tree = this.findCoopTree(ev.tree);
+    if (!tree) return;
+    const already = tree.state === 'fallen' || tree.state === 'stump' || tree._coopFelled;
+    tree._coopFelled = true;
+    tree.hits = tree.meta.hitsToFell;
+    if (!already) {
+      const dir = new THREE.Vector3(
+        Number(ev.dir?.[0]) || 1,
+        0,
+        Number(ev.dir?.[1]) || 0,
+      );
+      if (dir.lengthSq() < 1e-5) dir.set(1, 0, 0);
+      dir.normalize();
+      if (ev.instant) {
+        this.snapCoopFelled(tree, dir);
+      } else {
+        this.startCoopFall(tree, dir);
+        const label = WOOD_LABEL[tree.species] || tree.species;
+        if (mine) {
+          this.onToast?.(`${label} is going over!`, 'gold');
+          this.celebrate('tree');
+          this.coop?.session?.award?.(this.coopRewardFor(tree));
+        } else {
+          const actor = this.coop?.session?.players?.get?.(ev.by)?.name || 'Your partner';
+          this.onToast?.(`${actor} felled a ${label.toLowerCase()}!`, 'good');
+        }
+        // The host is the only one that registers a felled tree's log.
+        if (this.coop?.session?.isHost) {
+          this.coop.session.spawnLog({
+            id: `tree-${ev.tree}-1`,
+            tree: String(ev.tree),
+            species: tree.species,
+            label,
+            source: 'tree',
+          });
+        }
+      }
+    }
+    this.updateUi();
+  }
+
+  recountCoopLogs() {
+    let split = 0;
+    for (const log of this.coopLogs.values()) if (log?.split) split += 1;
+    this.coopTeamSplits = split;
+  }
+
+  onCoopLogSpawned(ev, mine) {
+    const info = { ...(ev.info || {}), id: String(ev.log) };
+    if (info.split == null) info.split = false;
+    this.coopLogs.set(String(ev.log), info);
+    this.recountCoopLogs();
+    this.updateUi();
+  }
+
+  onCoopLogSplit(ev, mine) {
+    const log = this.coopLogs.get(String(ev.log));
+    if (log) log.split = true;
+    this.recountCoopLogs();
+    const actor = this.coop?.session?.players?.get?.(ev.by)?.name || 'Your partner';
+    this.onToast?.(
+      mine
+        ? `Log split — team total ${this.coopTeamSplits}`
+        : `${actor} split a log — team total ${this.coopTeamSplits}`,
+      mine ? 'good' : 'gold',
+    );
+    this.updateUi();
+  }
+
+  onCoopAward(ev, mine) {
+    if (!this.game?.applyCoopAward) return;
+    this.game.applyCoopAward({
+      xp: ev.xp,
+      gold: ev.gold,
+      loot: ev.loot,
+      reason: ev.reason,
+      countTree: !ev.shared,
+    });
+    const bits = [];
+    if (ev.xp) bits.push(`+${ev.xp} XP`);
+    if (ev.gold) bits.push(`+${ev.gold} coins`);
+    const detail = bits.join(' · ');
+    const actor = this.coop?.session?.players?.get?.(ev.by)?.name || (ev.by === 'P1' ? 'Host' : 'Partner');
+    if (detail) {
+      this.onToast?.(
+        ev.shared ? `${actor} ${detail} shared` : detail,
+        ev.shared ? 'gold' : 'good',
+      );
+    }
+    this.onHud?.();
+    this.updateUi();
+  }
+
+  onCoopDenied(ev) {
+    if (!ev) return;
+    if (ev.kind === 'logSplit') {
+      this.coopLogs.delete(String(ev.log));
+      this.recountCoopLogs();
+      this.onToast?.('Log already taken — pick another round.', 'bad');
+      this.updateUi();
+    } else if (ev.kind === 'hit') {
+      this.onToast?.('That tree is already down.', '');
+    }
+  }
+
+  /**
+   * A stump split finished. Claim a shared log so the host can adjudicate the
+   * first claim; when no tree log is pending, register a fresh stump log so the
+   * team counter still advances on both screens.
+   */
+  claimCoopLogSplit(species = 'pine') {
+    if (!this.coop?.inSession?.()) return null;
+    const session = this.coop.session;
+    let id = null;
+    let info = null;
+    for (const [logId, log] of this.coopLogs) {
+      if (!log?.split && log.source === 'tree') {
+        id = logId;
+        info = { ...log };
+        break;
+      }
+    }
+    if (!id) {
+      this.coopSplitSeq += 1;
+      id = `stump-${session.localId}-${Date.now().toString(36)}-${this.coopSplitSeq}`;
+      info = {
+        id,
+        species,
+        label: WOOD_LABEL[species] || species,
+        source: 'stump',
+      };
+      session.spawnLog(info);
+    }
+    session.splitLog(id, { ...info, species });
+    return id;
+  }
+
   state() {
     const field = this.activeYard?.field;
     const raw = field ? field.stats() : { standing: 0, chopping: 0, falling: 0, felled: 0 };
@@ -2255,6 +2633,8 @@ export class YardMode {
     const nearest = this.nearestTreeState();
     return {
       setting: this.setting,
+      character: this.characterId,
+      characterName: this.characterLabel,
       costume: this.costume,
       axe: this.axeSkin,
       quality: this.quality,

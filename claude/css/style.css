@@ -368,6 +368,68 @@ body.yard #meter { display: none; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------------------------------------------------------------- co-op v1: character picker
+   Used on the start screen and in the Player sheet. Selected = the accent fill (5.4:1). */
+.load-body { overflow-y: auto; }
+.pick { display: flex; flex-direction: column; gap: 10px; }
+.pick-title { font-size: 18px; font-weight: 700; color: #f2e6d0; }
+.pick-chars { display: flex; gap: 10px; }
+.pick-char { flex: 1; display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; font-size: 20px; font-weight: 700; text-align: left; min-width: 0; }
+.pick-char img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; flex: none; background: #2a2116; }
+.pick-char.on, .pick-cos button.on { background: var(--accent-dark); border-color: var(--accent); }
+.pick-cos { display: flex; gap: 8px; flex-wrap: wrap; }
+.pick-cos button { flex: 1; font-size: 18px; padding: 7px 10px; }
+.pick-name { display: flex; align-items: center; gap: 10px; font-size: 18px; color: #e8dcc8; }
+.pick-name input {
+  flex: 1; min-width: 0; font: inherit; font-size: 18px; padding: 7px 10px; color: #fff; background: #0d0a06;
+  border: 1px solid rgba(255, 210, 140, 0.45); border-radius: 8px;
+}
+.pick-name input::placeholder { color: #b9ad98; opacity: 1; }
+.pick-status { font-size: 16px; color: var(--warn); }
+.pick-status:empty { display: none; }
+.start-btns { display: flex; gap: 10px; }
+.start-btns button { font-size: 20px; padding: 9px 18px; min-height: 48px; }
+#btn-play { flex: 1; }
+#player .sheet { width: min(640px, 94vw); }
+.pick-char span { min-width: 0; overflow-wrap: anywhere; }
+.player-grid { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; align-items: start; }
+.player-art { width: 100%; height: 290px; object-fit: cover; border-radius: 10px; background: #1b2018; }
+@media (max-width: 520px) { .player-grid { grid-template-columns: 1fr; } .player-art { height: 180px; } }
+#btn-player { font-size: var(--fs-sm); padding: 4px 8px; }
+
+/* Co-op HUD: the shared "team logs split" counter (only while a session exists). */
+#stats .row.team.hidden { display: none; }
+#stats .row.team { margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--panel-border); align-items: center; }
+#stats .row.team b { font-size: var(--fs-num); color: var(--good); }
+#stats .row.team .partner { font-size: var(--fs-sm); color: var(--muted); }
+
+/* Co-op partner nameplate (DOM label over the 3D view, see js/coopgame.js): solid backing. */
+.nameplate {
+  position: fixed; left: 0; top: 0; z-index: 1; pointer-events: none; white-space: nowrap;
+  padding: 2px 12px; border-radius: 10px; background: rgba(10, 14, 18, 0.85); border: 2px solid #7fd8ff;
+  color: #fff; font-size: 20px; font-weight: 700; line-height: 1.3; will-change: transform;
+}
+.nameplate.host { border-color: #ffd24a; }
+.nameplate[hidden] { display: none; }
+/* Partner talking (proximity voice chat): green frame + speaker icon, like the module's sprite. */
+.nameplate.speaking { border-color: #5be37d; box-shadow: 0 0 0 3px rgba(91, 227, 125, 0.45); padding-left: 38px; }
+.nameplate.speaking::before {
+  content: ''; position: absolute; left: 10px; top: 50%; width: 22px; height: 22px; margin-top: -11px;
+  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%235be37d' d='M3 9h4l5-4v14l-5-4H3z'/%3E%3Cpath fill='none' stroke='%235be37d' stroke-width='2.2' stroke-linecap='round' d='M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13'/%3E%3C/svg%3E");
+}
+
+/* Co-op menu (coop/ui.js): the toggle is a full-width button in the actions panel instead of
+   the module's fixed top-right corner (which is this game's log card); the menu floats centred.
+   ID selectors win over the module's injected class rules without editing ./coop/. */
+#actions > .coop-root { grid-column: 1 / -1; }
+#actions #coop-toggle { position: static; display: block; width: 100%; min-height: 40px; padding: 6px 10px; font-size: 18px; z-index: auto; }
+#coop-panel { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); }
+/* Voice chat HUD (coop/ui.js #coop-voice-hud), moved into #bottombar by main.js: in the grid,
+   not pinned to the corner, so it never sits on the conditions panel or the hint. */
+#bottombar > .coop-voice-slot { align-self: flex-start; max-width: 100%; }
+#coop-voice-hud { position: static; z-index: auto; max-width: 100%; }
+#coop-panel .coop-x { position: absolute; top: 10px; right: 10px; min-height: 40px; padding: 4px 12px; background: #2f4a66; }
+
 /* Narrow desktop windows: the mouse hint would wrap into a tall block; the Help sheet covers it. */
 @media (max-width: 1000px) {
   #hint { display: none; }

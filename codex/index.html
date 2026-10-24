@@ -10,16 +10,29 @@
 </head>
 <body data-play-mode="stump">
   <section id="asset-loading" aria-label="Loading backyard assets" role="status">
-    <div class="loading-art"></div><div class="loading-copy"><div class="eyebrow">BACKYARD / ASSETS V2</div><h1>Find the grain.</h1><p>Two backyards. One good swing.<br>Step into Sergey's boots.</p><progress id="asset-progress" value="0" max="1" aria-label="Asset loading progress"></progress><p id="asset-progress-label">Unpacking the backyard…</p></div>
+    <div class="loading-art"></div><div class="loading-copy"><div class="eyebrow">BACKYARD / ASSETS V2</div><h1>Find the grain.</h1><p>Two backyards. One good swing.<br>Choose your chopping partner.</p><div data-character-picker class="character-picker">
+      <img width="110" height="130" alt="Character preview">
+      <div><label class="field">CHARACTER<select data-character><option value="sergey">Sergey</option><option value="alex">Alex</option></select></label>
+      <label class="field">COSTUME<select data-costume><option value="tee">Black tee</option><option value="jacket">Blue jacket</option></select></label>
+      <label class="field">PLAYER NAME<input data-player-name maxlength="16" placeholder="Your name" autocomplete="off" value="Sergey"></label></div>
+    </div><progress id="asset-progress" value="0" max="1" aria-label="Asset loading progress"></progress><p id="asset-progress-label">Unpacking the backyard…</p></div>
   </section>
+  <dialog id="character-dialog"><h2>Your lumberjack</h2><div data-character-picker class="character-picker">
+      <img width="110" height="130" alt="Character preview">
+      <div><label class="field">CHARACTER<select data-character><option value="sergey">Sergey</option><option value="alex">Alex</option></select></label>
+      <label class="field">COSTUME<select data-costume><option value="tee">Black tee</option><option value="jacket">Blue jacket</option></select></label>
+      <label class="field">PLAYER NAME<input data-player-name maxlength="16" placeholder="Your name" autocomplete="off" value="Sergey"></label></div>
+    </div><p id="character-message">Same controls, four axes, two backyards. Your choice saves automatically.</p><button id="character-done" class="yard-button">Back to the yard</button></dialog>
   <div id="viewport" aria-label="3D chopping game. Aim at the log, drag and release to chop. Right drag to orbit."></div>
   <div id="pull-guide" hidden aria-hidden="true"><svg><line id="pull-line" stroke-width="3" stroke-dasharray="6 5"/></svg><span id="pull-label"></span></div>
   <div class="vignette" aria-hidden="true"></div>
   <header class="topbar">
     <a class="brand" href="./"><span class="axe-mark">↟</span> BACKYARD<span class="brand-period">.</span></a>
     <div class="header-caption">FIND THE GRAIN <span> / </span> A FICTIONAL NEW JERSEY BACKYARD</div>
+    <button id="character-button" class="view-button">Character</button>
     <button id="scene-view" class="view-button" aria-pressed="false" title="Show or hide the side panels · V">Scene view <kbd>V</kbd></button>
     <button id="help-button" class="icon-button" aria-label="Controls and field notes">?</button>
+    <output id="team-logs" hidden>Team logs split · 0</output>
   </header>
   <main class="overlay">
     <section class="scoreboard panel" aria-label="Game progress">
@@ -31,6 +44,7 @@
     <section id="control-panel" class="control-panel panel" data-mode="campaign" aria-label="Chopping controls">
       <div class="eyebrow">YOUR NEXT GOOD SPLIT</div><h1>Find the grain.</h1>
       <button id="explore-yard" class="yard-button">Explore the yard ↗ <kbd>ESC</kbd></button><div class="campaign"><span id="campaign-label">CHAPTER 1 / 6 · First firewood</span><progress id="campaign-progress" value="0" max="18" aria-label="Campaign logs cleared"></progress></div>
+      <button id="shared-log" class="yard-button" hidden>Shared timber · fell a tree first</button>
       <div class="log-heading"><strong id="log-type">Pine</strong><span id="log-count">LOG 01</span></div>
       <div class="aim-readout"><span id="aim-label">CENTER AIM</span><span id="angle-label">GRAIN 0°</span></div>
       <div class="timing-label"><span id="timing-label">Ready to find your rhythm</span><output id="timing-value">100%</output></div>
@@ -62,11 +76,13 @@
       </div></details>
     </section>
     <section id="yard-panel" class="panel" aria-label="Yard controls"><div class="eyebrow">A LITTLE ROOM TO ROAM</div><h1 id="yard-name">NJ backyard</h1><p>WASD to walk · Shift to run.<br>Right drag to turn and look.</p><p>Face a tree. Click / Space chops.<br>At the block, E splits logs.</p><output id="yard-tree-count">25 trees standing</output><output id="yard-wallet">0 coins · 0 XP</output><p class="tree-reward">Each tree: +35 XP · +20 coins</p><button id="return-stump" class="yard-button">Work at the block <kbd>E</kbd></button></section>
+    <div id="coop-toast" role="status" hidden></div>
     <div id="yard-prompt" role="status">WASD to walk · Shift to run</div>
     <aside class="telemetry panel" aria-label="Physics and conditions">
       <details id="yard-wardrobe" open><summary>YOUR BACKYARD</summary>
         <label class="field">SETTING<select id="yard-setting"><option value="nj">NJ backyard</option><option value="tiraspol">Tiraspol backyard</option></select></label>
-        <label class="field">SERGEY'S COSTUME<select id="sergey-costume"><option value="tee">Black tee</option><option value="jacket">Blue jacket</option></select></label>
+        <label class="field">CHARACTER<select id="player-character"><option value="sergey">Sergey</option><option value="alex">Alex</option></select></label>
+        <label class="field">COSTUME<select id="sergey-costume"><option value="tee">Black tee</option><option value="jacket">Blue jacket</option></select></label>
         <label class="field">AXE<select id="sergey-axe"><option value="sergey">Sergey's hatchet</option><option value="double_bit">Double-bit · +4% cutting</option><option value="maul">Splitting maul · +0.55 kg</option><option id="golden-axe-option" value="golden" disabled>Golden axe · unlock in shed</option></select></label>
         <p id="axe-description">Sergey's own hatchet. A balanced everyday tool.</p>
       </details><div class="eyebrow cut-caption"><i class="live-dot"></i> LIVE / THE CUT</div>

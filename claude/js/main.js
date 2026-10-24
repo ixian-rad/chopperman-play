@@ -19,10 +19,12 @@ import { mergeStatic, setMerged } from './merge.js';
 import { setTextureScale, setAnisoCap, setMipFilter } from './textures.js';
 import { WEATHER_ORDER, AXES, AXES_BY_ID, AXE_FOR_MODEL } from './data.js';
 import { progress } from './assets.js';
-import { Sergey, COSTUMES } from './sergey.js';
+import { Sergey, COSTUMES, CHARACTERS, charOf } from './sergey.js';
 import { YardWorld, SETTINGS } from './yard.js';
 import { Player } from './player.js';
 import { WoodChips } from './woodchips.js';
+import { Picker } from './picker.js';
+import { setupCoop } from './coopgame.js';
 
 const BLOCK = { R: 0.31, H: 0.46 };
 const CAMERA_HOME = { pos: new THREE.Vector3(1.85, 1.55, 2.75), target: new THREE.Vector3(-0.1, 0.72, -0.45) };
@@ -39,6 +41,26 @@ progress.listeners.add((done, total) => {
   if (c) c.textContent = `${done} / ${total} assets`;
 });
 const setLoadText = (t) => { const el = $('loading-text'); if (el) el.textContent = t; };
+// Start screen: once the player touches the picker (or anything on the card) it waits for Play.
+const startUi = { touched: false, started: false };
+for (const ev of ['pointerdown', 'keydown', 'focusin']) document.querySelector('.load-card')?.addEventListener(ev, () => { startUi.touched = true; });
+// The start-screen picker is shown right away; picks made before the game is wired up (physics
+// WASM still loading) are kept and applied by main() as soon as it can.
+const earlyPick = { api: null, queued: {}, saved: (() => { try { return JSON.parse(localStorage.getItem('backyard-log-splitter-save-v2'))?.settings ?? {}; } catch { return {}; } })() };
+const startPicker = new Picker($('start-pick'), {
+  preview: $('load-art'), idPrefix: 'sp',
+  get: () => {
+    if (earlyPick.api) return earlyPick.api.get();
+    const costume = COSTUMES[earlyPick.queued.costume ?? earlyPick.saved.costume] ? (earlyPick.queued.costume ?? earlyPick.saved.costume) : 'tee';
+    return { character: charOf(costume), costume, name: earlyPick.queued.name ?? earlyPick.saved.playerName ?? '' };
+  },
+  set: (p) => {
+    if (earlyPick.api) return earlyPick.api.set(p);
+    if (p.character) p = { costume: CHARACTERS[p.character].costumes[0] };
+    Object.assign(earlyPick.queued, p);
+    return Promise.resolve();
+  },
+});
 
 async function main() {
   const physics = await Physics.create();
@@ -124,11 +146,21 @@ async function main() {
     loading.style.backgroundSize = 'cover';
     loading.style.backgroundPosition = 'center';
   }
-  const sergey = new Sergey(scene);
+  // Character: costume ids are unique per character (tee / jacket = Sergey, camo / bomber = Alex).
+  // Only the saved character's costume loads at start; the others load when picked.
+  if (earlyPick.queued.costume) S0.costume = earlyPick.queued.costume;
+  if (earlyPick.queued.name !== undefined) S0.playerName = earlyPick.queued.name;
+  if (!COSTUMES[S0.costume]) S0.costume = 'tee';
+  S0.character = charOf(S0.costume);
+  const sergey = new Sergey(scene); // the local player's rig (either character; the name stuck)
   const world = new YardWorld({ scene, env, physics, block, camera });
   const woodchips = new WoodChips(scene);
-  setLoadText('Loading Sergey, the yard and the trees…');
-  const charReady = sergey.setCostume(COSTUMES[S0.costume] ? S0.costume : 'tee')
+  setLoadText(`Loading ${CHARACTERS[S0.character].name}, the yard and the trees…`);
+  let charPending = null; // latest character / costume swap in flight
+  let coopG = null; // co-op glue (js/coopgame.js), created once the player exists
+  let markReady;
+  const worldReady = new Promise((r) => { markReady = r; }); // the scene is built and running
+  const charReady = sergey.setCostume(S0.costume)
     .then(() => sergey.setAxe(game.axeStats.model ?? 'sergey'))
     .then(() => onCharacterLoaded());
   const yardReady = world.setSetting(SETTINGS[S0.setting] ? S0.setting : 'nj');
@@ -169,6 +201,7 @@ async function main() {
   game.on('levelUp', () => { player.cheer = 2.6; });
   game.on('axe', (a) => {
     sergey.setAxe(a.model ?? 'sergey').then(() => { patchScene(sergey.root); sergey.root.traverse((o) => { if (o.isMesh) o.userData.castOrig = false; }); return player.refreshBlade(); });
+    coopG?.profileChanged();
   });
   game.on('sparkLight', (p) => {
     sparkLight.position.copy(p).y += 0.05;
@@ -217,6 +250,7 @@ async function main() {
     blobs.setEnabled(!P.shadows);
     env.ground.geometry = P.propLow ? env.groundGeo.lo : env.groundGeo.hi;
     sergey.setLow(!!P.propLow);
+    coopG?.setLow(!!P.propLow);
     onResize();
     $('sel-quality').value = S.quality === 'auto' ? 'auto' : id;
   }
@@ -234,9 +268,14 @@ async function main() {
   const input = new Input({
     dom: renderer.domElement, camera, controls, game, scene, blockTop: BLOCK.H,
     actions: {
-      closeModals: () => { for (const m of document.querySelectorAll('.modal')) m.classList.add('hidden'); },
+      // Esc also closes the co-op menu (coop/ui.js panel, not a .modal), before leaving the block.
+      closeModals: () => {
+        for (const m of document.querySelectorAll('.modal')) m.classList.add('hidden');
+        const cp = $('coop-panel');
+        if (cp && !cp.hidden) { cp.hidden = true; $('coop-toggle')?.setAttribute('aria-expanded', 'false'); }
+      },
       key: (code) => onKey(code),
-      modalOpen: () => modalOpen(),
+      modalOpen: () => modalOpen() || $('coop-panel')?.hidden === false,
       leaveStump: () => enterYard(),
       yardKey: (code) => player.yardKey(code),
     },
@@ -313,13 +352,53 @@ async function main() {
     game.save();
     return s;
   }
+  // Costume (any character's id: picking Alex's bomber also switches to Alex).
   async function setCostume(id) {
-    await sergey.setCostume(COSTUMES[id] ? id : 'tee');
-    S.costume = sergey.costume;
-    $('sel-costume').value = sergey.costume;
-    await onCharacterLoaded();
+    if (!COSTUMES[id]) id = CHARACTERS[charOf(S.costume)].costumes[0];
+    S.costume = id;
+    S.character = charOf(id);
+    refreshPlayerUi();
+    const job = (async () => {
+      await sergey.setCostume(id);
+      if (sergey.costume !== id) return sergey.costume; // superseded by a newer pick
+      await onCharacterLoaded();
+      return sergey.costume;
+    })();
+    charPending = job;
+    const out = await job;
+    if (charPending === job) charPending = null;
     game.save();
-    return sergey.costume;
+    coopG?.profileChanged();
+    refreshPlayerUi();
+    return out;
+  }
+  // Character: Sergey or Alex, in his default outfit (tee / camo).
+  function setCharacter(c) {
+    if (!CHARACTERS[c]) c = 'sergey';
+    return setCostume(CHARACTERS[c].costumes[0]).then(() => sergey.character);
+  }
+  const playerName = () => S.playerName || CHARACTERS[S.character]?.name || 'Sergey';
+  function setPlayerName(n) {
+    S.playerName = String(n || '').slice(0, 16);
+    game.save();
+    coopG?.profileChanged();
+    refreshPlayerUi();
+  }
+  const pickerApi = {
+    get: () => ({ character: S.character, costume: S.costume, name: S.playerName || '' }),
+    set: (p) => {
+      if (p.name !== undefined) { setPlayerName(p.name); return Promise.resolve(); }
+      if (p.character) return p.character === S.character ? Promise.resolve() : setCharacter(p.character);
+      if (p.costume) return setCostume(p.costume);
+      return Promise.resolve();
+    },
+  };
+  const pickers = [];
+  function refreshPlayerUi() {
+    const C = CHARACTERS[S.character];
+    const el = $('h-player');
+    if (el) el.textContent = `${C.name} · ${COSTUMES[S.costume].name}`;
+    for (const pk of pickers) pk.render();
   }
 
   function toggleModal(id) {
@@ -388,12 +467,17 @@ async function main() {
   $('sel-setting').addEventListener('change', (e) => {
     e.target.blur();
     const id = e.target.value;
+    // Co-op: both players must stay in the host's yard (the protocol has no world change).
+    if (coopG?.coop.inSession()) { e.target.value = world.id; game.toast('Leave co-op (Disconnect) to switch yards', 'warn', true); return; }
     game.toast(`Loading the ${SETTINGS[id].name}…`, 'info');
     setSetting(id).then(() => showPostcard(id)).catch((err) => { console.warn(err); game.toast('Could not load that yard', 'warn'); });
   });
-  $('sel-costume').addEventListener('change', (e) => { e.target.blur(); setCostume(e.target.value).catch((err) => console.warn(err)); });
   $('sel-setting').value = SETTINGS[S0.setting] ? S0.setting : 'nj';
-  $('sel-costume').value = COSTUMES[S0.costume] ? S0.costume : 'tee';
+  $('btn-player').addEventListener('click', (e) => { e.currentTarget.blur(); toggleModal('player'); });
+  earlyPick.api = pickerApi;
+  pickers.push(startPicker);
+  pickers.push(new Picker($('player-pick'), { ...pickerApi, preview: $('player-art'), idPrefix: 'pp' }));
+  refreshPlayerUi();
   $('btn-shop').addEventListener('click', () => toggleModal('shop'));
   $('btn-modes').addEventListener('click', () => toggleModal('modes'));
   $('btn-help').addEventListener('click', () => toggleModal('help'));
@@ -588,8 +672,9 @@ async function main() {
 
     // Sergey (stump pose or yard locomotion), the yard's trees and the wood-chip sprites.
     player.update(dtReal, dtReal * scale); // sim time (slow-mo / hit-stop) drives the stump follow-through
+    coopG?.update(now, dtReal); // co-op: send our state, place + animate the partner
     world.update(dtReal, camera, weather);
-    blobs.update(sergey.root.position, sergey.root.rotation.y, world.field, weather.daylight * (1 - 0.7 * Math.min(1, weather.cur.clouds)));
+    blobs.update(sergey.root.position, sergey.root.rotation.y, world.field, weather.daylight * (1 - 0.7 * Math.min(1, weather.cur.clouds)), coopG?.remoteRoot());
     woodchips.update(dtReal, windV);
     woodchips.uniforms.uLight.value.setScalar(0.25 + 0.85 * weather.daylight);
     // The sun's shadow frustum follows Sergey around the yard (and sits on the block otherwise).
@@ -865,7 +950,10 @@ async function main() {
   window.chopperTest = {
     ready: () => !!(window.simReady && sergey.loaded && world.field && world.field.trees.length && player.rows.chop),
     setSetting: (id) => setSetting(id).then(() => world.id),
+    // Accepts the current character's ids (tee / jacket for Sergey, camo / bomber for Alex); another
+    // character's id switches character too.
     setCostume: (id) => setCostume(id),
+    setCharacter: (c) => setCharacter(c),
     setAxe: async (model) => {
       const a = AXE_FOR_MODEL(model);
       if (!game.p.owned.includes(a.id)) { game.p.owned.push(a.id); game.p.sharp[a.id] = a.sharp; }
@@ -906,9 +994,9 @@ async function main() {
       const ax = sergey.cur?.inner.children[0];
       for (let o = ax; o; o = o.parent) if (o.isBone) { attached = o.name; break; }
       return {
-        setting: world.id, costume: sergey.costume, axe: game.axeStats.model, axeName: game.axeStats.name, quality: pipeline.presetId,
+        setting: world.id, character: sergey.character, costume: sergey.costume, playerName: playerName(), axe: game.axeStats.model, axeName: game.axeStats.name, quality: pipeline.presetId,
         mode: player.mode, player: { x: +sergey.root.position.x.toFixed(3), y: +sergey.root.position.y.toFixed(3), z: +sergey.root.position.z.toFixed(3) },
-        anim: clip, characterLoaded: !!(sergey.loaded && sergey.cur?.model.parent), axeAttachedTo: attached,
+        anim: clip, characterLoaded: !!(sergey.loaded && sergey.cur?.model.parent && !charPending), axeAttachedTo: attached,
         trees: treeStats(),
         nearestTree: n ? { id: n.tree.id, species: n.tree.species, x: +n.tree.position.x.toFixed(3), z: +n.tree.position.z.toFixed(3), radius: +n.tree.radius.toFixed(3), distance: +n.distance.toFixed(3) } : null,
         fps: +fpsNow.toFixed(1),
@@ -916,11 +1004,45 @@ async function main() {
     },
   };
 
+  // ------------------------------------------------------------ co-op (./coop/, js/coopgame.js)
+  // Nothing touches the network until Co-op > Host / Join (PeerJS is loaded lazily by the module).
+  coopG = setupCoop({
+    scene, camera, renderer, game, player, world, sergey, swingCtl, logs, ready: worldReady, setSetting,
+    isLow: () => !!pipeline.preset?.propLow,
+    profile: () => ({ name: playerName(), character: S.character, costume: S.costume, axe: game.axeStats.model ?? 'sergey' }),
+  });
+  const coop = coopG.coop;
+  const coopUi = coop.mountUI({ mount: $('actions') });
+  {
+    // The toggle sits in the actions panel; the menu itself floats above everything (also above
+    // the start screen), so it gets its own .coop-root wrapper on <body>.
+    const wrap = document.createElement('div');
+    wrap.className = 'coop-root coop-float';
+    wrap.appendChild(coopUi.el.panel);
+    document.body.appendChild(wrap);
+    for (const ev of ['keydown', 'keyup', 'keypress']) wrap.addEventListener(ev, (x) => { if (x.target === coopUi.el.input) x.stopPropagation(); });
+    coopUi.el.panel.querySelector('h2').insertAdjacentHTML('afterend', '<button type="button" class="coop-x" aria-label="Close the co-op menu">✕</button>');
+    coopUi.el.panel.querySelector('.coop-x').addEventListener('click', () => coopUi.close());
+    // Voice chat HUD (mute button + partner speaking indicator): the module pins it bottom-left,
+    // which is this game's conditions panel. Put it in the HUD grid instead (bottom-centre column,
+    // left-aligned, above the meter / hint), so the grid keeps it clear of every panel at any size.
+    if (coopUi.el.vHud) {
+      const vw = document.createElement('div');
+      vw.className = 'coop-root coop-voice-slot';
+      vw.appendChild(coopUi.el.vHud);
+      $('bottombar').prepend(vw);
+    }
+  }
+  $('btn-start-coop').addEventListener('click', () => { startUi.touched = true; coopUi.open(); });
+  window.chopperTest.coop = coop.testHook({ fellTree: () => window.chopperTest.chopTree() });
+  window.__v2.coop = coopG;
+
   // ------------------------------------------------------------ start
   // Wait for Sergey and the saved yard (they have been loading in parallel all along).
   const [charRes, yardRes] = await Promise.allSettled([charReady, yardReady]);
   if (charRes.status === 'rejected') { console.warn('Sergey failed to load, using the procedural person:', charRes.reason); }
   if (yardRes.status === 'rejected') { console.warn('Yard assets failed to load:', yardRes.reason); }
+  while (charPending) await charPending.catch(() => {}); // a character picked on the start screen
   setLoadText('Ready');
   updateModeButton();
   const startPreset = S.quality === 'auto' || !S.quality ? detected.preset : S.quality;
@@ -936,8 +1058,24 @@ async function main() {
   physics.step();
   renderer.compile(scene, camera);
   requestAnimationFrame((t) => { last = t; frame(t); });
-  loading.classList.add('hidden');
-  setTimeout(() => loading.remove(), 600);
+  markReady();
+  // Start screen: it gets out of the way as soon as everything is loaded, unless the player is
+  // busy with the character picker; then it waits for Play (or a co-op connection).
+  const begin = () => {
+    if (startUi.started) return;
+    startUi.started = true;
+    loading.classList.add('hidden');
+    setTimeout(() => loading.remove(), 600);
+  };
+  if (!startUi.touched) begin();
+  else {
+    const b = $('btn-play');
+    b.disabled = false;
+    b.textContent = 'Play ▶';
+    b.addEventListener('click', begin);
+    b.focus({ preventScroll: true });
+    coop.on('change', () => { if (['hosting', 'connected'].includes(coop.uiModel().status)) begin(); });
+  }
   if (!game.p.seenHelp) {
     game.p.seenHelp = true;
     setTimeout(() => game.toast('New here? Hover the log, hold the left mouse button, release in the green zone. Press H for help.', 'info', true), 800);

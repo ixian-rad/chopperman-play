@@ -1,1 +1,1 @@
-claude f84f19b assets-v2-release
+claude c7b88ab coop-voice-release

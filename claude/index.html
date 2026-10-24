@@ -22,13 +22,18 @@
 
   <div id="loading">
     <div class="load-card">
-      <img class="load-art" src="assets/art/common/keyart_claude.webp" alt="Sergey with his axe in a sunlit forest" />
+      <img class="load-art" id="load-art" src="assets/art/common/keyart_claude.webp" alt="Sergey with his axe in a sunlit forest" />
       <div class="load-body">
         <h1>Backyard Log Splitter</h1>
-        <p class="load-sub">starring <b>Sergey</b></p>
+        <p class="load-sub">starring <b>Sergey</b> and <b>Alex</b></p>
+        <div id="start-pick" class="pick"></div>
         <div class="load-bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100"><i id="load-fill"></i></div>
         <div class="load-row"><div class="spinner"></div><div id="loading-text">Loading physics engine…</div></div>
         <div id="load-count" class="load-count"></div>
+        <div class="start-btns">
+          <button id="btn-play" class="primary" type="button" disabled>Loading…</button>
+          <button id="btn-start-coop" type="button" title="Play with a friend online (2 players)">Co-op…</button>
+        </div>
       </div>
     </div>
   </div>
@@ -50,6 +55,7 @@
     <div class="bar stam" title="Stamina drains per swing and regenerates while you rest"><i id="h-stam"></i><span id="h-stamtext">Stamina</span></div>
     <div class="row small"><span id="h-axe">Axe</span><b id="h-sharp">Edge —</b></div>
     <div class="row small"><span>Woodpile</span><b id="h-pile">0 pieces</b></div>
+    <div class="row team hidden" id="h-teamrow" title="Rounds split by both players in this co-op session"><span>Team logs split<br /><span id="h-partner" class="partner">waiting for a partner</span></span><b id="h-team">0</b></div>
   </section>
 
   <!-- top-right: current log + queue -->
@@ -104,12 +110,7 @@
           <option value="tiraspol">Tiraspol backyard</option>
         </select>
       </label>
-      <label>Outfit
-        <select id="sel-costume" title="Sergey's outfit">
-          <option value="tee">Black tee</option>
-          <option value="jacket">Blue jacket</option>
-        </select>
-      </label>
+      <button id="btn-player" type="button" title="Character, outfit and your name">Player: <span id="h-player">Sergey</span></button>
     </div>
     <div class="ctl audio" title="Everything you hear is synthesized live (Web Audio)">
       <label class="chk"><input type="checkbox" id="chk-music" checked /> Music <kbd>M</kbd></label>
@@ -189,6 +190,18 @@
     </div>
   </div>
 
+  <!-- player / character modal -->
+  <div id="player" class="modal hidden" role="dialog" aria-label="Player">
+    <div class="sheet narrow">
+      <header><h2>Player</h2><button class="close" data-close="player">✕</button></header>
+      <div class="player-grid">
+        <img id="player-art" class="player-art" alt="" />
+        <div id="player-pick" class="pick"></div>
+      </div>
+      <footer><span class="small dim">Same controls, speed and axes for both. Your name is shown to your co-op partner.</span><button class="primary" data-close="player">Done</button></footer>
+    </div>
+  </div>
+
   <!-- help modal -->
   <div id="help" class="modal hidden" role="dialog" aria-label="Help">
     <div class="sheet">
@@ -202,6 +215,7 @@
             <li>Or <b>click</b> once to start the meter and <b>click again</b> (or <kbd>Space</kbd>) to stop it.</li>
             <li><b>Right-drag</b> orbits the camera, <b>Shift+right-drag</b> pans, <b>wheel</b> zooms, <b>Shift+wheel</b> turns the blade.</li>
             <li><b>Yard</b> (<kbd>Esc</kbd> at the block): <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, <kbd>Shift</kbd> run, <b>right-drag</b> or arrow keys look around, wheel zoom. Face a tree (orange ring) and <b>click</b> or <kbd>Space</kbd> to chop it. Walk to the chopping block and press <kbd>E</kbd> (or click it) to split logs again.</li>
+            <li><b>Player</b> (bottom-left panel): play as Sergey or Alex, pick an outfit and your name. <b>Co-op</b> (bottom-right): host a game and send the room code or invite link, or join a friend's code.</li>
             <li>Keyboard: <kbd>Space</kbd> start/stop meter · arrows nudge aim · <kbd>Q</kbd>/<kbd>E</kbd> turn blade · <kbd>R</kbd> reset log · <kbd>B</kbd> shop · <kbd>O</kbd> modes · <kbd>G</kbd> sharpen · <kbd>T</kbd> time · <kbd>N</kbd> weather · <kbd>K</kbd> quality · <kbd>C</kbd> camera · <kbd>F</kbd> physics · <kbd>M</kbd> music on/off (volumes and SFX toggle: bottom-left panel) · <kbd>X</kbd> quick swing</li>
           </ul>
         </div>

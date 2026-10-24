@@ -462,3 +462,11 @@ summary .kicker { margin: 0; }
 @media (max-width: 900px) { .gemini-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .playrow--4 { grid-template-columns: 1fr; } }
 #sb-gemini td.small { font-size: 1rem; }
+
+/* co-op section (tools/build_coop.py) */
+.coop-steps { margin: 0 0 24px; padding-left: 1.6em; max-width: 78ch; line-height: 1.6; }
+.coop-steps li { margin: 0 0 10px; }
+.coop-steps li::marker { color: var(--sap); font-weight: 700; }
+#coop .playrow { margin-top: 8px; }
+#coop .tablewrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); -webkit-overflow-scrolling: touch; }
+#coop .tablewrap:focus-visible { outline: 3px solid var(--ember-hi); outline-offset: 2px; }

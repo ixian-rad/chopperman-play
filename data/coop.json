@@ -1,0 +1,71 @@
+{
+ "note": "Release verify on the merged main: driver/v2/check_v2.mjs + driver/coop/check_coop.mjs --voice (loopback backend) + the voice module node tests, headless Chrome with SOFTWARE rendering (no GPU). FPS are software-GL figures.",
+ "harness": {
+  "codex": {
+   "build": {
+    "commit": "d9215ba",
+    "tag": "coop-voice-release"
+   },
+   "verify_ok": true,
+   "v2_ok": true,
+   "coop_voice_ok": true,
+   "fps": {
+    "nj_low": 52.7,
+    "tiraspol_low": 40.7,
+    "tiraspol_high": 16.7
+   },
+   "module_tests": "pass 360 checks",
+   "game_tests": "pass ",
+   "runs": 3,
+   "wall_h": 3.73,
+   "cost_usd": 3.78,
+   "cost_basis": [
+    "subscription-included; API-equivalent estimate"
+   ]
+  },
+  "claude": {
+   "build": {
+    "commit": "c7b88ab",
+    "tag": "coop-voice-release"
+   },
+   "verify_ok": true,
+   "v2_ok": true,
+   "coop_voice_ok": true,
+   "fps": {
+    "nj_low": 48.6,
+    "tiraspol_low": 47.1,
+    "tiraspol_high": 0.5
+   },
+   "module_tests": "pass 360 checks",
+   "game_tests": "n/a",
+   "runs": 3,
+   "wall_h": 4.36,
+   "cost_usd": 17.25,
+   "cost_basis": [
+    "measured (Claude Code total_cost_usd)"
+   ]
+  },
+  "deepseek": {
+   "build": {
+    "commit": "550fa30",
+    "tag": "coop-voice-release"
+   },
+   "verify_ok": true,
+   "v2_ok": true,
+   "coop_voice_ok": true,
+   "fps": {
+    "nj_low": 17.8,
+    "tiraspol_low": 24.5,
+    "tiraspol_high": 2.2
+   },
+   "module_tests": "pass 360 checks",
+   "game_tests": "pass ",
+   "runs": 3,
+   "wall_h": 1.19,
+   "cost_usd": 0.81,
+   "cost_basis": [
+    "estimate (tokens measured from session store)"
+   ]
+  }
+ }
+}

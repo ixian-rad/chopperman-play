@@ -20,6 +20,17 @@ export const SETTINGS = {
   tiraspol: { name: 'Tiraspol backyard', species: ['walnut', 'apricot', 'poplar', 'birch'] },
 };
 export const BOUNDS = { minX: -10.55, maxX: 10.55, minZ: -8.35, maxZ: 12.55 };
+// World seed. Every tree's id (its index), species, variant, position, rotation, scale and so its
+// hp (meta.hitsToFell) come from Rng(treeSeed(seed, setting)), never Math.random(), so two co-op
+// clients build identical yards from the host's (seed, setting). DEFAULT_SEED keeps the classic
+// single-player layout of assets-v2.
+export const DEFAULT_SEED = 1;
+export function treeSeed(seed, setting) {
+  if ((seed >>> 0) === DEFAULT_SEED) return setting === 'nj' ? 9101 : 4242;
+  let h = Math.imul((seed >>> 0) ^ 0x9e3779b9, 0x85ebca6b) ^ (setting === 'nj' ? 0x51ed : 0x7a11);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
 
 const M = 'assets/models/';
 const treeLibs = {}; // species -> Promise<lib entry>
@@ -58,6 +69,8 @@ export class YardWorld {
     this.id = null;
     this.quality = null;
     this.time = 0;
+    this.seed = DEFAULT_SEED;
+    this.libs = {}; // setting id -> species library (kept for rebuilding the trees)
   }
 
   get cur() { return this.settings[this.id]; }
@@ -89,7 +102,8 @@ export class YardWorld {
     this.scene.add(group);
     const S = { id, group, colliders: [], surfaces: [], trees: [], field: null, insideTreeIds: [] };
     const [lib] = await Promise.all([loadSpecies(SETTINGS[id].species), id === 'nj' ? this.buildNJ(S) : this.buildTiraspol(S)]);
-    this.buildTrees(S, lib);
+    this.libs[id] = lib;
+    this.buildTrees(S, lib, this.seed);
     this.circle(S, 2.35, -2.0, 0.12); // the shepherd's-hook lantern (environment.js)
     // Low-poly versions of every prop for the Low / Potato presets.
     // Budgets: repeated props (fence panels, hedge, blocks of flats) and far landmarks get the
@@ -333,11 +347,12 @@ export class YardWorld {
   }
 
   // ------------------------------------------------------------------ trees
-  buildTrees(S, lib) {
+  buildTrees(S, lib, seed = DEFAULT_SEED) {
     const field = new TreeField(this.scene, lib, { lod1Distance: 28, lod2Distance: 70, castShadow: true });
     S.group.add(field.group);
     S.field = field;
-    const rng = new Rng(S.id === 'nj' ? 9101 : 4242);
+    S.seed = seed;
+    const rng = new Rng(treeSeed(seed, S.id));
     const R = () => rng.next();
     const inside = S.id === 'nj'
       ? [['maple', 2, -7.4, 8.4], ['birch', 0, 8.0, 3.0], ['birch', 2, 2.6, 8.6], ['pine', 2, 9.2, 10.4], ['oak', 2, 8.7, -4.0],
@@ -376,6 +391,28 @@ export class YardWorld {
     // Keep-order for quality culling: inside trees first, then the nearest outside ones.
     S.order = [...field.trees].sort((a, b) => (b.inside ? 1 : 0) - (a.inside ? 1 : 0) || a.position.length() - b.position.length());
     field.update(this.camera, 0); // builds the instanced pools now so they can be patched
+  }
+
+  // Co-op: rebuild the current setting's trees from `seed` with every tree standing and unhurt
+  // (a joining guest discards its own felled / damaged trees; the host's state is applied after).
+  // Skipped when the field already matches and nothing was touched.
+  async resetTrees(seed = this.seed) {
+    this.seed = seed >>> 0;
+    const S = this.cur;
+    if (!S) return null;
+    const old = S.field;
+    const pristine = old && S.seed === this.seed && old.trees.every((t) => (t.state === 'standing' || (t.state === 'gone' && t.culled)) && !t.hits);
+    if (pristine) return old;
+    if (old) {
+      old.group.removeFromParent();
+      for (const p of old.pools.values()) for (const im of p.meshes ? [...p.meshes.lod0, ...p.meshes.lod1, ...p.meshes.lod2] : []) { im.geometry.dispose(); im.dispose?.(); }
+      for (const t of old.trees) t.obj?.root.traverse((o) => { if (o.isMesh && o.material !== t.V.lod0['mat_' + o.name]) o.material.dispose?.(); });
+    }
+    this.buildTrees(S, this.libs[S.id], this.seed);
+    ownShadows(S.field.group, true);
+    patchScene(S.field.group);
+    if (this.quality) this.applyQuality(this.quality);
+    return S.field;
   }
 
   // ------------------------------------------------------------------ per-quality

@@ -131,7 +131,7 @@ export class YardTreeField extends TreeField {
     const meta=tree.meta,root=tree.matrix,boxes=fallSections(tree.V);
     const rest=Math.PI/2-Math.min(.25,Math.atan2(meta.crownRadius*.25,meta.height*.6));
     const local=new THREE.Vector3(),axis=new THREE.Vector3(),rotation=new THREE.Quaternion(),matrix=new THREE.Matrix4(),rotationMatrix=new THREE.Matrix4(),hinge=new THREE.Matrix4(),offset=new THREE.Matrix4(),worldBox=new THREE.Box3(),center=new THREE.Vector3(),oriented=new OBB();
-    const obstacles=this.obstacles.filter(b=>!b.object||b.object.visible).map(b=>new THREE.Box3(new THREE.Vector3(b.minX-.12,b.minY,b.minZ-.12),new THREE.Vector3(b.maxX+.12,b.maxY+.12,b.maxZ+.12))),direction=new THREE.Vector3();
+    const obstacles=this.obstacles.filter(b=>this.sharedWorld||!b.object||b.object.visible).map(b=>new THREE.Box3(new THREE.Vector3(b.minX-.12,b.minY,b.minZ-.12),new THREE.Vector3(b.maxX+.12,b.maxY+.12,b.maxZ+.12))),direction=new THREE.Vector3();
     const clear=angle=>{
       rotation.setFromAxisAngle(axis,angle);
       matrix.copy(root).multiply(hinge).multiply(rotationMatrix.makeRotationFromQuaternion(rotation)).multiply(offset);

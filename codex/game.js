@@ -42,7 +42,7 @@ export class Game {
     if(result.split)this.partialXP=0;else this.partialXP+=gainedXP;
     const coins=miss?0:result.split?25+(clean?10:0)+(boss?60:0):0;
     if(result.hazard)this.edge=clamp(this.edge-(result.hazardKind==='stone'?.12:.18),.65,1);
-    this.score+=points;this.xp+=gainedXP;this.coins+=coins;if(result.split){this.clears++;this.stamina=clamp(this.stamina+(boss?40:15),0,this.maxStamina);}
+    this.score+=points;if(this.award)this.award({xp:gainedXP,gold:coins,reason:'Log chopping'});else{this.xp+=gainedXP;this.coins+=coins;}if(result.split){this.clears++;this.stamina=clamp(this.stamina+(boss?40:15),0,this.maxStamina);}
     this.lastHit={...result,clean,boss,points,xp:gainedXP,coins,combo:this.combo,campaignVictory:result.split&&!result.contract&&this.clears===18};this.save();return this.lastHit;
   }
   price(stat){return 70*(this.upgrades[stat]+1);}

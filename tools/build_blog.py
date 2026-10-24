@@ -14,9 +14,9 @@ def num(x):
     try: return float(x)
     except: return None
 rows = list(csv.DictReader(open(f'{CH}/reports/usage.csv')))
-# Co-op / voice rounds (phase 'coop-v1 ...') are logged in usage.csv but those builds are not published on the site yet, so they stay out of the
-# published totals until they are merged and shown. Set INCLUDE_COOP=1 to count them (then update the Page canvas wording too).
-if not os.environ.get('INCLUDE_COOP'):
+# Co-op / voice rounds (phase 'coop-v1 ...'): merged to main and published on the site on 2026-10-23 (tag coop-voice-release), so they now count in the
+# published totals by default. INCLUDE_COOP=0 drops them again (pre-release view).
+if os.environ.get('INCLUDE_COOP', '1') == '0':
     rows = [r for r in rows if not r['phase'].startswith('coop-v1')]
 for r in rows:
     for k in ('wall_s', 'input_uncached', 'input_cached', 'cache_write', 'output', 'cost_usd'):
@@ -189,6 +189,7 @@ A('<p class="lede">Every number below comes from the project’s own logs. Three
   '<span class="tag tag--est">est.</span> where a run’s tokens were not recorded and I estimated it. Where nothing could be recovered the cell says n/a. All times are US Eastern.</p>')
 A('<p class="fine"><strong>What was really billed:</strong> Claude Code and Codex ran on subscription logins, so their dollar figures are list-price equivalents, not charges. '
   f'DeepSeek was pay-as-you-go, and its balance fell by <strong>$8.92</strong> (from $49.66 to $40.74, checked 22:25 on Oct 22, before the last docs run had finished). '
+  'Including the co-op and voice chat rounds, DeepSeek’s balance had fallen by <strong>$9.87</strong> in total (to $39.79, checked 14:09 on Oct 23, as its voice chat run was finishing), inside its raised $15 budget. '
   'The image, 3D and voice services are listed separately below.</p>')
 
 # totals table
@@ -232,7 +233,9 @@ paras = [
  ('Sound, music and the legibility pass.', 'Sound effects and music were added by each harness. A legibility pass followed (Claude iter-3, Codex iter-10, DeepSeek iter-27), after the rule that all in-game and site text must be easy to read: body text at least 16 px, HUD numbers at least 20 px, with AA contrast. Claude Code also designed the channel art and this play site.'),
  ('Archive of the classic builds.', 'Before any new assets went in, each repo got a snapshot tag (snapshot-2026-10-22) and a pre-assets branch, and the classic builds are kept as separate repos and in the site’s /classic/ folders. That keeps the comparison fair.'),
  ('The asset pack and Sergey.', f'The lumberjack is named Sergey and has two costumes, a tee and a blue jacket. The shared pack came from Meshy (props, trees, the shed, fences, axes and the rigged, animated character), Higgsfield (early stills and trailer clips) and GPT image generation. Higgsfield’s faces were a bit inaccurate against the source photos, so Sergey was rebuilt from new GPT front, side and back views, and all key art was redone with GPT. The pack gave each game two settings: a New Jersey backyard and a Tiraspol backyard with a cathedral behind it, plus an upgraded trees pack (tree v2) and four axes.'),
- ('The Assets v2 upgrade.', 'On Oct 22 at 14:37 ET all three harnesses got the identical brief to build the pack into their own games, add walking and let Sergey fell the surrounding trees. All three merged and passed the final automated check in headless Chrome with software rendering and no GPU. The run tables below list every attempt.')]
+ ('The Assets v2 upgrade.', 'On Oct 22 at 14:37 ET all three harnesses got the identical brief to build the pack into their own games, add walking and let Sergey fell the surrounding trees. All three merged and passed the final automated check in headless Chrome with software rendering and no GPU. The run tables below list every attempt.'),
+ ('Co-op and a second character.', 'Shortly after midnight on Oct 23 all three got the identical co-op brief: two-player online co-op over peer-to-peer WebRTC (PeerJS, with a 5-character room code and the host deciding every tree hit), plus Alex as a second playable character from the shared pack. Each did one build run and one documentation run on a separate coop-v1 branch, and all three passed an automated two-player check, run in a single page over a loopback link.'),
+ ('Proximity voice chat.', 'Next came an identical voice chat brief: opt-in voice that fades with the distance between the two players, with microphone access only after you turn it on. Claude finished it at 05:42 ET. The Codex and DeepSeek runs were interrupted by the box restart at about 06:01 ET and re-run that afternoon, passing at 14:13 and 14:18 ET. All three passed the voice steps of the co-op check and the voice module’s 360 unit checks. After one more check on the merged code, the co-op and voice builds were merged to main as coop-voice-release on the evening of Oct 23 and published here. They count in the totals above.')]
 for h2, p in paras: A(f'<p><strong>{E(h2)}</strong> {E(p)}</p>')
 A('</div>')
 
@@ -386,7 +389,9 @@ for h in H:
         runs=t['runs'], wall_h=round(t['wall'] / 3600, 2), input_uncached=int(t['inp']), input_cached=int(t['cached']), output=int(t['out']),
         cost_usd=round(t['total'], 2), reported_usd=round(t['reported'], 2), token_priced_usd=round(t['token'], 2), est_usd=round(t['est'] + t['measured_bal'], 2),
         assets_v2_runs=len(v2r), assets_v2_cost_usd=round(sum(r['cost_usd'] for r in v2r), 2),
-        assets_v2_wall_h=round(sum((r['wall_s'] or 0) for r in v2r) / 3600, 2))
+        assets_v2_wall_h=round(sum((r['wall_s'] or 0) for r in v2r) / 3600, 2),
+        coop_voice_runs=len(cvr := [r for r in byh[h] if r['phase'].startswith('coop-v1') and r['cost_usd'] is not None]),
+        coop_voice_cost_usd=round(sum(r['cost_usd'] for r in cvr), 2), coop_voice_wall_h=round(sum((r['wall_s'] or 0) for r in cvr) / 3600, 2))
 bal = None
 try:
     bal = json.load(open(f'{SITE}/data/costs.json')).get('deepseek_balance_measured')
@@ -396,7 +401,7 @@ cj['basis'] = {
     'claude': f'Claude Code ran on a subscription login. Total {usd(T["claude"]["total"])} = {usd(T["claude"]["reported"])} reported by the tool + {usd(T["claude"]["token"])} token-priced + {usd(T["claude"]["est"], True)}. Includes two play-site design runs ({usd(claude_site)}) and the channel-art kit ({usd(claude_art)}). List-price equivalent, not a charge.',
     'codex': f'Codex ran on a ChatGPT plan login. Total {usd(T["codex"]["total"])} = {usd(T["codex"]["token"])} token-priced (recorded tokens x gpt-6.1-sol list price) + {usd(T["codex"]["est"], True)} for runs with no recorded tokens. API-equivalent, not a charge.',
     'deepseek': f'DeepSeek was pay-as-you-go. Total {usd(T["deepseek"]["total"])} = {usd(T["deepseek"]["token"])} token-priced (measured tokens x list price) + {usd(T["deepseek"]["measured_bal"], True)} from the balance counter for a killed pass. The measured balance drop was $8.92.'}
-cj['note'] = 'Project total = every logged run of that harness, including play-site design runs. The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes).'
+cj['note'] = 'Project total = every logged run of that harness, including play-site design runs and the co-op and voice chat rounds (coop_voice_*). The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes).'
 json.dump(cj, open(f'{SITE}/data/costs.json', 'w'), indent=1)
 summary = dict(T=T, claude_site=claude_site, claude_art=claude_art, meshy_cr=meshy_cr, hf_cr=hf_cr, hf_usd=hf_usd, oa_usd=oa_usd, oa_tok=oa_tok, cb_est=cb_est,
                grand_harness=grand_harness, grand_assets=grand_assets, grand=grand, vo_chars=vo_chars, rv_chars=rv_chars,

@@ -1,10 +1,10 @@
 {
- "generated": "2026-10-23 15:11 EDT",
+ "generated": "2026-10-23 21:55 EDT",
  "status": "in progress",
  "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est., login-based, not billed; NOT included in data/costs.json totals",
- "driver_phase": "iter-3",
- "driver_updated_et": "2026-10-23 14:36:42 EDT",
+ "driver_phase": "iter-8",
+ "driver_updated_et": "2026-10-23 21:53:58 EDT",
  "finished_rounds": [
   "v1",
   "v2"
@@ -14,14 +14,14 @@
   "tag": "iter-2"
  },
  "classic": null,
- "runs": 4,
- "wall_h": 1.37,
- "input_uncached": 994551,
- "input_cached": 21286059,
- "output": 328186,
- "reasoning": 55708,
- "cost_usd_est": 7.4,
- "per_agent_hour_est": 5.42,
+ "runs": 10,
+ "wall_h": 8.11,
+ "input_uncached": 4721979,
+ "input_cached": 60571571,
+ "output": 651728,
+ "reasoning": 125444,
+ "cost_usd_est": 22.02,
+ "per_agent_hour_est": 2.71,
  "runs_detail": [
   {
    "phase": "v1",
@@ -45,6 +45,42 @@
    "phase": "iter-2",
    "wall_s": 1088.0,
    "cost_usd_est": 1.7818,
+   "result": "ok"
+  },
+  {
+   "phase": "iter-3",
+   "wall_s": 8787.0,
+   "cost_usd_est": 3.2327,
+   "result": "ok"
+  },
+  {
+   "phase": "iter-4",
+   "wall_s": 7505.0,
+   "cost_usd_est": 2.1749,
+   "result": "ok"
+  },
+  {
+   "phase": "iter-5",
+   "wall_s": 281.0,
+   "cost_usd_est": 0.6057,
+   "result": "ok"
+  },
+  {
+   "phase": "iter-6 (audio) quota-blocked",
+   "wall_s": 1286.0,
+   "cost_usd_est": 0.4991,
+   "result": "quota exhausted (Antigravity individual quota, resets ~2026-10-30 04:53 EDT); 0 files changed; driver stopped by operator; round reruns after reset"
+  },
+  {
+   "phase": "iter-6",
+   "wall_s": 1655.0,
+   "cost_usd_est": 3.3815,
+   "result": "ok"
+  },
+  {
+   "phase": "iter-7",
+   "wall_s": 4773.0,
+   "cost_usd_est": 4.7249,
    "result": "ok"
   }
  ]

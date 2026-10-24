@@ -1,14 +1,18 @@
 /**
- * Sergey — the playable lumberjack for the Assets v2 upgrade.
+ * Playable lumberjacks for the Assets v2 / Co-op v1 upgrade.
  *
- * Loads the two PBR costumes, the animation clips (including the armature-only
- * walking/running clips), and the four axe skins. The axe is parented to the
- * RightHand bone and the whole rig is driven by one AnimationMixer with
- * crossfades. Both presets share the clean 20.7k-triangle source mesh: the old
- * vertex-clustered Low copy only saved ~1% of the triangles and its merged UV
- * seams speckled the black tee, so it was removed.
+ * Sergey and Alex share the same 24-bone Meshy skeleton and the same six
+ * animation clips, so one class drives both. Each character has two PBR
+ * costumes; the selected character's default costume is loaded first and any
+ * other costume (or the other character) is lazy-loaded on demand.
+ *
+ * The axe is parented to the RightHand bone and the whole rig is driven by one
+ * AnimationMixer with crossfades. `spawnRemoteAvatar()` builds a fully
+ * independent clone (own skeleton, mixer and axe) for the online partner,
+ * without touching the local player's rig.
  */
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 const MODEL_ROOT = '../assets/models/common/';
 const TARGET_HEIGHT = 1.78;
@@ -51,6 +55,80 @@ export const GAME_AXE_TO_SKIN = Object.freeze({
   maul: 'maul',
   tempered: 'golden',
 });
+
+/**
+ * Character catalogue. Costume ids are the shared co-op protocol ids:
+ * Sergey `tee`/`jacket`, Alex `camo`/`bomber`.
+ */
+export const CHARACTER_DEFS = Object.freeze({
+  sergey: Object.freeze({
+    id: 'sergey',
+    name: 'Sergey',
+    defaultCostume: 'tee',
+    costumes: Object.freeze({
+      tee: Object.freeze({
+        id: 'tee',
+        name: 'Black tee',
+        file: 'char_sergey_animated_pbr.glb',
+        walk: 'char_sergey_walking_armature.glb',
+        run: 'char_sergey_running_armature.glb',
+      }),
+      jacket: Object.freeze({
+        id: 'jacket',
+        name: 'Blue jacket',
+        file: 'char_sergey_jacket_animated_pbr.glb',
+        walk: 'char_sergey_jacket_walking_armature.glb',
+        run: 'char_sergey_jacket_running_armature.glb',
+      }),
+    }),
+  }),
+  alex: Object.freeze({
+    id: 'alex',
+    name: 'Alex',
+    defaultCostume: 'camo',
+    costumes: Object.freeze({
+      camo: Object.freeze({
+        id: 'camo',
+        name: 'Camo tee',
+        file: 'char_alex_animated_pbr.glb',
+        walk: 'char_alex_walking_armature.glb',
+        run: 'char_alex_running_armature.glb',
+      }),
+      bomber: Object.freeze({
+        id: 'bomber',
+        name: 'Navy bomber',
+        file: 'char_alex_jacket_animated_pbr.glb',
+        walk: 'char_alex_jacket_walking_armature.glb',
+        run: 'char_alex_jacket_running_armature.glb',
+      }),
+    }),
+  }),
+});
+
+export const CHARACTER_IDS = Object.freeze(Object.keys(CHARACTER_DEFS));
+
+export const CHARACTER_COSTUMES = Object.freeze({
+  sergey: Object.freeze(['tee', 'jacket']),
+  alex: Object.freeze(['camo', 'bomber']),
+});
+
+export function normaliseCharacter(id) {
+  return CHARACTER_DEFS[id] ? id : 'sergey';
+}
+
+export function normaliseCostume(character, id) {
+  const def = CHARACTER_DEFS[normaliseCharacter(character)];
+  return def.costumes[id] ? id : def.defaultCostume;
+}
+
+export function costumeName(character, id) {
+  const def = CHARACTER_DEFS[normaliseCharacter(character)];
+  return def.costumes[id]?.name || def.costumes[def.defaultCostume].name;
+}
+
+export function characterName(id) {
+  return CHARACTER_DEFS[normaliseCharacter(id)].name;
+}
 
 const assetUrl = (file) => new URL(MODEL_ROOT + file, import.meta.url).href;
 
@@ -223,8 +301,6 @@ function trimClip(clip, start, end) {
     const keptTimes = [];
     const keptValues = [];
     const sample = (time) => {
-      // Clamp to the nearest authored key; the subclip only trims, so this is
-      // accurate enough for a continuous stance loop.
       let index = 0;
       for (let i = 1; i < times.length; i += 1) {
         if (times[i] > time) break;
@@ -252,17 +328,191 @@ function trimClip(clip, start, end) {
   return trimmed;
 }
 
-export class SergeyCharacter {
+/** Build the action map shared by the local rig and remote clones. */
+function makeActions(mixer, gltf, walkGltf, runGltf) {
+  const actions = new Map();
+  const add = (clip, name) => {
+    if (!clip) return;
+    const action = mixer.clipAction(clip);
+    action.clampWhenFinished = true;
+    actions.set(name, action);
+  };
+  for (const source of gltf?.animations || []) {
+    const clip = source.clone();
+    let prepared = clip;
+    if (clip.name === 'Axe_Stance') {
+      // The authored clip starts with a 3.3 s pick-up crouch that also walks
+      // the Hips 0.7 m back. Loop only the standing part, centred on the rig.
+      prepared = stripHipsHorizontal(trimClip(clip, 3.35, 6.05));
+    } else if (clip.name === 'Charged_Axe_Chop' || clip.name === 'Heavy_Hammer_Swing') {
+      prepared = stripHipsHorizontal(clip);
+    }
+    add(prepared, clip.name);
+  }
+  const walkClip = walkGltf?.animations?.[0]?.clone?.() || walkGltf?.animations?.[0];
+  const runClip = runGltf?.animations?.[0]?.clone?.() || runGltf?.animations?.[0];
+  // The armature-only GLBs ship clips whose internal names are
+  // "Armature|walking_man|baselayer"; expose the friendly names the state hook
+  // and docs use.
+  if (walkClip) walkClip.name = 'Walk_Arm';
+  if (runClip) runClip.name = 'Run_Arm';
+  add(walkClip, 'Walk_Arm');
+  add(runClip, 'Run_Arm');
+  return actions;
+}
 
-  constructor({ scene, loader, sound = null, onProgress = null } = {}) {
+/** Shared visual tuning for both Meshy characters. */
+function tuneCharacterMaterials(root) {
+  root.traverse((object) => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+    object.frustumCulled = false;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      // The Meshy base-colour texture is a densely-packed 1024² atlas of
+      // face, skin, tee and denim islands. Once the renderer drops to 0.2 DPR
+      // (the software preset), the high mip levels average those islands
+      // together and the black tee turns into camouflage. Mipmaps are the
+      // culprit, not the mesh: disabling them on the base-colour map keeps the
+      // correct flat colours at every distance.
+      const map = material?.map;
+      if (map) {
+        map.generateMipmaps = false;
+        map.minFilter = THREE.LinearFilter;
+        map.magFilter = THREE.LinearFilter;
+        map.anisotropy = 4;
+        map.needsUpdate = true;
+      }
+      if (material) material.needsUpdate = true;
+    }
+    if (object.isSkinnedMesh) {
+      object.userData.highGeometry = object.geometry;
+      object.userData.lowGeometry = object.geometry;
+      object.userData.skinned = true;
+    }
+  });
+}
+
+/**
+ * Build one costume record (wrapper + cloned/live root + mixer/actions + hand).
+ * Local characters pass their freshly parsed GLTF; remotes pass cloneScene.
+ */
+function buildCostumeRecord({
+  scene,
+  character,
+  id,
+  gltf,
+  walkGltf,
+  runGltf,
+  cloneScene = false,
+  visible = false,
+  addToScene = true,
+}) {
+  const root = cloneScene ? cloneSkeleton(gltf.scene) : gltf.scene;
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const height = Math.max(0.01, box.max.y - box.min.y);
+  const scale = TARGET_HEIGHT / height;
+  root.scale.multiplyScalar(scale);
+  root.position.y -= box.min.y * scale;
+  root.position.y -= 0.012; // shoes sit just below the grass line
+  tuneCharacterMaterials(root);
+  const wrapper = new THREE.Group();
+  wrapper.name = `${character}-${id}`;
+  wrapper.add(root);
+  wrapper.visible = visible;
+  if (addToScene) scene.add(wrapper);
+  const mixer = new THREE.AnimationMixer(root);
+  const actions = makeActions(mixer, gltf, walkGltf, runGltf);
+  const rightHand = root.getObjectByName('RightHand') || null;
+  const costume = {
+    id,
+    character,
+    root,
+    wrapper,
+    mixer,
+    actions,
+    rightHand,
+    skinned: [],
+  };
+  root.traverse((object) => {
+    if (object.isSkinnedMesh) costume.skinned.push(object);
+  });
+  return costume;
+}
+
+/** Orient a tool holder in the RightHand bind pose (works for both rigs). */
+function orientTool(costume, tool, character) {
+  const holder = tool.holder;
+  holder.position.set(0, 0, 0);
+  holder.scale.set(1, 1, 1);
+  const hand = costume.rightHand;
+  if (!hand) return;
+  costume.root.updateMatrixWorld(true);
+  const handWorld = hand.getWorldQuaternion(new THREE.Quaternion());
+  const handScale = hand.getWorldScale(new THREE.Vector3());
+  // The bind-pose wrapper is later turned to face the player's heading, so
+  // bias the head outward on the model's left here and it ends up on the
+  // character's right (away from the torso) once placed in the yard.
+  const desiredDir = new THREE.Vector3(-0.55, 0.76, 0.12).normalize();
+  const desired = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), desiredDir);
+  // Roll the blade flat toward the swing arc.
+  desired.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI * 0.5));
+  const handInv = handWorld.clone().invert();
+  holder.quaternion.copy(handInv).multiply(desired);
+  // Meshy hand bones are unit-scale, but compensate if a rig ever is not.
+  const safeScale = new THREE.Vector3(
+    handScale.x ? 1 / handScale.x : 1,
+    handScale.y ? 1 / handScale.y : 1,
+    handScale.z ? 1 / handScale.z : 1,
+  );
+  holder.scale.copy(safeScale);
+  // A palm-sized offset keeps the handle in the fist while lifting the blade
+  // clear of the shoulder and hip. Alex's torso is slightly slimmer, so his
+  // grip sits a touch closer to the palm centre.
+  const offsetWorld =
+    character === 'alex'
+      ? new THREE.Vector3(-0.108, 0.024, 0.05)
+      : new THREE.Vector3(-0.12, 0.02, 0.05);
+  holder.position.copy(offsetWorld.applyQuaternion(handInv));
+}
+
+function attachToolToCostume(costume, tool, character) {
+  if (!costume || !tool?.holder || !costume.rightHand) return false;
+  if (tool.holder.parent) tool.holder.parent.remove(tool.holder);
+  costume.rightHand.add(tool.holder);
+  orientTool(costume, tool, character);
+  return true;
+}
+
+function setCostumeQuality(costume, quality) {
+  const low = quality === 'low' || quality === 'ultra-low';
+  for (const mesh of costume.skinned) {
+    const high = mesh.userData.highGeometry;
+    const reduced = mesh.userData.lowGeometry;
+    const next = low && reduced ? reduced : high;
+    if (next && mesh.geometry !== next) mesh.geometry = next;
+  }
+  costume.wrapper.traverse((object) => {
+    if (object.isMesh) object.castShadow = !low;
+  });
+}
+
+export class PlayableCharacter {
+  constructor({ scene, loader, sound = null, onProgress = null, character = 'sergey' } = {}) {
     this.scene = scene;
     this.loader = loader;
     this.sound = sound;
     this.onProgress = onProgress;
+    this.character = normaliseCharacter(character);
     this.costumes = new Map();
+    this._costumePromises = new Map();
     this.axes = new Map();
+    this._axesPromise = null;
     this.activeCostume = null;
-    this.costumeId = 'tee';
+    this.characterId = this.character;
+    this.costumeId = CHARACTER_DEFS[this.character].defaultCostume;
     this.axeId = 'sergey';
     this.axeHolder = null;
     this.axeAttachedTo = null;
@@ -276,164 +526,151 @@ export class SergeyCharacter {
     this._finishedHandler = null;
   }
 
-  assetUrls() {
-    return {
-      tee: assetUrl('char_sergey_animated_pbr.glb'),
-      jacket: assetUrl('char_sergey_jacket_animated_pbr.glb'),
-      walkTee: assetUrl('char_sergey_walking_armature.glb'),
-      runTee: assetUrl('char_sergey_running_armature.glb'),
-      walkJacket: assetUrl('char_sergey_jacket_walking_armature.glb'),
-      runJacket: assetUrl('char_sergey_jacket_running_armature.glb'),
-      ...Object.fromEntries(
-        Object.values(AXE_SKINS).map((skin) => [`axe_${skin.id}`, assetUrl(skin.file)]),
-      ),
-    };
+  /** Every URL this character can ever need (used by progress + docs/tests). */
+  assetUrls(character = this.character) {
+    const def = CHARACTER_DEFS[normaliseCharacter(character)];
+    const urls = {};
+    for (const costume of Object.values(def.costumes)) {
+      urls[costume.id] = assetUrl(costume.file);
+      urls[`walk_${costume.id}`] = assetUrl(costume.walk);
+      urls[`run_${costume.id}`] = assetUrl(costume.run);
+    }
+    for (const skin of Object.values(AXE_SKINS)) urls[`axe_${skin.id}`] = assetUrl(skin.file);
+    return urls;
   }
 
-  async load() {
-    const urls = this.assetUrls();
+  /** Load the selected character's default costume plus all four small axes. */
+  async load(character = this.character) {
+    this.character = normaliseCharacter(character);
+    const def = CHARACTER_DEFS[this.character];
     let done = 0;
-    const total = Object.keys(urls).length;
     const tick = () => {
       done += 1;
-      this.onProgress?.(done / total);
+      this.onProgress?.(Math.min(1, done / 6));
     };
-    const loadOne = async (url) => {
-      try {
-        const gltf = await this.loader.loadAsync(url);
-        return gltf;
-      } catch {
-        // A missing character/axe GLB falls back to the procedural humanoid
-        // and the old yard axe; the rest of the asset pack still loads.
-        return null;
-      } finally {
-        tick();
-      }
-    };
-    const entries = await Promise.all(
-      Object.entries(urls).map(async ([key, url]) => [key, await loadOne(url)]),
-    );
-    const assets = Object.fromEntries(entries);
-    for (const id of ['tee', 'jacket']) {
-      const gltf = assets[id];
-      if (!gltf) continue;
-      const walkGltf = assets[id === 'tee' ? 'walkTee' : 'walkJacket'];
-      const runGltf = assets[id === 'tee' ? 'runTee' : 'runJacket'];
-      try {
-        this.costumes.set(id, this.buildCostume(id, gltf, walkGltf, runGltf));
-      } catch {
-        // Skip a broken costume; the other one (or the fallback) still works.
-      }
-    }
-    for (const skin of Object.values(AXE_SKINS)) {
-      const gltf = assets[`axe_${skin.id}`];
-      if (!gltf) continue;
-      try {
-        const root = gltf.scene;
-        const holder = buildToolHolder(root, skin);
-        this.axes.set(skin.id, { holder, scene: root, skin });
-      } catch {
-        // Skip a broken axe skin.
-      }
-    }
+    await Promise.all([this._loadAxes(tick), this.ensureCostume(def.defaultCostume, tick)]);
     this.loaded = this.costumes.size > 0;
     return this.loaded;
   }
 
-  buildCostume(id, gltf, walkGltf, runGltf) {
-    const root = gltf.scene;
-    root.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(root);
-    const height = Math.max(0.01, box.max.y - box.min.y);
-    const scale = TARGET_HEIGHT / height;
-    root.scale.multiplyScalar(scale);
-    root.position.y -= box.min.y * scale;
-    root.position.y -= 0.012; // tennis shoes sit just below the grass line
-    root.traverse((object) => {
-      if (!object.isMesh) return;
-      object.castShadow = true;
-      object.receiveShadow = true;
-      object.frustumCulled = false;
-      const materials = Array.isArray(object.material) ? object.material : [object.material];
-      for (const material of materials) {
-        // The Meshy base-colour texture is a densely-packed 1024² atlas of
-        // face, skin, tee and denim islands. Once the renderer drops to 0.2 DPR
-        // (the software preset), the high mip levels average those islands
-        // together and the black tee turns into camouflage. Mipmaps are the
-        // culprit, not the mesh: disabling them on the base-colour map keeps
-        // the correct flat colours at every distance. The normal/roughness
-        // maps can keep their mips (they are detail-only).
-        const map = material?.map;
-        if (map) {
-          map.generateMipmaps = false;
-          map.minFilter = THREE.LinearFilter;
-          map.magFilter = THREE.LinearFilter;
-          map.anisotropy = 4;
-          map.needsUpdate = true;
-        }
-        if (material) material.needsUpdate = true;
+  _loadAxes(tick = () => {}) {
+    if (this._axesPromise) return this._axesPromise;
+    this._axesPromise = (async () => {
+      await Promise.all(
+        Object.values(AXE_SKINS).map(async (skin) => {
+          try {
+            const gltf = await this.loader.loadAsync(assetUrl(skin.file));
+            const root = gltf.scene;
+            const holder = buildToolHolder(root, skin);
+            this.axes.set(skin.id, { holder, scene: root, skin });
+          } catch {
+            // A missing axe GLB falls back to the old yard axe; the rest of
+            // the asset pack still loads.
+          } finally {
+            tick();
+          }
+        }),
+      );
+    })();
+    return this._axesPromise;
+  }
+
+  /** Lazy-load one costume of the current character. */
+  ensureCostume(id, tick = null) {
+    const def = CHARACTER_DEFS[this.character];
+    const costumeDef = def.costumes[id];
+    if (!costumeDef) return Promise.resolve(null);
+    if (this.costumes.has(id)) return Promise.resolve(this.costumes.get(id));
+    if (this._costumePromises.has(id)) return this._costumePromises.get(id);
+    const promise = (async () => {
+      const [gltf, walkGltf, runGltf] = await Promise.all([
+        this.loader.loadAsync(assetUrl(costumeDef.file)).catch(() => null),
+        this.loader.loadAsync(assetUrl(costumeDef.walk)).catch(() => null),
+        this.loader.loadAsync(assetUrl(costumeDef.run)).catch(() => null),
+      ]);
+      if (!gltf) {
+        this._costumePromises.delete(id);
+        return null;
       }
-      if (object.isSkinnedMesh) {
-        // Keep the LOD pointers on the mesh, not on the geometry: after the
-        // first swap mesh.geometry is the reduced geometry, so geometry-level
-        // userData would lose the original and High could never get it back.
-        // The old vertex-cluster copy only saved ~1% of the triangles on this
-        // 20.7k-tri mesh (UV/skin boundaries keep most clusters apart) and its
-        // merged seams produced skin-coloured speckles on the black tee at
-        // low DPR. Sharing the clean source mesh is both better looking and
-        // effectively the same vertex cost.
-        object.userData.highGeometry = object.geometry;
-        object.userData.lowGeometry = object.geometry;
-        object.userData.skinned = true;
+      try {
+        const costume = buildCostumeRecord({
+          scene: this.scene,
+          character: this.character,
+          id,
+          gltf,
+          walkGltf,
+          runGltf,
+        });
+        this.costumes.set(id, costume);
+        this.loaded = true;
+        tick?.();
+        return costume;
+      } catch {
+        this._costumePromises.delete(id);
+        return null;
       }
+    })();
+    this._costumePromises.set(id, promise);
+    return promise;
+  }
+
+  /** Swap the playable model. Default costume of the new character. */
+  async setCharacter(character) {
+    const next = normaliseCharacter(character);
+    if (next === this.character && this.activeCostume) return this.character;
+    const previous = this.activeCostume;
+    this.character = next;
+    this.characterId = next;
+    this.oneShot = null;
+    this.oneShotName = '';
+    this.locomotion = 'idle';
+    this.stance = false;
+    for (const costume of this.costumes.values()) costume.wrapper.visible = false;
+    const def = CHARACTER_DEFS[next];
+    const costume = await this.ensureCostume(def.defaultCostume);
+    if (!costume) return this.character;
+    this.activeCostume = null;
+    if (previous) previous.wrapper.visible = false;
+    this._activateCostume(costume, { time: 0, fade: false });
+    return this.character;
+  }
+
+  /** Switch costume within the current character, lazy-loading it if needed. */
+  setCostume(id) {
+    const def = CHARACTER_DEFS[this.character];
+    if (!def.costumes[id]) return Promise.resolve(this.costumeId);
+    if (this.activeCostume && id === this.costumeId) return Promise.resolve(this.costumeId);
+    return this.ensureCostume(id).then((costume) => {
+      if (!costume) return this.costumeId;
+      this._activateCostume(costume);
+      return this.costumeId;
     });
-    const wrapper = new THREE.Group();
-    wrapper.name = `sergey-${id}`;
-    wrapper.add(root);
-    wrapper.visible = false;
-    this.scene.add(wrapper);
-    const mixer = new THREE.AnimationMixer(root);
-    const actions = new Map();
-    const add = (clip, name) => {
-      if (!clip) return;
-      const action = mixer.clipAction(clip);
-      action.clampWhenFinished = true;
-      actions.set(name, action);
-    };
-    for (const clip of gltf.animations || []) {
-      let prepared = clip;
-      if (clip.name === 'Axe_Stance') {
-        // The authored clip starts with a 3.3 s pick-up crouch that also walks
-        // the Hips 0.7 m back. Loop only the standing part, centred on the rig.
-        prepared = stripHipsHorizontal(trimClip(clip, 3.35, 6.05));
-      } else if (clip.name === 'Charged_Axe_Chop' || clip.name === 'Heavy_Hammer_Swing') {
-        prepared = stripHipsHorizontal(clip);
-      }
-      add(prepared, clip.name);
+  }
+
+  _activateCostume(next, { time = null, fade = true } = {}) {
+    const previous = this.activeCostume;
+    const previousName = this.currentName;
+    const previousTime = previous?.actions.get(previousName)?.time || 0;
+    for (const costume of this.costumes.values()) costume.wrapper.visible = false;
+    this.costumeId = next.id;
+    this.activeCostume = next;
+    next.wrapper.visible = true;
+    this.syncVisibility();
+    const action =
+      next.actions.get(previousName) || next.actions.get('Idle');
+    if (action) {
+      for (const other of next.actions.values()) other.stop();
+      action.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+      action.time = time == null ? previousTime % Math.max(0.01, action.getClip().duration) : time;
+      this.action = action;
     }
-    const walkClip = walkGltf?.animations?.[0];
-    const runClip = runGltf?.animations?.[0];
-    // The armature-only GLBs ship clips whose internal names are
-    // "Armature|walking_man|baselayer"; expose the friendly names the state
-    // hook and docs use.
-    if (walkClip) walkClip.name = 'Walk_Arm';
-    if (runClip) runClip.name = 'Run_Arm';
-    add(walkClip, 'Walk_Arm');
-    add(runClip, 'Run_Arm');
-    const rightHand = root.getObjectByName('RightHand') || null;
-    const costume = {
-      id,
-      root,
-      wrapper,
-      mixer,
-      actions,
-      rightHand,
-      skinned: [],
-    };
-    root.traverse((object) => {
-      if (object.isSkinnedMesh) costume.skinned.push(object);
-    });
-    return costume;
+    this.attachAxe();
+    setCostumeQuality(next, this.quality);
+    this.applyLocomotion(true);
+    if (!fade) {
+      // The first activation should not cross-fade from a hidden default pose.
+      this.action?.setEffectiveWeight(1);
+    }
   }
 
   /** Attach the currently selected axe to the active costume. */
@@ -442,109 +679,22 @@ export class SergeyCharacter {
     const tool = this.axes.get(this.axeId) || this.axes.get('sergey');
     if (!costume || !tool || !costume.rightHand) return false;
     if (this.axeHolder && this.axeHolder.parent) this.axeHolder.parent.remove(this.axeHolder);
-    costume.rightHand.add(tool.holder);
+    const ok = attachToolToCostume(costume, tool, this.character);
     this.axeHolder = tool.holder;
-    this.axeAttachedTo = costume.rightHand.name;
-    this.applyHandOrientation(costume, tool);
-    return true;
-  }
-
-  /**
-   * Orient the tool relative to the hand in the bind pose. We pick a natural
-   * carry direction (head out and slightly down), then store it as a local
-   * quaternion so the animations carry the axe correctly.
-   */
-  applyHandOrientation(costume, tool) {
-    const holder = tool.holder;
-    holder.position.set(0, 0, 0);
-    holder.scale.set(1, 1, 1);
-    const hand = costume.rightHand;
-    if (!hand) return;
-    costume.root.updateMatrixWorld(true);
-    const handWorld = hand.getWorldQuaternion(new THREE.Quaternion());
-    const handScale = hand.getWorldScale(new THREE.Vector3());
-    // The bind-pose wrapper is later turned to face the player's heading, so
-    // bias the head outward on the model's left here and it ends up on Sergey's
-    // right (away from the torso) once the character is placed in the yard.
-    const desiredDir = new THREE.Vector3(-0.55, 0.76, 0.12).normalize();
-    const desired = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), desiredDir);
-    // Roll the blade flat toward the swing arc.
-    desired.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI * 0.5));
-    const handInv = handWorld.clone().invert();
-    holder.quaternion.copy(handInv).multiply(desired);
-    // Meshy hand bones are unit-scale, but compensate if a rig ever is not.
-    const safeScale = new THREE.Vector3(
-      handScale.x ? 1 / handScale.x : 1,
-      handScale.y ? 1 / handScale.y : 1,
-      handScale.z ? 1 / handScale.z : 1,
-    );
-    holder.scale.copy(safeScale);
-    // A palm-sized offset keeps the handle in the fist while lifting the blade
-    // clear of the shoulder and hip in the carry/idle poses.
-    const offsetWorld = new THREE.Vector3(-0.12, 0.02, 0.05);
-    holder.position.copy(offsetWorld.applyQuaternion(handInv));
+    this.axeAttachedTo = ok ? costume.rightHand.name : null;
+    return ok;
   }
 
   setQuality(name) {
     this.quality = name;
-    const low = name === 'low' || name === 'ultra-low';
-    for (const costume of this.costumes.values()) {
-      for (const mesh of costume.skinned) {
-        const high = mesh.userData.highGeometry;
-        const reduced = mesh.userData.lowGeometry;
-        const next = low && reduced ? reduced : high;
-        if (next && mesh.geometry !== next) mesh.geometry = next;
-      }
-    }
-    for (const costume of this.costumes.values()) {
-      costume.wrapper.traverse((object) => {
-        if (object.isMesh) object.castShadow = !low;
-      });
-    }
+    for (const costume of this.costumes.values()) setCostumeQuality(costume, name);
     this.syncVisibility();
   }
 
   syncVisibility() {
-    for (const [id, costume] of this.costumes) costume.wrapper.visible = id === this.costumeId;
-  }
-
-  setCostume(id) {
-    if (!this.costumes.has(id)) return Promise.resolve(this.costumeId);
-    if (!this.activeCostume) {
-      this.costumeId = id;
-      this.activeCostume = this.costumes.get(id);
-      this.activeCostume.wrapper.visible = true;
-      this.syncVisibility();
-      const idle = this.activeCostume.actions.get('Idle');
-      if (idle) {
-        idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
-        this.action = idle;
-      }
-      this.attachAxe();
-      this.setQuality(this.quality);
-      return Promise.resolve(this.costumeId);
+    for (const costume of this.costumes.values()) {
+      costume.wrapper.visible = costume === this.activeCostume;
     }
-    if (id === this.costumeId) return Promise.resolve(this.costumeId);
-    const previous = this.activeCostume;
-    const next = this.costumes.get(id);
-    // Carry the current motion across the swap so the change is not a pop.
-    const previousName = this.currentName;
-    const previousTime = previous?.actions.get(previousName)?.time || 0;
-    if (previous) previous.wrapper.visible = false;
-    this.costumeId = id;
-    this.activeCostume = next;
-    next.wrapper.visible = true;
-    this.syncVisibility();
-    const action = next.actions.get(previousName) || next.actions.get('Idle');
-    if (action) {
-      for (const other of next.actions.values()) other.stop();
-      action.reset().setLoop(THREE.LoopRepeat, Infinity).play();
-      action.time = previousTime % Math.max(0.01, action.getClip().duration);
-      this.action = action;
-    }
-    this.attachAxe();
-    this.applyLocomotion(true);
-    return Promise.resolve(this.costumeId);
   }
 
   setAxe(id) {
@@ -596,7 +746,8 @@ export class SergeyCharacter {
     if (!loop) {
       this.oneShot = action;
       this.oneShotName = name;
-      this.oneShotEnds = performance.now() + (action.getClip().duration - startTime) * 1000 / Math.max(0.05, timeScale);
+      this.oneShotEnds =
+        performance.now() + ((action.getClip().duration - startTime) * 1000) / Math.max(0.05, timeScale);
     } else {
       this.oneShot = null;
       this.oneShotName = '';
@@ -623,10 +774,6 @@ export class SergeyCharacter {
             : 'Idle';
     const action = this.activeCostume.actions.get(name);
     if (!action) return;
-    // Match the authored cycle to the ground speed. Walk_Arm covers about
-    // 0.5 m per 1.07 s cycle and Run_Arm about 0.52 m per 0.67 s cycle, so a
-    // 1.05 m/s walk needs ~2.1x and a 2.25 m/s run ~2.7x. The old 1.6x walk
-    // cycle skated ~65%; this keeps the foot plant close to the turf.
     const speed =
       this.locomotion === 'run' ? 2.7 : this.locomotion === 'walk' ? 2.1 : 1;
     this.play(name, { fade: 0.2, loop: true, timeScale: speed, force });
@@ -654,8 +801,6 @@ export class SergeyCharacter {
         : 'Axe_Stance';
     const action = this.activeCostume?.actions.get(name);
     const clip = action?.getClip();
-    // The axe head is ~0.95 m in front of the chest at 1.0 s into
-    // Heavy_Hammer_Swing — the natural contact frame for a trunk or block.
     const contactTime = Math.min(1.0, Math.max(0.2, (clip?.duration || 1.8) * 0.55));
     const startTime = name === 'Heavy_Hammer_Swing' ? 0.05 : 0;
     const delay = Math.max(0.16, impactDelay || (kind === 'stump' ? 0.62 : 0.36));
@@ -700,6 +845,7 @@ export class SergeyCharacter {
 
   state() {
     return {
+      character: this.character,
       costume: this.costumeId,
       axe: this.axeId,
       characterLoaded: Boolean(this.isLoaded),
@@ -707,4 +853,111 @@ export class SergeyCharacter {
       axeAttachedTo: this.axeAttachedTo,
     };
   }
+}
+
+/** Backwards-compatible name for the old single-character call sites. */
+export class SergeyCharacter extends PlayableCharacter {}
+
+/* ------------------------------------------------------------------ *
+ *  Remote co-op avatar
+ * ------------------------------------------------------------------ */
+
+const REMOTE_CLIPS = new Set([
+  'Charged_Axe_Chop',
+  'Heavy_Hammer_Swing',
+  'Victory_Cheer',
+]);
+
+function cacheLoad(cache, key, factory) {
+  if (!cache) return factory();
+  if (cache.has(key)) return cache.get(key);
+  const promise = Promise.resolve().then(factory);
+  cache.set(key, promise);
+  promise.catch(() => cache.delete(key));
+  return promise;
+}
+
+/**
+ * Load (or reuse) one character costume + axe and return a fully independent
+ * avatar: SkeletonUtils-cloned skeleton/meshes, own AnimationMixer, own axe.
+ * The co-op module only calls `setAnim()` and places `root`; `update()` must be
+ * pumped by the game each frame so the remote mixer advances.
+ */
+export async function spawnRemoteAvatar({
+  scene,
+  loader,
+  character = 'sergey',
+  costume = null,
+  axe = 'sergey',
+  cache = null,
+  quality = 'low',
+}) {
+  const charId = normaliseCharacter(character);
+  const def = CHARACTER_DEFS[charId];
+  const costumeId = def.costumes[costume] ? costume : def.defaultCostume;
+  const costumeDef = def.costumes[costumeId];
+  const assets = await cacheLoad(cache, `char:${charId}:${costumeId}`, async () => {
+    const [gltf, walkGltf, runGltf] = await Promise.all([
+      loader.loadAsync(assetUrl(costumeDef.file)),
+      loader.loadAsync(assetUrl(costumeDef.walk)).catch(() => null),
+      loader.loadAsync(assetUrl(costumeDef.run)).catch(() => null),
+    ]);
+    return { gltf, walkGltf, runGltf };
+  });
+  const skin = AXE_SKINS[axe] || AXE_SKINS.sergey;
+  const axeGltf = await cacheLoad(cache, `axe:${skin.id}`, () =>
+    loader.loadAsync(assetUrl(skin.file)),
+  );
+  const record = buildCostumeRecord({
+    scene,
+    character: charId,
+    id: costumeId,
+    gltf: assets.gltf,
+    walkGltf: assets.walkGltf,
+    runGltf: assets.runGltf,
+    cloneScene: true,
+    visible: true,
+  });
+  setCostumeQuality(record, quality);
+  const tool = { holder: buildToolHolder(axeGltf.scene.clone(true), skin), skin };
+  attachToolToCostume(record, tool, charId);
+
+  let current = null;
+  const avatar = {
+    root: record.wrapper,
+    headHeight: 2.08,
+    yawOffset: Math.PI,
+    record,
+    get anim() {
+      return current?.getClip?.()?.name || 'Idle';
+    },
+    setAnim(name) {
+      const mapped = name === 'Casual_Walk' ? 'Walk_Arm' : name === 'Run' ? 'Run_Arm' : name;
+      let action = record.actions.get(mapped) || record.actions.get('Idle');
+      if (!action) return;
+      if (action === current) return;
+      const previous = current;
+      current = action;
+      const once = REMOTE_CLIPS.has(action.getClip().name);
+      action.reset();
+      action.enabled = true;
+      action.setEffectiveWeight(1);
+      action.setEffectiveTimeScale(1);
+      action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
+      action.clampWhenFinished = true;
+      action.play();
+      if (previous && previous !== action && previous.isRunning()) {
+        action.crossFadeFrom(previous, 0.12, false);
+      }
+    },
+    update(dt) {
+      record.mixer.update(dt);
+    },
+    dispose() {
+      record.mixer.stopAllAction();
+      record.wrapper.removeFromParent();
+    },
+  };
+  avatar.setAnim('Idle');
+  return avatar;
 }

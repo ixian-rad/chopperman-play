@@ -45,6 +45,15 @@ import { FractureState, baseRequiredEnergy } from './fracture.js';
 import { simulateSwing, headMassFor, handleMassFor } from './swingmodel.js';
 import { softwareInitialScale, softwareRenderFloor } from './perftune.js';
 import { YardMode } from './yard.js';
+import {
+  CHARACTER_DEFS,
+  CHARACTER_COSTUMES,
+  normaliseCharacter,
+  normaliseCostume,
+  costumeName,
+  characterName,
+} from './character.js';
+import { createCoop } from '../coop/index.js';
 
 // Kick off Rapier's WASM compile before the synchronous yard build.
 // `@dimforge/rapier3d-compat` embeds its wasm as base64 and initialises with an
@@ -202,8 +211,19 @@ const ui = {
   weatherLabel: el('weatherLabel'),
   weatherNote: el('weatherNote'),
   settingButtons: el('settingButtons'),
+  characterButtons: el('characterButtons'),
   costumeButtons: el('costumeButtons'),
+  characterLabel: el('characterLabel'),
   costumeLabel: el('costumeLabel'),
+  playerNameSettings: el('playerNameSettings'),
+  characterOverlay: el('characterOverlay'),
+  characterTabs: el('characterTabs'),
+  characterPreview: el('characterPreview'),
+  startCostumeButtons: el('startCostumeButtons'),
+  startCostumeLabel: el('startCostumeLabel'),
+  playerNameInput: el('playerNameInput'),
+  characterPlay: el('characterPlay'),
+  coopToast: el('coopToast'),
   yardSettingLabel: el('yardSettingLabel'),
   axeSkinNote: el('axeSkinNote'),
   yardHud: el('yardHud'),
@@ -323,6 +343,9 @@ class AxeSimulation {
     this.axe = null;
     this.debris = null;
     this.yard = null;
+    this.coop = null;
+    this.coopToastTimer = 0;
+    this.showStartPicker = true;
     this.v2Active = false;
     this.sound = new SoundEngine();
     this.music = new MusicDirector(this.sound);
@@ -782,7 +805,7 @@ class AxeSimulation {
     this.qualityManager.start(requestedQuality);
     await this.qualityApplyPromise;
 
-    setLoading(80, 'Loading Sergey and the Assets v2 yards…');
+    setLoading(80, 'Loading the lumberjack and the Assets v2 yards…');
     this.yard = new YardMode({
       scene: this.scene,
       renderer: this.renderer,
@@ -811,6 +834,7 @@ class AxeSimulation {
     this.updateHudLive();
     this.updateAtmosphereUi();
     this.renderShop();
+    await this.setupCoop();
 
     if (ui.qualitySelect) ui.qualitySelect.value = requestedQuality;
     if (ui.autoTimeToggle) ui.autoTimeToggle.checked = Boolean(this.game.settings.autoTime);
@@ -844,9 +868,134 @@ class AxeSimulation {
     this.updateHudStatic();
     this.readyAt = performance.now();
     requestAnimationFrame(() => ui.loading?.classList.add('done'));
+    this.showStartPickerCard();
     this.lastFrame = performance.now();
     requestAnimationFrame(this._tick);
     this.applyUrlRun();
+  }
+
+  /**
+   * Co-op v1 wiring. createCoop() only registers hooks here; PeerJS is not
+   * downloaded until the player actually Hosts or Joins. The module owns the
+   * transport/session/avatar/nameplate/menu; this game owns the world and the
+   * real hit/award/log paths.
+   */
+  async setupCoop() {
+    if (this.coop || !this.yard) return this.coop;
+    const yard = this.yard;
+    const coop = createCoop({
+      THREE,
+      scene: this.scene,
+      getCamera: () => this.camera,
+      getViewportHeight: () => this.renderer?.domElement?.clientHeight || window.innerHeight,
+      hooks: {
+        getProfile: () => ({
+          name: this.effectiveName(),
+          character: yard.characterId,
+          costume: yard.costume,
+          axe: yard.axeSkin,
+        }),
+        getWorld: () => ({
+          // Host only: keep the historical fixed yard seeds when the player has
+          // not hosted before, so a solo world looks exactly as it always did.
+          seed: yard.worldSeed ?? (yard.setting === 'nj' ? 517 : 991),
+          setting: yard.setting,
+        }),
+        onWorldInit: (opts) => {
+          this.hideStartPicker();
+          return yard.onCoopWorld(opts);
+        },
+        getTrees: async () => yard.coopTrees(),
+        getLocalState: () => yard.localNetState(),
+        // The yard uses forward = (-sin yaw, -cos yaw) (the model faces +Z and
+        // setWorldTransform adds PI). The voice module's pan helper expects
+        // forward = (sin yaw, cos yaw), so hand it the opposite direction.
+        // Distance/gain are unaffected; this only matters if pan is enabled.
+        getListenerYaw: () => (yard.playerYaw ?? 0) + Math.PI,
+        spawnAvatar: (info) => yard.spawnCoopAvatar(info),
+        onTreeHit: (ev, mine) => yard.onCoopTreeHit(ev, mine),
+        onTreeFell: (ev, mine) => yard.onCoopTreeFell(ev, mine),
+        onLogSpawned: (ev, mine) => yard.onCoopLogSpawned(ev, mine),
+        onLogSplit: (ev, mine) => yard.onCoopLogSplit(ev, mine),
+        onDenied: (ev) => yard.onCoopDenied(ev),
+        onAward: (ev, mine) => yard.onCoopAward(ev, mine),
+        onPlayerJoined: (p) => {
+          if (!p || p.id === this.coop?.session?.localId) return;
+          this.coopNotice(
+            `${p.name} is here — ${characterName(p.character)} · ${costumeName(p.character, p.costume)}.`,
+            'good',
+          );
+        },
+        onPlayerLeft: (p) => {
+          this.coopNotice(`${p?.name || 'Your partner'} left. Back to single player.`);
+        },
+        onPlayerDisconnected: (p) => {
+          this.coopNotice(`${p?.name || 'Your partner'} disconnected — holding their spot…`, 'warn');
+        },
+        onEnded: (reason) => {
+          if (reason === 'left') return;
+          this.coopNotice(
+            reason === 'host-left'
+              ? 'Host left. Back to single player.'
+              : reason === 'lost'
+                ? 'Connection lost. Back to single player.'
+                : 'Disconnected. Back to single player.',
+          );
+        },
+      },
+    });
+    this.coop = coop;
+    yard.coop = coop;
+    coop.mountUI();
+    this.placeCoopVoiceHud();
+    window.chopperTest.coop = coop.testHook({
+      fellTree: () => window.chopperTest.chopTree(),
+    });
+    return coop;
+  }
+
+  /**
+   * The module docks #coop-voice-hud bottom-left, which is exactly where this
+   * game keeps the yard panel (and, at the stump, the stamina panel). Lift the
+   * voice HUD just above whichever of those is visible instead of covering it;
+   * in stump mode the right-hand column under the atmosphere panel is free, so
+   * the HUD moves there. CSS hides it while the narrow-layout Co-op panel is
+   * open. Everything re-places on resize, panel show/hide and mode changes.
+   */
+  placeCoopVoiceHud() {
+    const hud = document.querySelector('#coop-voice-hud');
+    if (!hud) return;
+    const anchors = [document.querySelector('.yard-hud'), document.querySelector('.stamina-card')];
+    const place = () => {
+      if (
+        document.body.classList.contains('mode-stump') &&
+        typeof matchMedia === 'function' &&
+        matchMedia('(min-width: 1100px) and (min-height: 800px)').matches
+      ) {
+        // CSS parks the HUD in the free right-hand column between the grain dial
+        // and the log card on large screens; clear the yard-mode inline offset.
+        Object.assign(hud.style, { left: '', right: '', top: '', bottom: '' });
+        return;
+      }
+      // Yard and small-screen stump: lift the HUD above the lowest visible
+      // left-side panel (yard HUD in free roam, stamina card at the block).
+      let top = Infinity;
+      for (const el of anchors) {
+        if (!el || getComputedStyle(el).display === 'none') continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.left < innerWidth / 2) top = Math.min(top, r.top);
+      }
+      Object.assign(hud.style, { left: '', right: '', top: '', bottom: top < Infinity ? `${Math.max(12, Math.round(innerHeight - top + 10))}px` : '' });
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(place);
+      for (const el of anchors) if (el) ro.observe(el);
+    }
+    window.addEventListener('resize', place);
+    if (typeof MutationObserver !== 'undefined') {
+      new MutationObserver(place).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+    place();
   }
 
   /**
@@ -863,7 +1012,7 @@ class AxeSimulation {
       if (this.axe) this.axe.group.visible = false;
     } else {
       this.toast(
-        'Sergey could not load — using the old procedural woodcutter fallback.',
+        `${this.yard?.characterLabel || 'The lumberjack'} could not load — using the old procedural woodcutter fallback.`,
         'bad',
       );
     }
@@ -910,6 +1059,7 @@ class AxeSimulation {
   }
 
   onYardEntered() {
+    if (this.showStartPicker) this.hideStartPicker();
     if (this.controls) this.controls.enabled = false;
     this.cancelCharge();
     if (this.reticle) this.reticle.visible = false;
@@ -918,20 +1068,115 @@ class AxeSimulation {
     this.syncV2Ui();
   }
 
+  /** Effective player name: explicit save value, else the character's name. */
+  effectiveName() {
+    const explicit = String(this.game?.settings?.playerName || '').trim().slice(0, 16);
+    if (explicit) return explicit;
+    const id = this.yard?.characterId || this.game?.settings?.character || 'sergey';
+    return characterName(id);
+  }
+
+  setPlayerName(value, { syncInputs = true } = {}) {
+    const clean = String(value || '')
+      .replace(/[^\p{L}\p{N} _.'-]/gu, '')
+      .trim()
+      .slice(0, 16);
+    this.game.setSetting('playerName', clean);
+    const effective = this.effectiveName();
+    if (syncInputs) {
+      for (const input of [ui.playerNameInput, ui.playerNameSettings]) {
+        if (input && document.activeElement !== input) input.value = effective;
+      }
+    }
+    this.coop?.setLocalProfile?.({ name: effective });
+    if (this.coop?.ui?.render) this.coop.ui.render();
+    return effective;
+  }
+
+  /** Change the playable character from the start card, settings or tests. */
+  setCharacter(character) {
+    const next = normaliseCharacter(character);
+    const previousId = this.yard?.characterId || this.game.settings.character || 'sergey';
+    const previousDefault = characterName(previousId);
+    const storedName = String(this.game.settings.playerName || '').trim();
+    const wasAuto = !storedName || storedName === previousDefault;
+    this.game.setSetting('character', next);
+    const result = this.yard?.setCharacter(next) || Promise.resolve(next);
+    return Promise.resolve(result).then(() => {
+      const yardCostume = this.yard?.costume || CHARACTER_DEFS[next].defaultCostume;
+      this.game.setSetting('costume', yardCostume);
+      if (wasAuto) this.game.setSetting('playerName', '');
+      this.syncV2Ui();
+      this.updateHudStatic();
+      this.coop?.setLocalProfile?.({
+        character: next,
+        costume: yardCostume,
+        name: this.effectiveName(),
+      });
+      return this.yard?.characterId || next;
+    });
+  }
+
+  setCostume(costume) {
+    const character = this.yard?.characterId || this.game.settings.character || 'sergey';
+    const next = normaliseCostume(character, costume);
+    if (next !== costume) return Promise.resolve(this.yard?.costume || next);
+    const result = this.yard?.setCostume(next) || Promise.resolve(next);
+    return Promise.resolve(result).then(() => {
+      this.game.setSetting('costume', next);
+      this.syncV2Ui();
+      this.coop?.setLocalProfile?.({ costume: next });
+      return this.yard?.costume || next;
+    });
+  }
+
   syncV2Ui() {
     const setting = this.yard?.setting || this.game.settings.setting || 'nj';
-    const costume = this.yard?.costume || this.game.settings.costume || 'tee';
+    const character = this.yard?.characterId || this.game.settings.character || 'sergey';
+    const costume = this.yard?.costume || normaliseCostume(character, this.game.settings.costume);
+    const costumes = CHARACTER_COSTUMES[character] || CHARACTER_COSTUMES.sergey;
     for (const button of ui.settingButtons?.querySelectorAll('[data-setting]') || []) {
       button.classList.toggle('active', button.getAttribute('data-setting') === setting);
     }
-    for (const button of ui.costumeButtons?.querySelectorAll('[data-costume]') || []) {
-      button.classList.toggle('active', button.getAttribute('data-costume') === costume);
+    for (const button of ui.characterButtons?.querySelectorAll('[data-character]') || []) {
+      button.classList.toggle('active', button.getAttribute('data-character') === character);
+    }
+    for (const button of ui.characterTabs?.querySelectorAll('[data-character]') || []) {
+      button.classList.toggle('active', button.getAttribute('data-character') === character);
+    }
+    // Re-label the two costume buttons for the active character.
+    for (const container of [ui.costumeButtons, ui.startCostumeButtons]) {
+      const buttons = container?.querySelectorAll('[data-costume]') || [];
+      buttons.forEach((button, index) => {
+        const id = costumes[index] || costumes[0];
+        button.setAttribute('data-costume', id);
+        button.textContent = costumeName(character, id);
+        button.classList.toggle('active', id === costume);
+      });
+    }
+    const preview = {
+      sergey: {
+        tee: './assets/art/nj/nj_keyart.webp',
+        jacket: './assets/art/nj/nj_keyart_jacket.webp',
+      },
+      alex: {
+        camo: './assets/art/nj/alex_nj_keyart.webp',
+        bomber: './assets/art/nj/alex_nj_keyart_jacket.webp',
+      },
+    };
+    if (ui.characterPreview) {
+      ui.characterPreview.src = preview[character]?.[costume] || preview.sergey.tee;
+      ui.characterPreview.alt = `${characterName(character)} in ${costumeName(character, costume)} with an axe`;
     }
     if (ui.yardSettingLabel) {
-      ui.yardSettingLabel.textContent = `${setting === 'tiraspol' ? 'Tiraspol' : 'NJ'} · ${costume === 'jacket' ? 'Blue jacket' : 'Black tee'}`;
+      ui.yardSettingLabel.textContent = `${setting === 'tiraspol' ? 'Tiraspol' : 'NJ'} · ${characterName(character)} · ${costumeName(character, costume)}`;
     }
-    if (ui.costumeLabel) {
-      ui.costumeLabel.textContent = costume === 'jacket' ? 'Blue jacket' : 'Black tee';
+    if (ui.characterLabel) ui.characterLabel.textContent = characterName(character);
+    if (ui.costumeLabel) ui.costumeLabel.textContent = costumeName(character, costume);
+    if (ui.startCostumeLabel) ui.startCostumeLabel.textContent = costumeName(character, costume);
+    if (ui.characterPlay) ui.characterPlay.textContent = `Play as ${characterName(character)}`;
+    for (const input of [ui.playerNameInput, ui.playerNameSettings]) {
+      if (input && document.activeElement !== input) input.value = this.effectiveName();
     }
     if (ui.yardHud) ui.yardHud.hidden = this.yard?.mode !== 'yard';
     if (ui.yardCrosshair) ui.yardCrosshair.hidden = this.yard?.mode !== 'yard';
@@ -940,6 +1185,33 @@ class AxeSimulation {
     if (ui.axeSkinNote) {
       ui.axeSkinNote.textContent = 'Axe skin follows the axe equipped in the Axe Shed. The golden axe is the Tempered Master unlock.';
     }
+  }
+
+  hideStartPicker() {
+    this.showStartPicker = false;
+    if (!ui.characterOverlay) return;
+    ui.characterOverlay.classList.add('hidden');
+    ui.characterOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  showStartPickerCard() {
+    if (!ui.characterOverlay) return;
+    this.showStartPicker = true;
+    ui.characterOverlay.classList.remove('hidden');
+    ui.characterOverlay.setAttribute('aria-hidden', 'false');
+    this.syncV2Ui();
+  }
+
+  /** Big, high-contrast co-op status toast (>= 20 px per the legibility rule). */
+  coopNotice(message, kind = '') {
+    if (!message || !ui.coopToast) return;
+    ui.coopToast.textContent = message;
+    ui.coopToast.dataset.kind = kind;
+    ui.coopToast.hidden = false;
+    clearTimeout(this.coopToastTimer);
+    this.coopToastTimer = setTimeout(() => {
+      if (ui.coopToast) ui.coopToast.hidden = true;
+    }, 5200);
   }
 
   syncYardAxeFromGame() {
@@ -1576,7 +1848,46 @@ class AxeSimulation {
       if (!button) return;
       const costume = button.getAttribute('data-costume');
       if (!costume || costume === this.yard?.costume) return;
-      this.yard?.setCostume(costume).then(() => this.syncV2Ui());
+      this.setCostume(costume).then(() => this.sound.click?.());
+    });
+
+    for (const container of [ui.characterButtons, ui.characterTabs]) {
+      container?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-character]');
+        if (!button) return;
+        const character = button.getAttribute('data-character');
+        if (!character || character === this.yard?.characterId) return;
+        this.sound.click?.();
+        this.setCharacter(character);
+      });
+    }
+
+    ui.startCostumeButtons?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-costume]');
+      if (!button) return;
+      const costume = button.getAttribute('data-costume');
+      if (!costume || costume === this.yard?.costume) return;
+      this.sound.click?.();
+      this.setCostume(costume);
+    });
+
+    for (const input of [ui.playerNameInput, ui.playerNameSettings]) {
+      input?.addEventListener('input', () => {
+        const value = input.value;
+        for (const other of [ui.playerNameInput, ui.playerNameSettings]) {
+          if (other && other !== input) other.value = value;
+        }
+        this.setPlayerName(value, { syncInputs: false });
+      });
+      input?.addEventListener('blur', () => {
+        input.value = this.effectiveName();
+      });
+      input?.addEventListener('keydown', (event) => event.stopPropagation());
+      input?.addEventListener('keyup', (event) => event.stopPropagation());
+    }
+    ui.characterPlay?.addEventListener('click', () => {
+      this.hideStartPicker();
+      this.sound.ensure();
       this.sound.click?.();
     });
 
@@ -1635,6 +1946,7 @@ class AxeSimulation {
       this.renderShop();
       this.updateHudStatic();
       this.syncYardAxeFromGame();
+      this.coop?.setLocalProfile?.({ axe: this.yard?.axeSkin });
     });
 
     ui.upgradeList?.addEventListener('click', (event) => {
@@ -1689,6 +2001,12 @@ class AxeSimulation {
   }
 
   onKeyDown(event) {
+    if (
+      this.showStartPicker &&
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'Enter'].includes(event.code)
+    ) {
+      this.hideStartPicker();
+    }
     if (event.key === 'Escape' && this.runOverlayOpen) {
       this.startMode('free');
       return;
@@ -1847,6 +2165,7 @@ class AxeSimulation {
 
   openModal(name) {
     this.cancelCharge();
+    if (this.showStartPicker) this.hideStartPicker();
     this.modalOpen = name;
     const modal = name === 'shop' ? ui.shopModal : ui.settingsModal;
     if (!modal) return;
@@ -3728,6 +4047,7 @@ class AxeSimulation {
     }
 
     const contractLogIndex = this.game.run.splits;
+    const coopDeferXpCoins = Boolean(this.coop?.inSession?.());
     const lastHit = this.game.registerSplit({
       center,
       grain,
@@ -3779,7 +4099,24 @@ class AxeSimulation {
       corePunchGain: Number(strike.corePunchGain || 0),
       coreCracked: Boolean(strike.coreCracked),
       ringCutsNeeded: Number(strike.ringCutsNeeded || 2),
-    });
+    }, { deferXpCoins: coopDeferXpCoins });
+
+    // Co-op: route the split's XP/coins through the session so the partner
+    // receives 50%; the actor's full amount comes back through onAward.
+    if (coopDeferXpCoins && (lastHit.xp || lastHit.coins)) {
+      this.coop.session.award({
+        xp: lastHit.xp,
+        gold: lastHit.coins,
+        loot: 0,
+        reason: 'split',
+      });
+    }
+
+    // Co-op: a completed split claims a shared log from the host. First claim
+    // wins; the loser gets the module's onDenied toast and the log disappears.
+    if (this.coop?.inSession?.() && !lastHit.partial) {
+      this.yard?.claimCoopLogSplit?.(lastHit.logId || this.game.species?.id || 'pine');
+    }
 
     // Contracts grade the resolved strike without changing the swing loop.
     if (this.contract) {
@@ -5447,6 +5784,7 @@ class AxeSimulation {
     }
     this.environment.update(Math.min(0.12, scaledDt), this.simTime);
     this.yard?.update(rawDt, scaledDt);
+    this.coop?.update(now);
 
     if (this.charge.active && !this.slowMotion) {
       this.charge.t += rawDt;
@@ -5925,28 +6263,39 @@ window.chopperTest = {
     return Boolean(simulation.ready && simulation.yard?.ready());
   },
   setSetting(setting) {
+    simulation.hideStartPicker();
     const result = simulation.yard?.setSetting(setting) || Promise.resolve(false);
     return Promise.resolve(result).then((value) => {
       simulation.syncV2Ui();
       return value;
     });
   },
+  setCharacter(character) {
+    simulation.hideStartPicker();
+    return simulation.setCharacter(character).then((value) => {
+      simulation.syncV2Ui();
+      return value;
+    });
+  },
   setCostume(costume) {
-    const result = simulation.yard?.setCostume(costume) || Promise.resolve(false);
-    return Promise.resolve(result).then((value) => {
+    simulation.hideStartPicker();
+    return simulation.setCostume(costume).then((value) => {
       simulation.syncV2Ui();
       return value;
     });
   },
   setAxe(axe) {
+    simulation.hideStartPicker();
     const result = simulation.yard?.setAxe(axe) || Promise.resolve(false);
     return Promise.resolve(result).then((value) => {
       simulation.updateHudStatic();
       simulation.renderShop();
+      simulation.coop?.setLocalProfile?.({ axe: value });
       return value;
     });
   },
   setQuality(name) {
+    simulation.hideStartPicker();
     simulation.qualityManager.setMode(name);
     simulation.yard?.applyQuality(simulation.qualityName, { silent: true });
     simulation.game?.setQuality(name);
@@ -5963,18 +6312,30 @@ window.chopperTest = {
     return simulation.yard?.enterYard({ instant: true }) || Promise.resolve(false);
   },
   enterStump() {
+    simulation.hideStartPicker();
     return simulation.yard?.enterStump() || Promise.resolve(false);
   },
   teleportNearTree() {
+    simulation.hideStartPicker();
     return simulation.yard?.teleportNearTree() ?? null;
   },
   chopTree() {
+    simulation.hideStartPicker();
     return simulation.yard?.chopTree() || Promise.resolve({ felled: false, hits: 0 });
   },
   state() {
-    if (simulation.yard) return simulation.yard.state();
+    if (simulation.yard) {
+      const state = simulation.yard.state();
+      state.name = simulation.effectiveName();
+      state.characterLoaded = Boolean(simulation.yard.character?.isLoaded);
+      state.axeAttachedTo = simulation.yard.character?.axeAttachedTo || null;
+      return state;
+    }
     return {
       setting: 'nj',
+      character: 'sergey',
+      characterName: 'Sergey',
+      name: simulation.effectiveName(),
       costume: 'tee',
       axe: 'sergey',
       quality: simulation.qualityName,

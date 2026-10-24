@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { loadTreeLibrary } from './assets/trees_v2/runtime/trees.js';
 import { YardTreeField } from './yard-trees.js';
@@ -7,6 +8,7 @@ import { WIND, updateWind } from './assets/trees_v2/runtime/wind.js';
 import { randomSource } from './environment.js';
 
 const AXES={sergey:'axe_sergey',double_bit:'axe_double_bit',maul:'splitting_maul',golden:'axe_golden'};
+export const CHARACTERS={sergey:{name:'Sergey',costumes:{tee:'Black tee',jacket:'Blue jacket'}},alex:{name:'Alex',costumes:{camo:'Camo tee',bomber:'Navy bomber'}}};
 const LOW_PROPS=new Set(['shed_nj','chopping_stump_nj','firewood_heap_nj','tarp_woodpile','siding_wall','chopping_block','split_log_halves','house_wall_grapevine','mangal','bench','lada_car','well','khrushchevka','cathedral','iron_tools_horseshoe']);
 const LOW_DRESSING=new Set(['arborvitae','grill_gas','wheelbarrow','tomato_garden']);
 const SPECIES={nj:['pine','oak','maple','birch'],tiraspol:['walnut','apricot','poplar','birch']};
@@ -46,13 +48,14 @@ export class AssetBackyard {
   constructor({scene,camera,controls,renderer,storage,audio,onReward,onMode,onStatus,onShake}){
     Object.assign(this,{scene,camera,controls,renderer,storage,audio,onReward,onMode,onStatus,onShake});
     this.player=new THREE.Group();this.player.name='Sergey';scene.add(this.player);
-    this.player.position.set(0,0,-.72);this.mode='stump';this.costume='tee';this.axe='sergey';this.setting='nj';this.quality='low';this.qualityMode='auto';this.anim='Idle';
+    this.player.position.set(0,0,-.72);this.mode='stump';this.characterId='sergey';this.playerName='Sergey';this.worldSeed=0;this.remoteActors=new Set();this.costume='tee';this.axe='sergey';this.setting='nj';this.quality='low';this.qualityMode='auto';this.anim='Idle';
     this.materialCache=new WeakMap();this.loaded=false;this.keys=new Set();this.heading=0;this.pitch=.2;this.stepDistance=0;this.swinging=null;this.cheerUntil=0;this.colliders=[];this.yards=new Map();this.models=new Map();this.characterCache=new Map();this.axeCache=new Map();this.chips=[];this.settingsEpoch=0;
     this.actionWeights=new Map();this.moveSpeed=0;this.gazeYaw=0;this.gazePitch=0;
     this.cameraLook=new THREE.Vector3();this.cameraDesired=new THREE.Vector3();this.frameForward=new THREE.Vector3();this.moveStart=new THREE.Vector3();this.moveDelta=new THREE.Vector3();this.travel=new THREE.Vector3();
-    try{const s=JSON.parse(storage?.getItem('backyard-assets-v2')||'{}');for(const key of ['setting','costume','axe','quality','qualityMode','goldenUnlocked'])if(s[key]!==undefined)this[key]=s[key];}catch{/* Optional preferences. */}
+    try{const s=JSON.parse(storage?.getItem('backyard-assets-v2')||'{}');for(const key of ['setting','characterId','playerName','costume','axe','quality','qualityMode','goldenUnlocked'])if(s[key]!==undefined)this[key]=s[key];}catch{/* Optional preferences. */}
     if(!['auto','low','medium','high'].includes(this.qualityMode))this.qualityMode='auto';
-    if(!SPECIES[this.setting])this.setting='nj';if(!['tee','jacket'].includes(this.costume))this.costume='tee';if(!AXES[this.axe])this.axe='sergey';if(this.axe==='golden'&&!this.goldenUnlocked)this.axe='sergey';
+    if(!CHARACTERS[this.characterId])this.characterId='sergey';this.playerName=String(this.playerName||CHARACTERS[this.characterId].name).slice(0,16);
+    if(!SPECIES[this.setting])this.setting='nj';if(!CHARACTERS[this.characterId].costumes[this.costume])this.costume=Object.keys(CHARACTERS[this.characterId].costumes)[0];if(!AXES[this.axe])this.axe='sergey';if(this.axe==='golden'&&!this.goldenUnlocked)this.axe='sergey';
     this.manager=new THREE.LoadingManager();this.manager.onProgress=(_url,done,total)=>{const bar=document.getElementById('asset-progress');bar.value=done;bar.max=total;document.getElementById('asset-progress-label').textContent=`Unpacking the backyard · ${done} / ${total}`;};
     this.loader=new GLTFLoader(this.manager).setMeshoptDecoder(MeshoptDecoder);this.textureLoader=new THREE.TextureLoader(this.manager);
     this.targetRing=new THREE.Mesh(new THREE.RingGeometry(.45,.49,48),new THREE.MeshBasicMaterial({color:0xffd787,side:THREE.DoubleSide,depthWrite:false}));this.targetRing.rotation.x=-Math.PI/2;this.targetRing.visible=false;scene.add(this.targetRing);
@@ -60,18 +63,11 @@ export class AssetBackyard {
     this.playerShadow=new THREE.Mesh(new THREE.PlaneGeometry(1.1,.8),this.contactMaterial);this.playerShadow.rotation.x=-Math.PI/2;scene.add(this.playerShadow);
     this.bindInputs();
   }
-  save(){try{this.storage?.setItem('backyard-assets-v2',JSON.stringify({setting:this.setting,costume:this.costume,axe:this.axe,quality:this.quality,qualityMode:this.qualityMode,goldenUnlocked:!!this.goldenUnlocked}));}catch{/* Session preferences still work. */}}
+  save(){try{this.storage?.setItem('backyard-assets-v2',JSON.stringify({setting:this.setting,characterId:this.characterId,playerName:this.playerName,costume:this.costume,axe:this.axe,quality:this.quality,qualityMode:this.qualityMode,goldenUnlocked:!!this.goldenUnlocked}));}catch{/* Session preferences still work. */}}
   model(group,name){const url=`assets/models/${group}/${name}.glb`;if(!this.models.has(url))this.models.set(url,this.loader.loadAsync(url));return this.models.get(url);}
   texture(url){return this.textureLoader.loadAsync(url).then(t=>{t.colorSpace=THREE.SRGBColorSpace;return t;});}
   async init(){
-    const costumes=['tee','jacket'].map(async costume=>{
-      const prefix=costume==='jacket'?'char_sergey_jacket':'char_sergey';
-      const [gltf,low,walk,run]=await Promise.all([this.model('common',`${prefix}_animated_pbr`),this.model('derived/sergey-low',`${prefix}_animated_pbr`),this.model('common',`${prefix}_walking_armature`),this.model('common',`${prefix}_running_armature`)]);
-      // These atlases have tiny, tightly packed UV islands. Ordinary mipmaps
-      // mix skin into the black clothing at game distance (golden speckles).
-      for(const source of [gltf,low])source.scene.traverse(o=>{if(!o.isMesh)return;for(const material of Array.isArray(o.material)?o.material:[o.material])for(const key of ['map','normalMap','roughnessMap','metalnessMap']){const texture=material[key];if(texture){texture.minFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.anisotropy=this.softwareRenderer?1:Math.min(4,this.renderer.capabilities.getMaxAnisotropy());texture.needsUpdate=true;}}});
-      this.characterCache.set(costume,{gltf,low,clips:[...gltf.animations.map(c=>c.name==='Idle'?plantedStance(c):c.name==='Axe_Stance'?plantedStance(THREE.AnimationUtils.subclip(c,c.name,138,182,30)):inPlace(c.name==='Charged_Axe_Chop'?THREE.AnimationUtils.subclip(c,c.name,91,147,30):c)),inPlace(walk.animations[0],'Walk'),inPlace(run.animations[0],'Run')]});
-    });
+    const costumes=[this.loadCharacter(this.characterId,this.costume)];
     const axes=Object.entries(AXES).map(async([key,file])=>{const gltf=await this.model('common',file);this.axeCache.set(key,gltf.scene);});
     const trees=loadTreeLibrary(this.loader,Object.fromEntries([...new Set(Object.values(SPECIES).flat())].map(s=>[s,`assets/trees_v2/models/tree_${s}.glb`]))).then(lib=>{
       // Alpha-to-coverage without MSAA keeps pale fringe texels instead of
@@ -82,16 +78,37 @@ export class AssetBackyard {
     const textures=Promise.all([this.texture('assets/art/common/fx_woodchips_sheet_4x4.webp'),this.texture('assets/art/nj/tex_mulch_chips_decal.webp')]).then(([chips,mulch])=>{this.chipAtlas=chips;this.mulchTexture=mulch;});
     await Promise.all([...costumes,...axes,trees,textures,this.loadYard('nj'),this.loadYard('tiraspol')]);
     for(const key of ['nj','tiraspol']){const yard=await this.loadYard(key);const mulch=new THREE.Mesh(new THREE.PlaneGeometry(4.6,4.6),new THREE.MeshStandardMaterial({map:this.mulchTexture,transparent:true,depthWrite:false,roughness:1}));mulch.rotation.x=-Math.PI/2;mulch.position.set(0,.012,0);mulch.receiveShadow=true;yard.group.add(mulch);}
-    await this.setCostume(this.costume);await this.setSetting(this.setting);this.loaded=true;
+    await this.setCostume(this.requestedCostume??this.costume);await this.setSetting(this.setting);this.loaded=true;
     document.getElementById('asset-loading').hidden=true;
-    this.onStatus('Sergey is ready. Find the grain, or step into the yard.');
+    this.onStatus(`${CHARACTERS[this.characterId].name} is ready. Find the grain, or step into the yard.`);
     this.syncUI();return this;
   }
+  async loadCharacter(character,costume){
+    this.characterLoads??=new Map();const key=`${character}:${costume}`;
+    if(!this.characterLoads.has(key))this.characterLoads.set(key,(async()=>{
+      const prefix=`char_${character}${['jacket','bomber'].includes(costume)?'_jacket':''}`;
+      const [gltf,low,walk,run]=await Promise.all([this.model('common',`${prefix}_animated_pbr`),character==='sergey'?this.model('derived/sergey-low',`${prefix}_animated_pbr`):this.model('common',`${prefix}_animated_pbr`),this.model('common',`${prefix}_walking_armature`),this.model('common',`${prefix}_running_armature`)]);
+      // These atlases have tiny, tightly packed UV islands. Ordinary mipmaps
+      // mix skin into the black clothing at game distance (golden speckles).
+      for(const source of [gltf,low])source.scene.traverse(o=>{if(!o.isMesh)return;for(const material of Array.isArray(o.material)?o.material:[o.material])for(const key of ['map','normalMap','roughnessMap','metalnessMap']){const texture=material[key];if(texture){texture.minFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.anisotropy=this.softwareRenderer?1:Math.min(4,this.renderer.capabilities.getMaxAnisotropy());texture.needsUpdate=true;}}});
+      const entry={gltf,low,clips:[...gltf.animations.map(c=>c.name==='Idle'?plantedStance(c):c.name==='Axe_Stance'?plantedStance(THREE.AnimationUtils.subclip(c,c.name,138,182,30)):inPlace(c.name==='Charged_Axe_Chop'?THREE.AnimationUtils.subclip(c,c.name,91,147,30):c)),inPlace(walk.animations[0],'Walk'),inPlace(run.animations[0],'Run')]};this.characterCache.set(costume,entry);return entry;
+    })());
+    return this.characterLoads.get(key);
+  }
+  async setCharacter(value){
+    if(!CHARACTERS[value])throw Error('Unknown character');
+    const oldName=CHARACTERS[this.characterId].name;
+    const previous=this.characterId,previousName=this.playerName;this.characterId=value;
+    if(this.playerName===oldName)this.playerName=CHARACTERS[value].name;
+    try{return await this.setCostume(Object.keys(CHARACTERS[value].costumes)[0]);}
+    catch(error){this.characterId=previous;this.playerName=previousName;this.requestedCostume=this.costume;throw error;}
+  }
   async setCostume(value){
-    if(!['tee','jacket'].includes(value))throw Error('Unknown costume');
-    const entry=this.characterCache.get(value);if(!entry)return;
-    this.cancelSwing();this.stumpAction=null;this.mixer?.stopAllAction();this.character?.removeFromParent();
-    this.costume=value;this.characterLow=this.quality==='low'||this.softwareRenderer;this.character=(this.characterLow?entry.low:entry.gltf).scene;this.player.add(this.character);
+    if(!CHARACTERS[this.characterId].costumes[value])throw Error('Unknown costume');
+    this.requestedCostume=value;const epoch=this.characterEpoch=(this.characterEpoch??0)+1,character=this.characterId;
+    const entry=await this.loadCharacter(character,value);if(epoch!==this.characterEpoch)return;
+    this.cancelSwing();this.stumpAction=null;this.mixer?.stopAllAction();if(this.character)this.mixer?.uncacheRoot(this.character);this.character?.traverse(o=>{if(o.isSkinnedMesh)o.skeleton.dispose();});this.character?.removeFromParent();
+    this.costume=value;this.characterLow=this.quality==='low'||this.softwareRenderer;this.character=cloneSkeleton((this.characterLow?entry.low:entry.gltf).scene);this.player.add(this.character);
     this.character.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;}});
     this.bones=Object.fromEntries(['RightArm','RightForeArm','RightHand','LeftArm','LeftForeArm','LeftHand','Head','Spine','Spine01','Spine02'].map(name=>[name,this.character.getObjectByName(name)]));
     this.mixer=new THREE.AnimationMixer(this.character);this.actions=new Map(entry.clips.map(c=>[c.name,this.mixer.clipAction(c)]));
@@ -160,9 +177,9 @@ export class AssetBackyard {
       if(detail&&!name.startsWith('fence_'))details.push(object);return object;
     };
     // Quiet, softly varied turf keeps the original warm editorial palette.
-    const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d'),noise=randomSource(setting==='nj'?17:32);ctx.fillStyle=setting==='nj'?'#7b8a55':'#8a8c64';ctx.fillRect(0,0,256,256);for(let i=0;i<9000;i++){ctx.fillStyle=i%3===0?'#b4af7240':'#3b562b30';ctx.fillRect(noise()*256,noise()*256,1+noise()*3,1+noise()*5);}const turf=new THREE.CanvasTexture(canvas);turf.colorSpace=THREE.SRGBColorSpace;turf.wrapS=turf.wrapT=THREE.RepeatWrapping;turf.repeat.set(100,100);
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d'),noise=randomSource(this.worldSeed^(setting==='nj'?17:32));ctx.fillStyle=setting==='nj'?'#7b8a55':'#8a8c64';ctx.fillRect(0,0,256,256);for(let i=0;i<9000;i++){ctx.fillStyle=i%3===0?'#b4af7240':'#3b562b30';ctx.fillRect(noise()*256,noise()*256,1+noise()*3,1+noise()*5);}const turf=new THREE.CanvasTexture(canvas);turf.colorSpace=THREE.SRGBColorSpace;turf.wrapS=turf.wrapT=THREE.RepeatWrapping;turf.repeat.set(100,100);
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(320,320),new THREE.MeshStandardMaterial({map:turf,color:0xffffff,roughness:1}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;group.add(ground);
-    const rnd=randomSource(setting==='nj'?816:937);const dummy=new THREE.Object3D();
+    const rnd=randomSource(this.worldSeed^(setting==='nj'?816:937));const dummy=new THREE.Object3D();
     const flecks=new THREE.InstancedMesh(new THREE.CircleGeometry(.17,5),new THREE.MeshBasicMaterial({color:setting==='nj'?0x71814d:0x7e8252}),550);
     for(let i=0;i<550;i++){dummy.position.set((rnd()-.5)*48,.006,(rnd()-.5)*48);dummy.rotation.set(-Math.PI/2,0,rnd()*6.28);dummy.scale.setScalar(.4+rnd()*2);dummy.updateMatrix();flecks.setMatrixAt(i,dummy.matrix);}group.add(flecks);details.push(flecks);
     const jobs=[];
@@ -210,7 +227,7 @@ export class AssetBackyard {
     this.cancelSwing();this.yard?.group&&(this.yard.group.visible=false);this.yard=yard;yard.group.visible=true;this.colliders=yard.colliders;
     this.setting=value;this.fields??=new Map();if(this.field)this.field.group.visible=false;
     if(!this.fields.has(value)){
-      const field=new YardTreeField(this.scene,this.library,{lod1Distance:8,lod2Distance:20,castShadow:false}),random=randomSource(value==='nj'?8123:3974),species=SPECIES[value];
+      const field=new YardTreeField(this.scene,this.library,{lod1Distance:8,lod2Distance:20,castShadow:false}),random=randomSource(this.worldSeed^(value==='nj'?8123:3974)),species=SPECIES[value];
       // First trees are reachable from the block; the rest give the yard a layered edge.
       // Leave room between the lowest branches and the boundary, plus interior
       // lanes wide enough for a whole crown to land without crossing the fence.
@@ -222,12 +239,12 @@ export class AssetBackyard {
       this.fields.set(value,field);
     }
     const fenceHeight=value==='nj'?1.3:1.5;
-    this.field=this.fields.get(value);this.field.obstacles=[...this.colliders,{minX:-12.1,maxX:-11.9,minZ:-12,maxZ:14,minY:0,maxY:fenceHeight},{minX:11.9,maxX:12.1,minZ:-12,maxZ:14,minY:0,maxY:fenceHeight},{minX:-12,maxX:12,minZ:-12.1,maxZ:-11.9,minY:0,maxY:fenceHeight},{minX:-12,maxX:12,minZ:13.9,maxZ:14.1,minY:0,maxY:fenceHeight},{minX:-.48,maxX:.48,minZ:-.48,maxZ:.48,minY:0,maxY:.78}];
+    this.field=this.fields.get(value);this.field.sharedWorld=!!this.sharedWorld;this.field.obstacles=[...this.colliders,{minX:-12.1,maxX:-11.9,minZ:-12,maxZ:14,minY:0,maxY:fenceHeight},{minX:11.9,maxX:12.1,minZ:-12,maxZ:14,minY:0,maxY:fenceHeight},{minX:-12,maxX:12,minZ:-12.1,maxZ:-11.9,minY:0,maxY:fenceHeight},{minX:-12,maxX:12,minZ:13.9,maxZ:14.1,minY:0,maxY:fenceHeight},{minX:-.48,maxX:.48,minZ:-.48,maxZ:.48,minY:0,maxY:.78}];
     this.field.group.visible=true;this.field.update(this.camera,0);this.applyQuality(this.quality);this.player.position.set(this.mode==='yard'?1.5:0,0,this.mode==='yard'?2.7:-.72);this.heading=this.mode==='yard'?Math.PI:0;this.player.rotation.y=this.heading;this.moveSpeed=0;this.cheerUntil=0;this.play(this.mode==='yard'?'Idle':'Axe_Stance');
     if(this.mode==='yard')this.followCamera(1,true);this.save();this.syncUI();
   }
   applyQuality(value){
-    this.quality=value;const count=value==='low'?25:value==='medium'?36:46;
+    this.quality=value;const count=this.sharedWorld?46:value==='low'?25:value==='medium'?36:46;
     if(this.character&&this.characterLow!==(value==='low'||this.softwareRenderer))this.setCostume(this.costume);
     if(this.field){this.field.lod1D=value==='low'?5:this.softwareRenderer?7:value==='medium'?18:28;this.field.lod2D=value==='low'?11:this.softwareRenderer?18:value==='medium'?45:75;this.field.castShadow=value!=='low'&&!this.softwareRenderer;
       for(const tree of this.field.trees){if(tree.userIndex>=count&&tree.state==='standing')tree.state='gone';else if(tree.userIndex<count&&tree.state==='gone')tree.state='standing';}
@@ -330,10 +347,12 @@ export class AssetBackyard {
   }
   landTreeSwing(swing){
     const target=this.target();if(!target||target.tree!==swing.target.tree){swing.result={felled:false,hits:swing.target.tree.hits};return;}
-    const dir=target.tree.position.clone().sub(this.player.position).setY(0).normalize();const result=this.field.hit(target.tree,dir,1);
+    const dir=target.tree.position.clone().sub(this.player.position).setY(0).normalize();const shared=this.coop?.inSession();
+    const result=shared?{felled:false,hits:target.tree.hits+1,hitsToFell:target.tree.meta.hitsToFell}:this.field.hit(target.tree,dir,1);
     swing.result=result;swing.freeze=.075;this.materialsDirty=true;this.spawnChips(target.point);this.audio.play('treeHit');this.onShake(.018,140);
     this.onStatus(`${target.tree.species[0].toUpperCase()+target.tree.species.slice(1)} · ${result.hits} / ${result.hitsToFell} cuts${result.felled?' · Timber! +35 XP · +20 coins':''}`);
-    if(result.felled){
+    if(shared){this.coop.session.hitTree(target.tree.id,1);result.felled=['falling','fallen','stump'].includes(target.tree.state);}
+    if(result.felled&&!shared){
       this.audio.play('treeCreak');target.tree.anim.onLand=()=>{this.audio.play('treeFall');this.onShake(.07,500);this.cheerUntil=performance.now()+1900;};
       this.onReward(target.tree);
     }
@@ -382,8 +401,9 @@ export class AssetBackyard {
     const rotation=new THREE.Quaternion().setFromAxisAngle(UP,yaw).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),Math.PI-.15)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),.25));
     return {grip,rotation};
   }
+  readyGripOffset(){return new THREE.Vector3(-.05,1.12,this.characterId==='alex'&&this.costume==='bomber'?.18:.20);}
   poseCarry(){
-    if(this.mode==='stump'){const grip=this.player.position.clone().add(new THREE.Vector3(-.05,1.12,.20)),rotation=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),.75).multiply(new THREE.Quaternion().setFromAxisAngle(UP,Math.PI/2));this.poseTool(grip,rotation);}
+    if(this.mode==='stump'){const grip=this.player.position.clone().add(this.readyGripOffset()),rotation=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),.75).multiply(new THREE.Quaternion().setFromAxisAngle(UP,Math.PI/2));this.poseTool(grip,rotation);}
     else{const {grip,rotation}=this.carryPose();this.poseTool(grip,rotation,false);}
   }
   turnWorld(bone,axis,angle){
@@ -414,7 +434,7 @@ export class AssetBackyard {
     this.turnWorld(this.bones.Head,UP,this.gazeYaw);this.turnWorld(this.bones.Head,right,this.gazePitch);
   }
   poseStumpTool(simulation){
-    const readyGrip=this.player.position.clone().add(new THREE.Vector3(-.05,1.12,.20)),readyRotation=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),.75).multiply(new THREE.Quaternion().setFromAxisAngle(UP,Math.PI/2));
+    const readyGrip=this.player.position.clone().add(this.readyGripOffset()),readyRotation=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),.75).multiply(new THREE.Quaternion().setFromAxisAngle(UP,Math.PI/2));
     if(!simulation.running){this.poseTool(readyGrip,readyRotation);return;}
     const rotation=new THREE.Quaternion(simulation.axe.quaternion.x,simulation.axe.quaternion.y,simulation.axe.quaternion.z,simulation.axe.quaternion.w);
     // The larger heads need a more upright handle at contact. The blade
@@ -490,6 +510,7 @@ export class AssetBackyard {
       const handSlide=THREE.MathUtils.smoothstep(u,.55,1)*(1-recovery),spacing=this.axe==='maul'?THREE.MathUtils.lerp(-.10,-.07,handSlide):THREE.MathUtils.lerp(.18,this.axe==='sergey'?.05:.07,handSlide);
       this.poseTool(grip,rotation,true,spacing,THREE.MathUtils.smoothstep(s.time,0,.12)*(1-THREE.MathUtils.smoothstep(s.time,s.duration-.18,s.duration)));
     }else if(this.mode==='yard')this.poseCarry();
+    this.updateRemoteActors(dt);
     updateWind(now/1000);WIND.uWindStrength.value=atmosphere.weather==='wind'?1.8:atmosphere.weather==='rain'?.8:.35;
     this.field.playerFocus.copy(this.player.position);this.field.playerFocus.y+=1.2;this.field.hasChopFocus=!!(this.swinging?.target??frameTarget);
     if(this.field.hasChopFocus)this.field.chopFocus.copy((this.swinging?.target??frameTarget).point);
@@ -508,7 +529,7 @@ export class AssetBackyard {
   async chopTree(){
     if(this.mode!=='yard')await this.enterYard();if(!this.target())this.teleportNearTree();const tree=this.target()?.tree;if(!tree)return {felled:false,hits:0};
     const epoch=this.swingEpoch,field=this.field;
-    let result={felled:false,hits:tree.hits};for(let i=0;i<30&&!result.felled;i++){if(!['standing','chopping'].includes(tree.state)||epoch!==this.swingEpoch)break;result=await this.swingTree();if(this.target()?.tree!==tree&&!result.felled)break;}
+    let result={felled:false,hits:tree.hits};for(let i=0;i<30&&!result.felled;i++){if(!['standing','chopping'].includes(tree.state)||epoch!==this.swingEpoch)break;result=await this.swingTree();if(this.coop?.inSession())for(let n=0;n<40&&tree.hits<=result.hits-1&&['standing','chopping'].includes(tree.state);n++)await wait(50);if(this.target()?.tree!==tree&&!result.felled)break;}
     // Resolve after the physical fall reaches the ground, so the stump is testable.
     for(let i=0;i<600&&tree.state==='falling'&&field===this.field&&epoch===this.swingEpoch;i++)await wait(50);
     return {felled:['falling','fallen','stump'].includes(tree.state),hits:tree.hits};
@@ -516,13 +537,41 @@ export class AssetBackyard {
   state(){
     const trees=this.field?.trees.filter(t=>t.state==='standing'||t.state==='chopping')??[];const nearest=trees.reduce((a,t)=>!a||t.position.distanceToSquared(this.player.position)<a.position.distanceToSquared(this.player.position)?t:a,null);
     const raw=this.field?.stats()??{standing:0,chopping:0,falling:0,felled:0};delete raw.gone;
-    return {setting:this.setting,costume:this.costume,axe:this.axe,quality:this.quality,mode:this.mode,player:{x:this.player.position.x,y:this.player.position.y,z:this.player.position.z},anim:this.anim,characterLoaded:!!this.character,axeAttachedTo:this.heldAxe?.parent?.name??null,trees:raw,nearestTree:nearest?{id:nearest.id,x:nearest.position.x,z:nearest.position.z,radius:nearest.radius,distance:nearest.position.distanceTo(this.player.position)}:null};
+    return {setting:this.setting,character:this.characterId,name:this.playerName,costume:this.costume,axe:this.axe,quality:this.quality,mode:this.mode,player:{x:this.player.position.x,y:this.player.position.y,z:this.player.position.z},anim:this.anim,characterLoaded:!!this.character,axeAttachedTo:this.heldAxe?.parent?.name??null,trees:raw,nearestTree:nearest?{id:nearest.id,x:nearest.position.x,z:nearest.position.z,radius:nearest.radius,distance:nearest.position.distanceTo(this.player.position)}:null};
+  }
+  async rebuildSharedWorld({seed,setting,fresh}){
+    this.sharedWorld=true;
+    if(fresh||this.worldSeed!==seed){
+      this.cancelSwing();
+      for(const field of this.fields?.values()??[]){field.group.removeFromParent();for(const pool of field.pools.values())for(const meshes of Object.values(pool.meshes??{}))for(const mesh of meshes)mesh.geometry.dispose();}
+      this.fields=new Map();this.field=null;
+      if(this.worldSeed!==seed){for(const yard of this.yards.values())(await yard).group.removeFromParent();this.yards.clear();this.yard=null;}
+      this.worldSeed=seed;
+    }
+    await this.setSetting(setting);
+  }
+  async spawnRemoteAvatar(profile){
+    const rig=Object.create(AssetBackyard.prototype);
+    Object.assign(rig,{player:new THREE.Group(),characterId:profile.character,costume:profile.costume,axe:profile.axe,mode:'yard',quality:this.quality,softwareRenderer:this.softwareRenderer,characterCache:this.characterCache,loadCharacter:this.loadCharacter.bind(this),axeCache:this.axeCache,actionWeights:new Map(),remoteActors:new Set(),save(){},syncUI(){},cancelSwing(){}});
+    await rig.setCostume(profile.costume);
+    this.remoteActors.add(rig);this.materialsDirty=true;
+    return {root:rig.player,headHeight:1.83,setAnim:name=>{rig.play(name==='Casual_Walk'?'Walk':rig.actions.has(name)?name:'Idle',.16);},dispose:()=>{this.remoteActors.delete(rig);rig.mixer.stopAllAction();rig.mixer.uncacheRoot(rig.character);rig.character.traverse(o=>{if(o.isSkinnedMesh)o.skeleton.dispose();});rig.player.removeFromParent();}};
+  }
+  updateRemoteActors(dt){
+    for(const rig of this.remoteActors){
+      for(const pose of rig.animationPose)pose.bone.quaternion.copy(pose.rotation);
+      rig.blendActions(dt);rig.mixer.update(dt);
+      for(const pose of rig.animationPose)pose.rotation.copy(pose.bone.quaternion);
+      rig.player.updateMatrixWorld(true);
+      if(!['Charged_Axe_Chop','Heavy_Hammer_Swing'].includes(rig.anim))rig.poseCarry();
+    }
   }
   syncUI(){for(const [id,value]of [['yard-setting',this.setting],['sergey-costume',this.costume],['sergey-axe',this.axe]]){const e=document.getElementById(id);if(e)e.value=value;}
     setText('axe-description',{sergey:"Sergey's own hatchet. Balanced for everyday work.",double_bit:'Double-bit felling axe · +4% cutting efficiency at the block.',maul:'Splitting maul · +0.55 kg of striking mass at the block.',golden:'Golden axe · +12% cutting efficiency at the block.'}[this.axe]);
     document.getElementById('golden-axe-option').disabled=!this.goldenUnlocked&&this.axe!=='golden';
     document.getElementById('buy-golden-axe').textContent=this.goldenUnlocked?'Golden axe · owned':'Unlock golden axe · 180 coins';document.getElementById('buy-golden-axe').disabled=!!this.goldenUnlocked;
     document.getElementById('yard-name').textContent=this.setting==='nj'?'NJ backyard':'Tiraspol backyard';
-    document.querySelector('.header-caption').textContent=`FIND THE GRAIN / ${this.setting==='nj'?'NEW JERSEY':'TIRASPOL'} / SERGEY`;
+    document.querySelector('.header-caption').textContent=`FIND THE GRAIN / ${this.setting==='nj'?'NEW JERSEY':'TIRASPOL'} / ${CHARACTERS[this.characterId].name.toUpperCase()}`;
+    this.onProfile?.();
   }
 }

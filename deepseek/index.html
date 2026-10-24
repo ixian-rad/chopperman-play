@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <meta name="theme-color" content="#141810" />
-  <meta name="description" content="American Split — a browser woodchopping RPG starring Sergey, with two playable backyards (NJ and Tiraspol), a real forest, and a deep log-splitting progression loop." />
+  <meta name="description" content="American Split — a browser woodchopping RPG starring Sergey and Alex, with two playable backyards (NJ and Tiraspol), 2-player online co-op, a real forest, and a deep log-splitting progression loop." />
   <title>American Split — Backyard Chopping RPG</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161911'/%3E%3Cpath d='M38 8l13 11-7 8-13-11z' fill='%23d9d4c5'/%3E%3Cpath d='M28 23L12 52' stroke='%23b6814c' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./css/style.css" />
@@ -22,7 +22,7 @@
 </head>
 <body>
   <main id="app">
-    <canvas id="scene" aria-label="Interactive 3D backyard where Sergey walks, chops trees and splits logs with an axe"></canvas>
+    <canvas id="scene" aria-label="Interactive 3D backyard where Sergey or Alex walks, chops trees and splits logs with an axe"></canvas>
     <div class="vignette" aria-hidden="true"></div>
     <div class="grain" aria-hidden="true"></div>
     <div id="hitFlash" class="hit-flash" aria-hidden="true"></div>
@@ -38,6 +38,7 @@
       <div class="yard-stats">
         <div><span>Trees felled</span><strong id="yardFelled">0</strong></div>
         <div><span>Nearest tree</span><strong id="yardNearest">—</strong></div>
+        <div><span>Team logs split</span><strong id="coopTeamSplits">0</strong></div>
       </div>
       <p class="yard-controls"><kbd>WASD</kbd> walk · <kbd>Shift</kbd> run · <kbd>E</kbd> chopping block · <kbd>LMB</kbd>/<kbd>Space</kbd> chop tree · click to look</p>
     </aside>
@@ -374,19 +375,26 @@
           </section>
 
           <section class="settings-section" aria-labelledby="yardSettingsTitle">
-            <div class="section-title"><span id="yardSettingsTitle">Yard &amp; Sergey</span><small id="yardSettingLabel">NJ backyard · Black tee</small></div>
+            <div class="section-title"><span id="yardSettingsTitle">Yard &amp; lumberjack</span><small id="yardSettingLabel">NJ · Sergey · Black tee</small></div>
             <label class="select-label">Setting</label>
             <div class="segmented" id="settingButtons">
               <button type="button" data-setting="nj">NJ backyard</button>
               <button type="button" data-setting="tiraspol">Tiraspol</button>
             </div>
             <p class="settings-note">NJ: sage shed and a mulch chopping zone. Tiraspol: grapevine wall, mangal and the white cathedral on the skyline.</p>
-            <div class="section-title section-title-spaced"><span>Sergey’s outfit</span><small id="costumeLabel">Black tee</small></div>
+            <div class="section-title section-title-spaced"><span>Lumberjack</span><small id="characterLabel">Sergey</small></div>
+            <div class="segmented" id="characterButtons">
+              <button type="button" data-character="sergey">Sergey</button>
+              <button type="button" data-character="alex">Alex</button>
+            </div>
+            <div class="section-title section-title-spaced"><span>Outfit</span><small id="costumeLabel">Black tee</small></div>
             <div class="segmented" id="costumeButtons">
               <button type="button" data-costume="tee">Black tee</button>
               <button type="button" data-costume="jacket">Blue jacket</button>
             </div>
-            <p class="settings-note" id="axeSkinNote">Axe skin follows the axe equipped in the Axe Shed. The golden axe is the Tempered Master unlock.</p>
+            <label class="select-label player-name-label" for="playerNameSettings">Player name (max 16)</label>
+            <input id="playerNameSettings" class="text-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Sergey" />
+            <p class="settings-note" id="axeSkinNote">Axe skin follows the axe equipped in the Axe Shed and is shared by Sergey and Alex. The golden axe is the Tempered Master unlock.</p>
           </section>
 
           <section class="settings-section audio-settings" aria-labelledby="audioTitle">
@@ -412,6 +420,35 @@
           <span>Software renderer? Auto quality starts low and downgrades if FPS drops.</span>
           <button class="primary-button" type="button" data-close="settings">Done</button>
         </footer>
+      </div>
+    </div>
+
+    <!-- Co-op disconnect / join notices (>= 20 px) ----------------------->
+    <div id="coopToast" class="coop-toast" role="status" aria-live="assertive" hidden></div>
+
+    <!-- Start screen: character + costume + player name ------------------>
+    <div id="characterOverlay" class="character-overlay" role="dialog" aria-label="Choose your lumberjack">
+      <div class="character-card">
+        <span class="eyebrow">American Split · Co-op v1</span>
+        <h2>Choose your lumberjack</h2>
+        <p class="character-sub">Sergey and Alex share the same yard, axes and progression. Your partner can pick the other one.</p>
+        <div class="segmented character-tabs" id="characterTabs" role="group" aria-label="Character">
+          <button type="button" data-character="sergey" class="active">Sergey</button>
+          <button type="button" data-character="alex">Alex</button>
+        </div>
+        <img id="characterPreview" class="character-preview" src="./assets/art/nj/nj_keyart.webp" alt="Sergey in the NJ backyard" />
+        <div class="character-outfit">
+          <span class="character-outfit-label">Outfit</span>
+          <div class="segmented" id="startCostumeButtons" role="group" aria-label="Outfit">
+            <button type="button" data-costume="tee" class="active">Black tee</button>
+            <button type="button" data-costume="jacket">Blue jacket</button>
+          </div>
+          <small id="startCostumeLabel">Black tee</small>
+        </div>
+        <label class="character-name-label" for="playerNameInput">Player name (max 16)</label>
+        <input id="playerNameInput" class="character-name-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Sergey" />
+        <button id="characterPlay" class="primary-button character-play" type="button">Play as Sergey</button>
+        <p class="character-note">Co-op is optional: open the Co-op button at any time to host or join with a room code.</p>
       </div>
     </div>
 

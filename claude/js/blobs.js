@@ -51,7 +51,12 @@ export class BlobShadows {
     this.trees.count = 0;
     this.trees.frustumCulled = false;
     this.trees.renderOrder = 2;
-    this.group.add(this.player, this.block, this.trees);
+    this.remote = new THREE.Mesh(geo, this.contactMat); // co-op partner
+    this.remote.scale.set(0.95, 1, 0.8);
+    this.remote.position.y = 0.012;
+    this.remote.renderOrder = 2;
+    this.remote.visible = false;
+    this.group.add(this.player, this.block, this.trees, this.remote);
     this.key = '';
     this.m4 = new THREE.Matrix4();
   }
@@ -59,8 +64,10 @@ export class BlobShadows {
   setEnabled(on) { this.group.visible = on; }
 
   // light: 0 (night / overcast, contact shadows only) .. 1 (clear sun).
-  update(playerPos, playerYaw, field, light) {
+  update(playerPos, playerYaw, field, light, remote = null) {
     if (!this.group.visible) return;
+    this.remote.visible = !!remote;
+    if (remote) { this.remote.position.x = remote.position.x; this.remote.position.z = remote.position.z; this.remote.rotation.y = remote.rotation.y; }
     this.player.position.x = playerPos.x;
     this.player.position.z = playerPos.z;
     this.player.rotation.y = playerYaw;

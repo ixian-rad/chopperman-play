@@ -1,58 +1,67 @@
 {
- "generated": "2026-10-23 15:11 EDT",
+ "generated": "2026-10-23 21:55 EDT",
  "source": "tools/build_blog.py (same numbers as the Behind the build post)",
  "harness": {
   "claude": {
-   "runs": 14,
-   "wall_h": 10.88,
-   "input_uncached": 1682,
-   "input_cached": 182188354,
-   "output": 1401614,
-   "cost_usd": 99.61,
-   "reported_usd": 80.92,
+   "runs": 17,
+   "wall_h": 15.24,
+   "input_uncached": 2086,
+   "input_cached": 220166240,
+   "output": 1583388,
+   "cost_usd": 116.85,
+   "reported_usd": 98.17,
    "token_priced_usd": 11.54,
    "est_usd": 7.15,
    "assets_v2_runs": 6,
    "assets_v2_cost_usd": 49.25,
-   "assets_v2_wall_h": 2.93
+   "assets_v2_wall_h": 2.93,
+   "coop_voice_runs": 3,
+   "coop_voice_cost_usd": 17.25,
+   "coop_voice_wall_h": 4.36
   },
   "codex": {
-   "runs": 18,
-   "wall_h": 12.41,
-   "input_uncached": 2851351,
-   "input_cached": 77549568,
-   "output": 683783,
-   "cost_usd": 21.09,
+   "runs": 21,
+   "wall_h": 16.14,
+   "input_uncached": 3243650,
+   "input_cached": 98526720,
+   "output": 773816,
+   "cost_usd": 24.87,
    "reported_usd": 0,
-   "token_priced_usd": 20.3,
+   "token_priced_usd": 24.08,
    "est_usd": 0.8,
    "assets_v2_runs": 4,
    "assets_v2_cost_usd": 11.99,
-   "assets_v2_wall_h": 5.37
+   "assets_v2_wall_h": 5.37,
+   "coop_voice_runs": 3,
+   "coop_voice_cost_usd": 3.78,
+   "coop_voice_wall_h": 3.73
   },
   "deepseek": {
-   "runs": 57,
-   "wall_h": 29.27,
-   "input_uncached": 7131410,
-   "input_cached": 962277758,
-   "output": 3921218,
-   "cost_usd": 9.03,
+   "runs": 60,
+   "wall_h": 30.46,
+   "input_uncached": 7635229,
+   "input_cached": 1039278206,
+   "output": 4149668,
+   "cost_usd": 9.84,
    "reported_usd": 0,
-   "token_priced_usd": 8.74,
+   "token_priced_usd": 9.55,
    "est_usd": 0.29,
    "assets_v2_runs": 4,
    "assets_v2_cost_usd": 1.56,
-   "assets_v2_wall_h": 2.48
+   "assets_v2_wall_h": 2.48,
+   "coop_voice_runs": 3,
+   "coop_voice_cost_usd": 0.81,
+   "coop_voice_wall_h": 1.19
   }
  },
  "deepseek_balance_measured": {
-  "spent_usd": 8.92,
-  "checked": "2026-10-22 22:25:01 EDT"
+  "spent_usd": 9.87,
+  "checked": "2026-10-23 14:09:21 EDT"
  },
  "basis": {
-  "claude": "Claude Code ran on a subscription login. Total $99.61 = $80.92 reported by the tool + $11.54 token-priced + est. $7.15. Includes two play-site design runs ($8.38) and the channel-art kit ($6.15). List-price equivalent, not a charge.",
-  "codex": "Codex ran on a ChatGPT plan login. Total $21.09 = $20.30 token-priced (recorded tokens x gpt-6.1-sol list price) + est. $0.80 for runs with no recorded tokens. API-equivalent, not a charge.",
-  "deepseek": "DeepSeek was pay-as-you-go. Total $9.03 = $8.74 token-priced (measured tokens x list price) + est. $0.29 from the balance counter for a killed pass. The measured balance drop was $8.92."
+  "claude": "Claude Code ran on a subscription login. Total $116.85 = $98.17 reported by the tool + $11.54 token-priced + est. $7.15. Includes two play-site design runs ($8.38) and the channel-art kit ($6.15). List-price equivalent, not a charge.",
+  "codex": "Codex ran on a ChatGPT plan login. Total $24.87 = $24.08 token-priced (recorded tokens x gpt-6.1-sol list price) + est. $0.80 for runs with no recorded tokens. API-equivalent, not a charge.",
+  "deepseek": "DeepSeek was pay-as-you-go. Total $9.84 = $9.55 token-priced (measured tokens x list price) + est. $0.29 from the balance counter for a killed pass. The measured balance drop was $8.92."
  },
- "note": "Project total = every logged run of that harness, including play-site design runs. The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes)."
+ "note": "Project total = every logged run of that harness, including play-site design runs and the co-op and voice chat rounds (coop_voice_*). The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes)."
 }
