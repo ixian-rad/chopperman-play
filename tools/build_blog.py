@@ -209,7 +209,7 @@ A('<tr class="blogtotal"><th scope="row">All three</th>' + cell(str(sum(T[h]['ru
 A('</tbody></table></div>')
 A(f'<p class="fine">Token columns add up only runs whose tokens were recorded ({sum(T[h]["nrec"] for h in H)} of {sum(T[h]["runs"] for h in H)} runs; the rest are in the “Est.” column or have no tokens). '
   f'Claude also wrote {n(T["claude"]["cw"])} cache-write tokens. Claude’s total includes two play-site design runs ({usd(claude_site)}) and the channel-art kit ({usd(claude_art)}); without the site runs it is {usd(T["claude"]["total"]-claude_site)}. '
-  f'DeepSeek’s total is token-priced ({usd(T["deepseek"]["token"])}) plus a $0.29 killed pass read from the balance counter; the measured balance drop was $8.92. '
+  f'DeepSeek’s total is token-priced ({usd(T["deepseek"]["token"])}) plus a $0.29 killed pass read from the balance counter; the measured balance drop was $8.92 by Oct 22 22:25 ET and $9.87 by Oct 23 14:09 ET, after the co-op and voice chat rounds. '
   f'Codex’s total includes est. {usd(T["codex"]["est"])} for iteration 7, whose token counts were not recorded.</p>')
 
 A('<h3 class="h-mid">Images, 3D models and voice (asset spend)</h3>')
@@ -400,7 +400,7 @@ if bal: cj['deepseek_balance_measured'] = bal
 cj['basis'] = {
     'claude': f'Claude Code ran on a subscription login. Total {usd(T["claude"]["total"])} = {usd(T["claude"]["reported"])} reported by the tool + {usd(T["claude"]["token"])} token-priced + {usd(T["claude"]["est"], True)}. Includes two play-site design runs ({usd(claude_site)}) and the channel-art kit ({usd(claude_art)}). List-price equivalent, not a charge.',
     'codex': f'Codex ran on a ChatGPT plan login. Total {usd(T["codex"]["total"])} = {usd(T["codex"]["token"])} token-priced (recorded tokens x gpt-6.1-sol list price) + {usd(T["codex"]["est"], True)} for runs with no recorded tokens. API-equivalent, not a charge.',
-    'deepseek': f'DeepSeek was pay-as-you-go. Total {usd(T["deepseek"]["total"])} = {usd(T["deepseek"]["token"])} token-priced (measured tokens x list price) + {usd(T["deepseek"]["measured_bal"], True)} from the balance counter for a killed pass. The measured balance drop was $8.92.'}
+    'deepseek': f'DeepSeek was pay-as-you-go. Total {usd(T["deepseek"]["total"])} = {usd(T["deepseek"]["token"])} token-priced (measured tokens x list price) + {usd(T["deepseek"]["measured_bal"], True)} from the balance counter for a killed pass. The measured balance drop was $8.92 by Oct 22 22:25 ET and $9.87 by Oct 23 14:09 ET, after the co-op and voice chat rounds.'}
 cj['note'] = 'Project total = every logged run of that harness, including play-site design runs and the co-op and voice chat rounds (coop_voice_*). The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes).'
 json.dump(cj, open(f'{SITE}/data/costs.json', 'w'), indent=1)
 summary = dict(T=T, claude_site=claude_site, claude_art=claude_art, meshy_cr=meshy_cr, hf_cr=hf_cr, hf_usd=hf_usd, oa_usd=oa_usd, oa_tok=oa_tok, cb_est=cb_est,

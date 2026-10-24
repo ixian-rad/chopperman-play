@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-23 21:55 EDT",
+ "generated": "2026-10-23 22:10 EDT",
  "source": "tools/build_blog.py (same numbers as the Behind the build post)",
  "harness": {
   "claude": {
@@ -61,7 +61,7 @@
  "basis": {
   "claude": "Claude Code ran on a subscription login. Total $116.85 = $98.17 reported by the tool + $11.54 token-priced + est. $7.15. Includes two play-site design runs ($8.38) and the channel-art kit ($6.15). List-price equivalent, not a charge.",
   "codex": "Codex ran on a ChatGPT plan login. Total $24.87 = $24.08 token-priced (recorded tokens x gpt-6.1-sol list price) + est. $0.80 for runs with no recorded tokens. API-equivalent, not a charge.",
-  "deepseek": "DeepSeek was pay-as-you-go. Total $9.84 = $9.55 token-priced (measured tokens x list price) + est. $0.29 from the balance counter for a killed pass. The measured balance drop was $8.92."
+  "deepseek": "DeepSeek was pay-as-you-go. Total $9.84 = $9.55 token-priced (measured tokens x list price) + est. $0.29 from the balance counter for a killed pass. The measured balance drop was $8.92 by Oct 22 22:25 ET and $9.87 by Oct 23 14:09 ET, after the co-op and voice chat rounds."
  },
  "note": "Project total = every logged run of that harness, including play-site design runs and the co-op and voice chat rounds (coop_voice_*). The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes)."
 }
