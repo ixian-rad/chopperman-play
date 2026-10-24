@@ -11,7 +11,7 @@
 #        (v1, v2, pre-assets, assets-v2-release, polish-1, coop-voice-release, or the newest iter-N as the in-progress cell) under the verify lock,
 #        derives assets/milestones/gemini/*, rewrites data/milestones.json, the /milestones/ gallery and the home teaser; iteration filmstrips come
 #        from reports/gemini-iter-N.png;
-#      python3 tools/build_blog.py: Gemini Play-picker card (index.html), progress line (milestones/), scoreboard note (results/),
+#      python3 tools/build_blog.py: Gemini Play-picker card (home/index.html) and the splash page (index.html, via build_splash.py), progress line (milestones/), scoreboard note (results/),
 #        est. cost block + build log (cost/), data/gemini.json, from usage-gemini.csv + gemini-state.json;
 #      tools/check_pages.mjs on the local server (desktop + mobile, every page)
 #   5. commit + push to GitHub Pages, wait for the deploy, run the live checks on it
