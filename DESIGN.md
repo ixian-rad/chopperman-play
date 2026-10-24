@@ -27,7 +27,7 @@ The visual language comes from the earlier **Grain & Gravity** channel kit (same
 | Data | Blueprint Navy / Cyan | `#0E2A47` / `#5CC8F2` | snapshot call-out, hashes, focus ring |
 | Status | Good / Warn | `#8FD694` / `#FFC56B` | pros, cheapest cost; "not re-reviewed" flags |
 
-Contrast for key pairs (WCAG): Chalk on Bark is about 16:1, Sapwood on Bark about 11:1, Ember on Bark about 7.4:1, Bark on Ember (button text) about 7.4:1, and Cyan on Bark about 9:1.
+Contrast for key pairs (WCAG): Chalk on Bark is about 16:1, Sapwood on Bark about 11:1, Ember on Bark 7.14:1, Bark on Ember (button text) 7.14:1, and Cyan on Bark about 9:1.
 
 ## Type
 
@@ -36,7 +36,7 @@ Fonts are self-hosted from `assets/fonts/web/` as WOFF files subset to Latin wit
 | Role | Family | Size |
 |---|---|---|
 | Display (h2, card and review titles, wordmark) | Alfa Slab One | h2 `clamp(32px … 52px)`, h3 24–40px |
-| Labels, kickers, buttons (caps, tracked) | Barlow Condensed 600/700 | 17–26px (score-ring words 15px) |
+| Labels, kickers, buttons (caps, tracked) | Barlow Condensed 600/700 | 16–26px (score-ring words raised to 16px in `dd17e2c`) |
 | Body | Source Sans 3 (variable, weight 400–600) | **18px**, line-height 1.6; ledes 20px |
 | Numbers, hashes | IBM Plex Mono 500 | 16–22px (never below 16px inline) |
 
@@ -78,7 +78,7 @@ The `assets/brand/` total is about 1.09 MB, under the 1.5 MB budget. Most of tha
 - `tools/render.mjs` renders SVG or HTML to PNG with headless Chrome.
 - `tools/og.html` and `tools/poster.html` are the templates for the social card and the video poster.
 - `tools/verify.mjs` runs the QA and audit below.
-- The Playwright path given in the brief (`/workspace/chopperman/driver/node_modules/playwright-core`) doesn't exist on this box. The scripts use `/var/tmp/sand-playwright-runtime/…/playwright-core` instead; you can override it with the `PW_CORE` environment variable.
+- Playwright: the scripts use `/workspace/chopperman/driver/node_modules/playwright-core` (it exists; an earlier note here said it didn't). Override it with the `PW_CORE` environment variable.
 
 Rebuild everything:
 ```bash
@@ -164,4 +164,22 @@ Screenshots: `/workspace/recordings/site/site-v2-desktop-full.png` (1280) and `s
 | Broken images / missing alt | 0 / 0. Key art and screenshots have descriptive alt text. |
 | Reduced motion | The hero chip drift, smooth scroll and button lift are still gated on `prefers-reduced-motion` |
 
-`tools/verify.mjs` now takes `VIEWS=desktop,mobile` and `SHOT_PREFIX`. It looks for playwright-core at `/workspace/chopperman/driver/...` first and falls back to the runtime path, since the driver path isn't present on this box.
+`tools/verify.mjs` now takes `VIEWS=desktop,mobile` and `SHOT_PREFIX`. It looks for playwright-core at `/workspace/chopperman/driver/...` first (present) and falls back to the runtime path.
+
+
+## Redesign: four pages (2026-10-24)
+
+Implements `reports/site-design/PROPOSAL.md` (P0–P2). The one long page became four static pages with shared chrome:
+
+| URL | What | Generated parts |
+|---|---|---|
+| `/` | top bar, What’s-new ribbon, condensed hero, **Play picker** (4 cards), co-op section + how-to, Two backyards, milestones teaser, results-at-a-glance tiles, intro video | `CHROME-*` (tools/build_chrome.py), `COOP` (build_coop.py), `GEMINI` card (build_blog.py), `MILESTONES-TEASER` (build_milestones.py) |
+| `/milestones/` | compare-harnesses grid ⇄ one-harness timeline, iteration filmstrips, `<dialog>` lightbox with a compare slider | `MILESTONES`, `GEMINI-STATUS` |
+| `/results/` | the one “what was reviewed” flag, scoreboard, Round Two review, Round 1, Assets v2 measurements | `GEMINI-SCORES-NOTE` |
+| `/cost/` | the bill, Gemini est. block, the build log (`#log`, open) | `BLOG`, `GEMINI-COST-NOTE` |
+
+- **Nav:** 5 items (Play · Milestones · Results · Cost & log · About), sticky; `aria-current="page"` per page, scroll-spy (`aria-current="location"`) on Home; underline + colour, not colour alone. ≤720px: one 56px row with a labelled Menu button and a full-height sheet (focus trap, Esc, body scroll lock); the bar hides on scroll down and returns on scroll up (not under reduced motion).
+- **Old links:** `#v2`, `#games`, `#classic` are anchors inside `#play`; `#gemini` is the Gemini card; `#scores`, `#reviews`, `#round1`, `#review-*`, `#cost`, `#behind-the-build`, `#sb-gemini` are redirected by `site.js` (`location.replace`).
+- **New tokens:** `--dim #B8A894` (7.87:1), harness colours `--h-codex #9CC3FF`, `--h-claude #F0A27A`, `--h-deepseek #7FD6C2`, `--h-gemini #C9A7FF` (all ≥ 8.8:1 on Bark), always next to the harness name. 8-pt spacing scale `--s1…--s9`.
+- **Fonts:** WOFF2 first (≈20% smaller), WOFF fallback.
+- **Checks:** `tools/check_pages.mjs` (every page × 1280/390/768/1920: errors, failed requests, text ≥16px, contrast ≥4.5:1, 44px targets, overflow, links + anchors, menu, ribbon, router, gallery, lightbox).
