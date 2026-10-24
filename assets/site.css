@@ -627,12 +627,12 @@ summary .kicker { margin: 0; }
 .ms-foot { margin-top: var(--s6); max-width: 80ch; }
 
 /* lightbox (<dialog>) with a compare slider */
-.lightbox { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; margin: 0; padding: 0; border: 0; background: rgba(20,15,12,.96); color: var(--chalk); }
+.lightbox { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; margin: 0; padding: 0; border: 0; background: var(--bark); color: var(--chalk); }
 .lightbox::backdrop { background: rgba(0,0,0,.6); }
 .lightbox__in { display: flex; flex-direction: column; gap: var(--s3); max-width: 1320px; height: 100%; margin: 0 auto; padding: var(--s4) clamp(12px, 3vw, 24px); overflow: auto; }
 .lightbox__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
 .lightbox__count { margin: 0; font-family: var(--f-label); font-weight: 700; font-size: 1.125rem; letter-spacing: .08em; text-transform: uppercase; color: var(--sap); }
-.lightbox__stage { position: relative; align-self: center; max-width: 1280px; width: 100%; background: #000; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; touch-action: pan-y; }
+.lightbox__stage { position: relative; flex: none; align-self: center; width: min(100%, 1280px, calc((100vh - 250px) * 1.6)); min-width: min(100%, 320px); background: #000; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; touch-action: pan-y; }
 .lightbox__stage img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; }
 .lightbox__cmp { position: absolute; inset: 0; clip-path: inset(0 0 0 var(--cut, 50%)); }
 .lightbox__stage.is-cmp::after { content: ""; position: absolute; top: 0; bottom: 0; left: var(--cut, 50%); width: 3px; background: var(--ember); transform: translateX(-1px); pointer-events: none; }
@@ -643,7 +643,6 @@ summary .kicker { margin: 0; }
 .lightbox__nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s2); }
 .lightbox__nav .btn, .lightbox__x { min-height: 48px; font-size: 1.125rem; }
 .lightbox__cmpbtn[aria-pressed="true"] { background: var(--sap); color: var(--bark); }
-@media (max-width: 1320px) { .lightbox__stage img { width: 100%; } }
 
 /* cost page: Gemini est. block */
 .gemcost { margin-top: var(--s6); max-width: 760px; }
