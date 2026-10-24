@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-24 06:06 EDT",
+ "generated": "2026-10-24 07:07 EDT",
  "rows": [
   {
    "key": "v1",
@@ -832,17 +832,17 @@
      "live": false
     },
     "classic": {
-     "state": "live",
-     "tag": "iter-8",
-     "iter": null,
-     "commit": "0a67cfe",
-     "at": "2026-10-24T05:55:26-04:00",
-     "at_text": "Oct 24 05:55",
+     "state": "ok",
+     "tag": "pre-assets",
+     "iter": "iter-9",
+     "commit": "c4d6ded",
+     "at": "2026-10-24T06:15:06-04:00",
+     "at_text": "Oct 24 06:15",
      "cost": {
-      "total": 35.37,
-      "est": 35.37,
+      "total": 36.41,
+      "est": 36.41,
       "basis": "est.",
-      "runs": 14,
+      "runs": 15,
       "phases": [
        "v1",
        "v2",
@@ -857,15 +857,16 @@
        "iter-8",
        "iter-8",
        "iter-8 (audio)",
-       "iter-8 (audio)"
+       "iter-8 (audio)",
+       "iter-9 (legibility)"
       ]
      },
-     "cost_short": "est. $35.37 cum.",
-     "cost_long": "Cost to here: est. $35.37 over 14 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_short": "est. $36.41 logged so far",
+     "cost_long": "Cost to here: est. $36.41 over 15 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
      "img": "assets/milestones/gemini/classic",
-     "hud_min_px": 9.92,
+     "hud_min_px": 14,
      "hud_small": true,
-     "live": true
+     "live": false
     },
     "assets": {
      "state": "todo"
@@ -949,11 +950,20 @@
      "at_text": "Oct 24 05:55",
      "same_as_prev": false,
      "img": "assets/milestones/gemini/iter-8"
+    },
+    {
+     "n": 9,
+     "tag": "iter-9",
+     "commit": "c4d6ded",
+     "at": "2026-10-24T06:15:06-04:00",
+     "at_text": "Oct 24 06:15",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-9"
     }
    ],
-   "iter_tags": 8
+   "iter_tags": 9
   }
  },
  "note": "Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (login-based, not billed).",
- "latest_at": "2026-10-23T21:48:04-04:00"
+ "latest_at": "2026-10-24T06:15:06-04:00"
 }
