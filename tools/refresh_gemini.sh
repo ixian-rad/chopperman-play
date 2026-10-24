@@ -6,7 +6,14 @@
 #   2. pick refs: /gemini/ = tag assets-v2-release if it exists, else origin/main (latest published build);
 #                 /classic/gemini/ = tag pre-assets (else origin/classic) once the classic freeze exists
 #   3. copy game files only (driver/sync_play.sh), smoke-test locally (landing page + game loads, no console errors, text >= 16px); on failure the previous /gemini/ is restored
-#   4. screenshot -> assets/shots/gemini/latest.webp ; python3 tools/build_blog.py (blog, card, scoreboard block, data/gemini.json from usage-gemini.csv + gemini-state.json)
+#   4. screenshot -> assets/shots/gemini/latest.webp (fallback card image);
+#      python3 tools/build_milestones.py --capture --only=gemini: reads Gemini's tags from the snapshot, captures a frame of any new milestone tag
+#        (v1, v2, pre-assets, assets-v2-release, polish-1, coop-voice-release, or the newest iter-N as the in-progress cell) under the verify lock,
+#        derives assets/milestones/gemini/*, rewrites data/milestones.json, the /milestones/ gallery and the home teaser; iteration filmstrips come
+#        from reports/gemini-iter-N.png;
+#      python3 tools/build_blog.py: Gemini Play-picker card (index.html), progress line (milestones/), scoreboard note (results/),
+#        est. cost block + build log (cost/), data/gemini.json, from usage-gemini.csv + gemini-state.json;
+#      tools/check_pages.mjs on the local server (desktop + mobile, every page)
 #   5. commit + push to GitHub Pages, wait for the deploy, run the live checks on it
 #   6. if the Netlify CLI is logged in and the site is linked: tools/deploy_netlify.sh and live-check the Netlify URL
 # Exit code 0 = everything passed. Log: /workspace/chopperman/reports/gemini-site-refresh.log
@@ -61,9 +68,13 @@ else
 fi
 rm -f "$SHOT"
 
-# 4. numbers + blog + card
+# 4. milestones (new Gemini tags get captured) + numbers + blog + card, then check every page locally
+python3 tools/build_milestones.py --capture --only=gemini > /tmp/gemini-milestones.txt 2>&1 || { fail "build_milestones.py (see /tmp/gemini-milestones.txt)"; tail -5 /tmp/gemini-milestones.txt; exit 1; }
+say "milestones: $(grep '^gemini ' /tmp/gemini-milestones.txt)"
 python3 tools/build_blog.py >/dev/null || { fail "build_blog.py"; exit 1; }
 say "blog/card rebuilt: $(python3 -c "import json;d=json.load(open('data/gemini.json'));print('est. \$%s, %s runs, phase %s, playable %s'%(d['cost_usd_est'],d['runs'],d['driver_phase'],(d['playable'] or {}).get('commit')))")"
+VIEWS=desktop,mobile flock $CH/reports/.verify.lock node tools/check_pages.mjs http://localhost:$PORT/ /tmp/gemini-pages-check > /tmp/gemini-pages-check.json 2>&1 \
+  && say "page check (all pages, desktop + mobile) PASS" || { fail "page check (see /tmp/gemini-pages-check.json)"; sed -n '/^FAIL/,$p' /tmp/gemini-pages-check.json | head -8; }
 
 # 5. commit + push
 if [ -n "$(git status --porcelain)" ]; then
