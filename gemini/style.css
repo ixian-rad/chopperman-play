@@ -354,7 +354,8 @@ body {
 .timing-controls-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .btn-meter {

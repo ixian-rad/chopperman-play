@@ -20,6 +20,14 @@ export class AtmosphereController {
     this.windVector = new THREE.Vector3(0.4, 0, 0.1);
     this.windStrength = 0.2;
 
+    // Thunderstorm Lightning state (active during Rain weather or triggered via triggerLightningStrike)
+    this.lightningFlashTimer = 0;
+    this.stormChargeTimer = 0;
+    this.nextLightningCountdown = 4.5;
+    this.baseSunIntensity = 2.45;
+    this.baseHemiIntensity = 0.72;
+    this.onLightningStrike = null;
+
     this.weatherGroup = new THREE.Group();
     this.weatherGroup.name = 'AtmosphereAndWeatherGroup';
     this.scene.add(this.weatherGroup);
@@ -30,6 +38,7 @@ export class AtmosphereController {
     this._buildSnowParticles();
     this._buildWindAndMoteParticles();
     this._buildFogMistLayers();
+    this._buildLightningBolt();
 
     this.setTimeOfDay(this.timeOfDay);
     this.setWeather(this.weather);
@@ -211,6 +220,97 @@ export class AtmosphereController {
     }
   }
 
+  _buildLightningBolt() {
+    this.lightningGroup = new THREE.Group();
+    this.lightningGroup.name = 'ThunderstormForkedLightningBolt';
+    this.lightningGroup.visible = false;
+    this.weatherGroup.add(this.lightningGroup);
+
+    // 14 segments (main trunk + 2 forked side branches)
+    const segCount = 14;
+    const positions = new Float32Array(segCount * 6);
+    const boltGeo = new THREE.BufferGeometry();
+    boltGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.lightningBoltMat = new THREE.LineBasicMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0.95
+    });
+    this.lightningBoltLines = new THREE.LineSegments(boltGeo, this.lightningBoltMat);
+    this.lightningGroup.add(this.lightningBoltLines);
+  }
+
+  /**
+   * Triggers a 3D forked thunderstorm lightning bolt in the backyard sky,
+   * illuminates the scene with an electrostatic flash, and charges `stormChargeTimer`
+   * (+15% Storm Surge cleavage bonus for 6 seconds!).
+   */
+  triggerLightningStrike() {
+    this.lightningFlashTimer = 0.36;
+    this.stormChargeTimer = 6.0;
+    this.nextLightningCountdown = 6.5 + Math.random() * 5.0;
+
+    if (this.lightningBoltLines) {
+      const posAttr = this.lightningBoltLines.geometry.attributes.position;
+      const arr = posAttr.array;
+      const baseX = (Math.random() - 0.5) * 10.0;
+      const baseZ = -14.0 - Math.random() * 4.0;
+      let cx = baseX;
+      let cy = 22.0;
+      let cz = baseZ;
+
+      // 10 main trunk segments
+      for (let s = 0; s < 10; s++) {
+        const idx = s * 6;
+        const nx = cx + (Math.random() - 0.5) * 1.9;
+        const ny = cy - 1.95;
+        const nz = cz + (Math.random() - 0.5) * 0.8;
+        arr[idx] = cx;
+        arr[idx + 1] = cy;
+        arr[idx + 2] = cz;
+        arr[idx + 3] = nx;
+        arr[idx + 4] = ny;
+        arr[idx + 5] = nz;
+
+        // 2 side fork branches at segments 3 and 6
+        if (s === 3 || s === 6) {
+          const fIdx = (s === 3 ? 10 : 12) * 6;
+          const dir = s === 3 ? -1 : 1;
+          const fx1 = nx + dir * 1.6;
+          const fy1 = ny - 1.4;
+          arr[fIdx] = nx;
+          arr[fIdx + 1] = ny;
+          arr[fIdx + 2] = nz;
+          arr[fIdx + 3] = fx1;
+          arr[fIdx + 4] = fy1;
+          arr[fIdx + 5] = nz;
+
+          arr[fIdx + 6] = fx1;
+          arr[fIdx + 7] = fy1;
+          arr[fIdx + 8] = nz;
+          arr[fIdx + 9] = fx1 + dir * 1.4;
+          arr[fIdx + 10] = fy1 - 1.5;
+          arr[fIdx + 11] = nz;
+        }
+
+        cx = nx;
+        cy = ny;
+        cz = nz;
+      }
+      posAttr.needsUpdate = true;
+      this.lightningGroup.visible = true;
+    }
+
+    if (typeof this.onLightningStrike === 'function') {
+      this.onLightningStrike();
+    }
+    return true;
+  }
+
+  isStormCharged() {
+    return this.stormChargeTimer > 0;
+  }
+
   /**
    * Sets time of day (hours 0.0 to 24.0) and updates sun trajectory, sky gradient,
    * god rays, shadows, and backyard lanterns.
@@ -316,6 +416,8 @@ export class AtmosphereController {
     if (this.scene.fog) {
       this.scene.fog.color.setHex(fogHex);
     }
+    this.baseSunIntensity = this.lights.sunLight.intensity;
+    this.baseHemiIntensity = this.lights.hemiLight.intensity;
 
     // Lanterns & warm house windows glow strongly at Golden Hour, Dusk, Night, or Rain/Fog
     const lanternFactor = isNight
@@ -435,6 +537,7 @@ export class AtmosphereController {
       this.physContacts.steelWoodContact.friction = 0.15;
       this.physContacts.woodWoodContact.restitution = 0.2;
       this.windStrength = 0.45;
+      this.nextLightningCountdown = 2.8;
     } else if (this.weather === 'snow') {
       // Frosty ground + brittle, high-restitution frozen wood physics
       this.env.groundMat.roughness = 0.78;
@@ -475,6 +578,35 @@ export class AtmosphereController {
 
     if (this.autoCycleTime) {
       this.setTimeOfDay(this.timeOfDay + dt * 0.25);
+    }
+
+    // Step Thunderstorm Lightning countdown, 3D sky bolt visibility & electrostatic light surge
+    if (this.stormChargeTimer > 0) {
+      this.stormChargeTimer = Math.max(0, this.stormChargeTimer - dt);
+    }
+    if (this.weather === 'rain') {
+      this.nextLightningCountdown -= dt;
+      if (this.nextLightningCountdown <= 0) {
+        this.triggerLightningStrike();
+      }
+    }
+    if (this.lightningFlashTimer > 0) {
+      this.lightningFlashTimer = Math.max(0, this.lightningFlashTimer - dt);
+      const pulse =
+        this.lightningFlashTimer > 0.24 ||
+        (this.lightningFlashTimer > 0.08 && this.lightningFlashTimer < 0.16)
+          ? 1.0
+          : 0.35;
+      this.lights.sunLight.intensity = this.baseSunIntensity + pulse * 3.8;
+      this.lights.hemiLight.intensity = this.baseHemiIntensity + pulse * 1.9;
+      if (this.lightningGroup) {
+        this.lightningGroup.visible = this.lightningFlashTimer > 0.05;
+      }
+      if (this.lightningFlashTimer <= 0) {
+        this.lights.sunLight.intensity = this.baseSunIntensity;
+        this.lights.hemiLight.intensity = this.baseHemiIntensity;
+        if (this.lightningGroup) this.lightningGroup.visible = false;
+      }
     }
 
     // Compute live gusting wind vector
@@ -580,6 +712,133 @@ export class AtmosphereController {
         plane.position.x = Math.sin(this.clock * 0.35 + idx) * 1.2;
         plane.rotation.z = this.clock * 0.04 * (idx % 2 === 0 ? 1 : -1);
       });
+    }
+
+    // Animate rising House Chimney Fireplace Woodsmoke Plume drifting with live windVector
+    if (this.env.smokePuffs && this.env.smokePuffs.length > 0) {
+      const baseIntensity =
+        typeof this.env.getSmokeIntensity === 'function'
+          ? this.env.getSmokeIntensity()
+          : 0.5;
+      const weatherSmokeBoost =
+        this.weather === 'snow' ? 1.35 : this.timeOfDay > 16.5 || this.timeOfDay < 7.5 ? 1.2 : 1.0;
+
+      for (let i = 0; i < this.env.smokePuffs.length; i++) {
+        const p = this.env.smokePuffs[i];
+        p.phase = (p.phase + dt * 0.24) % 1.0;
+        const h = p.phase * 4.2;
+        p.mesh.position.set(
+          this.windVector.x * p.phase * 2.2 + Math.sin(this.clock * 1.6 + i) * 0.18,
+          h,
+          this.windVector.z * p.phase * 1.8 + Math.cos(this.clock * 1.3 + i) * 0.14
+        );
+        const s = 0.65 + p.phase * 2.1;
+        p.mesh.scale.set(s, s * 0.82, s);
+        p.mat.opacity =
+          Math.sin(p.phase * Math.PI) * 0.26 * baseIntensity * weatherSmokeBoost;
+      }
+    }
+
+    // Animate Backyard Fieldstone Patio Firepit flames, rising embers & warm flickering point-light
+    if (this.env.fireFlames && this.env.fireFlames.length > 0) {
+      const bonfireLvl =
+        typeof this.env.getBonfireLevel === 'function' ? this.env.getBonfireLevel() : 1;
+      const rainDamp = this.weather === 'rain' ? 0.55 : 1.0;
+      const scaleBoost = (0.72 + bonfireLvl * 0.22) * rainDamp;
+
+      for (let f = 0; f < this.env.fireFlames.length; f++) {
+        const fl = this.env.fireFlames[f];
+        const flickerY =
+          1.0 +
+          Math.sin(this.clock * 16.0 + fl.phase) * 0.18 +
+          Math.cos(this.clock * 23.0 - fl.phase) * 0.12;
+        const flickerXZ = 1.0 + Math.cos(this.clock * 14.0 + fl.phase) * 0.1;
+        fl.mesh.scale.set(
+          flickerXZ * scaleBoost,
+          flickerY * scaleBoost,
+          flickerXZ * scaleBoost
+        );
+        fl.mesh.rotation.z = -this.windVector.x * 0.14 + Math.sin(this.clock * 11 + f) * 0.08;
+        fl.mesh.rotation.x = this.windVector.z * 0.14;
+      }
+
+      if (this.env.emberBedMat) {
+        this.env.emberBedMat.emissiveIntensity =
+          (1.1 + bonfireLvl * 0.28 + Math.sin(this.clock * 12.0) * 0.2) * rainDamp;
+      }
+
+      if (this.env.fireEmbers) {
+        for (let e = 0; e < this.env.fireEmbers.length; e++) {
+          const em = this.env.fireEmbers[e];
+          em.phase = (em.phase + dt * (0.55 + bonfireLvl * 0.12)) % 1.0;
+          const eh = 0.18 + em.phase * (1.2 + bonfireLvl * 0.25);
+          em.mesh.position.set(
+            this.windVector.x * em.phase * 0.55 + Math.sin(this.clock * 6 + e) * 0.12,
+            eh,
+            this.windVector.z * em.phase * 0.45 + Math.cos(this.clock * 5 + e) * 0.12
+          );
+          em.mat.opacity = Math.sin(em.phase * Math.PI) * 0.92 * rainDamp;
+        }
+      }
+
+      if (this.lights.firepitLight) {
+        const isNightOrGolden = this.timeOfDay < 7.0 || this.timeOfDay > 16.2;
+        const baseLight = (isNightOrGolden ? 1.65 : 0.85) * (0.65 + bonfireLvl * 0.28) * rainDamp;
+        const flicker =
+          1.0 + Math.sin(this.clock * 18.0) * 0.09 + Math.cos(this.clock * 29.0) * 0.06;
+        this.lights.firepitLight.intensity = baseLight * flicker;
+      }
+    }
+
+    // Animate 3D Backyard Bluejay & Squirrel Fence Critters (idle perch bobbing + scatter flight on Boss/Thunder!)
+    if (this.env.critters && this.env.critters.length > 0) {
+      const scatterTimer =
+        typeof this.env.tickCritterScatterTimer === 'function'
+          ? this.env.tickCritterScatterTimer(dt)
+          : 0;
+      const scatterFrac = Math.min(1.0, scatterTimer / 2.2);
+
+      for (let c = 0; c < this.env.critters.length; c++) {
+        const cr = this.env.critters[c];
+        if (cr.type === 'bluejay') {
+          if (scatterFrac > 0.01) {
+            const flightArc = Math.sin(scatterFrac * Math.PI);
+            cr.node.position.set(
+              cr.homePos.x + Math.cos(this.clock * 4.5 + cr.phase) * 1.4 * flightArc,
+              cr.homePos.y + flightArc * 2.35,
+              cr.homePos.z - flightArc * 1.6
+            );
+            cr.node.rotation.y = cr.homeRotY + Math.sin(this.clock * 5.0 + cr.phase) * 0.8;
+            const flap = Math.sin(this.clock * 32.0 + cr.phase) * 0.75;
+            if (cr.leftWing) cr.leftWing.rotation.z = flap;
+            if (cr.rightWing) cr.rightWing.rotation.z = -flap;
+          } else {
+            const hop = Math.max(0, Math.sin(this.clock * 2.8 + cr.phase)) * 0.035;
+            cr.node.position.set(cr.homePos.x, cr.homePos.y + hop, cr.homePos.z);
+            cr.node.rotation.y = cr.homeRotY + Math.sin(this.clock * 1.5 + cr.phase) * 0.22;
+            if (cr.leftWing) cr.leftWing.rotation.z = 0;
+            if (cr.rightWing) cr.rightWing.rotation.z = 0;
+          }
+        } else if (cr.type === 'squirrel') {
+          if (scatterFrac > 0.01) {
+            const dash = Math.sin(scatterFrac * Math.PI);
+            cr.node.position.set(
+              cr.homePos.x,
+              cr.homePos.y + Math.abs(Math.sin(this.clock * 18.0)) * 0.08 * dash,
+              cr.homePos.z - dash * 2.8
+            );
+            if (cr.tail) {
+              cr.tail.rotation.x = -0.25 + Math.sin(this.clock * 24.0) * 0.45;
+            }
+          } else {
+            cr.node.position.copy(cr.homePos);
+            cr.node.rotation.y = cr.homeRotY + Math.sin(this.clock * 1.9 + cr.phase) * 0.14;
+            if (cr.tail) {
+              cr.tail.rotation.x = -0.45 + Math.sin(this.clock * 5.5 + cr.phase) * 0.18;
+            }
+          }
+        }
+      }
     }
   }
 }

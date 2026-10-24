@@ -338,6 +338,40 @@ export class HumanoidChopper {
     pommelMesh.scale.set(0.75, 1.2, 1.0);
     this.axePivot.add(pommelMesh);
 
+    // 3D Upgradeable Axe Handle Grip Wrap & Overstrike Shock-Mount Collar
+    this.handleWrapGroup = new THREE.Group();
+    this.handleWrapGroup.name = 'CustomHandleGripWrap';
+    this.handleWrapGroup.visible = false;
+    this.wrapCordMat = new THREE.MeshStandardMaterial({
+      color: 0x7c3f1d,
+      roughness: 0.72,
+      metalness: 0.15
+    });
+    this.wrapBandMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      roughness: 0.4,
+      metalness: 0.55
+    });
+
+    for (let r = 0; r < 7; r++) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.024, 0.0055, 6, 12),
+        r === 0 || r === 6 ? this.wrapBandMat : this.wrapCordMat
+      );
+      ring.position.set(0, 0, 0.14 + r * 0.042);
+      ring.scale.set(0.76, 1.22, 1.0);
+      this.handleWrapGroup.add(ring);
+    }
+
+    // Overstrike neck collar guard right below the axe head
+    const collarGeo = new THREE.CylinderGeometry(0.023, 0.025, 0.09, 12);
+    collarGeo.rotateX(Math.PI / 2);
+    const neckCollar = new THREE.Mesh(collarGeo, this.wrapBandMat);
+    neckCollar.position.set(0, 0, 0.64);
+    neckCollar.scale.set(0.76, 1.22, 1.0);
+    this.handleWrapGroup.add(neckCollar);
+    this.axePivot.add(this.handleWrapGroup);
+
     this.axeHeadGroup = new THREE.Group();
     this.axeHeadGroup.position.set(0, 0, 0.74);
     this.axePivot.add(this.axeHeadGroup);
@@ -363,6 +397,38 @@ export class HumanoidChopper {
     bitMesh.position.set(0, -0.165, 0.005);
     bitMesh.castShadow = true;
     this.axeHeadGroup.add(bitMesh);
+
+    // Level-5 Bonfire Ember-Tempered Blade incandescent edge glow (`emberTempered = true`)
+    this.emberGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const emberGeo = new THREE.BoxGeometry(0.016, 0.055, 0.195);
+    this.emberGlowMesh = new THREE.Mesh(emberGeo, this.emberGlowMat);
+    this.emberGlowMesh.position.set(0, -0.166, 0.005);
+    this.emberGlowMesh.visible = false;
+    this.axeHeadGroup.add(this.emberGlowMesh);
+
+    // Sticky amber Pine Pitch / Sap Gum coating on the axe head cheeks (visible when axeSapBuildup > 0)
+    this.sapCoatingMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      emissive: 0x92400e,
+      emissiveIntensity: 0.18,
+      roughness: 0.14,
+      metalness: 0.12,
+      transparent: true,
+      opacity: 0.0
+    });
+    const sapCoatGeo = new THREE.CylinderGeometry(0.008, 0.052, 0.135, 4);
+    sapCoatGeo.rotateY(Math.PI / 4);
+    this.sapCoatingMesh = new THREE.Mesh(sapCoatGeo, this.sapCoatingMat);
+    this.sapCoatingMesh.position.set(0, -0.1, 0.002);
+    this.sapCoatingMesh.scale.set(0.92, 1.0, 1.88);
+    this.sapCoatingMesh.visible = false;
+    this.axeHeadGroup.add(this.sapCoatingMesh);
 
     this.bladeTipNode = new THREE.Object3D();
     this.bladeTipNode.position.set(0, -0.175, 0);
@@ -428,6 +494,44 @@ export class HumanoidChopper {
   }
 
   /**
+   * Updates the 3D custom handle grip wrap & neck overstrike collar when upgraded in the Shop.
+   */
+  applyHandleWrapVisuals(wrapDef) {
+    if (!this.handleWrapGroup || !wrapDef) return;
+    this.handleWrapGroup.visible = Boolean(wrapDef.visible);
+    if (wrapDef.wrapColor !== undefined) {
+      this.wrapCordMat.color.setHex(wrapDef.wrapColor);
+    }
+    if (wrapDef.bandColor !== undefined) {
+      this.wrapBandMat.color.setHex(wrapDef.bandColor);
+    }
+  }
+
+  /**
+   * Updates the 3D blade bit metallic sheen (`axeCondition`), sticky amber pine-pitch sap coating (`axeSapBuildup`),
+   * and incandescent Level-5 Bonfire Ember-Tempered Blade glow (`emberTempered`).
+   */
+  updateBladeConditionVisuals(
+    axeCondition = 100,
+    axeSapBuildup = 0,
+    emberTempered = false
+  ) {
+    const condFrac = Math.max(0, Math.min(1, axeCondition / 100));
+    this.polishedBitMat.roughness = 0.62 - condFrac * 0.46;
+    this.polishedBitMat.metalness = 0.65 + condFrac * 0.3;
+
+    if (this.emberGlowMesh) {
+      this.emberGlowMesh.visible = Boolean(emberTempered);
+    }
+
+    const sapFrac = emberTempered ? 0 : Math.max(0, Math.min(1, axeSapBuildup / 100));
+    if (this.sapCoatingMesh && this.sapCoatingMat) {
+      this.sapCoatingMesh.visible = sapFrac > 0.04;
+      this.sapCoatingMat.opacity = Math.min(0.84, sapFrac * 0.85);
+    }
+  }
+
+  /**
    * Interactive mouse-drag windup pose control (0 = idle stance, 1 = peak overhead windup).
    */
   setDragWindup(ratio) {
@@ -446,12 +550,12 @@ export class HumanoidChopper {
   /**
    * Triggers a full biomechanical axe swing.
    */
-  triggerSwing(forceMultiplier = null, skipWindup = false) {
+  triggerSwing(forceMultiplier = null, skipWindup = false, preserveSplitState = false) {
     if (forceMultiplier !== null && !Number.isNaN(Number(forceMultiplier))) {
       this.swingForce = Math.max(0.2, Math.min(1.6, Number(forceMultiplier)));
     }
 
-    if (this.choppingStation.isLogSplit) {
+    if (!preserveSplitState && this.choppingStation.isLogSplit) {
       this.choppingStation.reset();
     }
 

@@ -113,17 +113,30 @@ export function createBarkTextures(species = 'oak') {
     pine: 201,
     birch: 202,
     hollow_sycamore: 207,
+    pitch_pine: 218,
     maple: 203,
     swamp_cypress: 212,
     oak: 204,
     forked_apple: 208,
+    frozen_tamarack: 215,
     knotty_oak: 205,
+    borer_ash: 219,
     gnarled_stump: 213,
     hickory: 206,
+    cherry_crotch: 216,
+    lightning_oak: 222,
     twisted_elm: 209,
+    geode_sycamore: 225,
+    burl_maple: 220,
     ironwood_hazard: 210,
+    walnut_burl: 223,
+    chainsaw_hickory: 226,
     boss_oak: 211,
-    boss_stump: 214
+    boss_stump: 214,
+    boss_osage: 217,
+    boss_bogoak: 221,
+    boss_locust: 224,
+    boss_ironbark: 227
   };
   const rand = mulberry32(seedMap[species] || 204);
 
@@ -157,16 +170,19 @@ export function createBarkTextures(species = 'oak') {
       roughCtx.fillStyle = '#e5e5e5';
       roughCtx.fillRect(x, y, w, h);
     }
-  } else if (species === 'hollow_sycamore') {
+  } else if (species === 'hollow_sycamore' || species === 'geode_sycamore') {
     // American Sycamore: mottled camouflage plates of cream, sage-grey, and peeling tan bark
-    ctx.fillStyle = '#9e9585';
+    ctx.fillStyle = species === 'geode_sycamore' ? '#7b7485' : '#9e9585';
     ctx.fillRect(0, 0, width, height);
     bumpCtx.fillStyle = '#787878';
     bumpCtx.fillRect(0, 0, width, height);
     roughCtx.fillStyle = '#c4c4c4';
     roughCtx.fillRect(0, 0, width, height);
 
-    const camoColors = ['#cfc8b8', '#7d7769', '#635343', '#b5ad9b', '#838774'];
+    const camoColors =
+      species === 'geode_sycamore'
+        ? ['#c4b5fd', '#7d7769', '#581c87', '#b5ad9b', '#67e8f9']
+        : ['#cfc8b8', '#7d7769', '#635343', '#b5ad9b', '#838774'];
     for (let i = 0; i < 95; i++) {
       const x = rand() * width;
       const y = rand() * height;
@@ -187,17 +203,29 @@ export function createBarkTextures(species = 'oak') {
     // Pine, Maple, Oak, Apple, Hickory, Twisted Elm, Ironwood, Boss Monarch Oak furrowed bark
     const palettes = {
       pine: { base: '#4d3222', rOff: 38, gOff: 14, bOff: 4, ridges: 38 },
+      pitch_pine: { base: '#482816', rOff: 46, gOff: 22, bOff: 2, ridges: 44 },
       maple: { base: '#46382e', rOff: 22, gOff: 16, bOff: 12, ridges: 52 },
       swamp_cypress: { base: '#2c3627', rOff: 14, gOff: 24, bOff: 10, ridges: 58 },
       oak: { base: '#38291e', rOff: 24, gOff: 11, bOff: 0, ridges: 56 },
       forked_apple: { base: '#4f2f24', rOff: 36, gOff: 14, bOff: 8, ridges: 44 },
+      frozen_tamarack: { base: '#2c3d4d', rOff: 18, gOff: 34, bOff: 52, ridges: 50 },
       knotty_oak: { base: '#332419', rOff: 22, gOff: 9, bOff: -2, ridges: 60 },
+      borer_ash: { base: '#423b32', rOff: 28, gOff: 24, bOff: 14, ridges: 58 },
       gnarled_stump: { base: '#3b2818', rOff: 32, gOff: 18, bOff: 2, ridges: 66 },
       hickory: { base: '#3d3025', rOff: 26, gOff: 16, bOff: 6, ridges: 46 },
+      cherry_crotch: { base: '#2b1b18', rOff: 28, gOff: 10, bOff: 8, ridges: 54 },
+      lightning_oak: { base: '#1a1412', rOff: 22, gOff: 10, bOff: 4, ridges: 64 },
       twisted_elm: { base: '#3a322b', rOff: 20, gOff: 16, bOff: 10, ridges: 64 },
+      burl_maple: { base: '#4f3620', rOff: 40, gOff: 24, bOff: 6, ridges: 62 },
       ironwood_hazard: { base: '#2c3036', rOff: 14, gOff: 16, bOff: 20, ridges: 68 },
+      walnut_burl: { base: '#2d1e17', rOff: 28, gOff: 16, bOff: 10, ridges: 64 },
+      chainsaw_hickory: { base: '#362a1f', rOff: 32, gOff: 20, bOff: 4, ridges: 54 },
       boss_oak: { base: '#281c14', rOff: 28, gOff: 12, bOff: -4, ridges: 72 },
-      boss_stump: { base: '#24221f', rOff: 20, gOff: 22, bOff: 18, ridges: 76 }
+      boss_stump: { base: '#24221f', rOff: 20, gOff: 22, bOff: 18, ridges: 76 },
+      boss_osage: { base: '#4a2e10', rOff: 54, gOff: 28, bOff: -6, ridges: 70 },
+      boss_bogoak: { base: '#14171c', rOff: 12, gOff: 18, bOff: 24, ridges: 80 },
+      boss_locust: { base: '#1c1813', rOff: 34, gOff: 20, bOff: 4, ridges: 78 },
+      boss_ironbark: { base: '#1a1625', rOff: 24, gOff: 14, bOff: 34, ridges: 82 }
     };
     const pal = palettes[species] || palettes.oak;
 
@@ -233,12 +261,13 @@ export function createBarkTextures(species = 'oak') {
       roughCtx.moveTo(curX, 0);
       for (let y = 0; y <= height; y += 16) {
         const wave =
-          species === 'twisted_elm'
-            ? 11
-            : species === 'hickory' || species === 'boss_oak'
+          species === 'twisted_elm' || species === 'burl_maple'
+            ? 12
+            : species === 'hickory' || species === 'boss_oak' || species === 'boss_bogoak'
             ? 7
             : 4;
-        const spiralDrift = species === 'twisted_elm' ? (y / height) * 28 : 0;
+        const spiralDrift =
+          species === 'twisted_elm' || species === 'burl_maple' ? (y / height) * 26 : 0;
         curX =
           baseX +
           spiralDrift +
@@ -261,15 +290,25 @@ export function createBarkTextures(species = 'oak') {
       bumpCtx.stroke();
     }
 
-    // Lichen, moss & rust specks (Boss Oak gets rich mossy ridges; Ironwood gets rust streaks)
-    const speckCount = species === 'boss_oak' ? 150 : 95;
+    // Lichen, moss, frost & rust specks (Boss Oak gets rich mossy ridges; Frozen Tamarack gets ice rime; Ironwood/Osage get rust)
+    const speckCount = species === 'boss_oak' || species === 'frozen_tamarack' ? 150 : 95;
     for (let i = 0; i < speckCount; i++) {
       const x = rand() * width;
       const y = rand() * height;
       const rx = 1.5 + rand() * 4.5;
       const ry = 2 + rand() * 6.5;
-      if (species === 'ironwood_hazard' && i % 3 === 0) {
-        ctx.fillStyle = 'rgba(145, 58, 24, 0.42)';
+      if (species === 'frozen_tamarack' && i % 2 === 0) {
+        ctx.fillStyle = 'rgba(219, 234, 254, 0.56)';
+      } else if (species === 'pitch_pine' && i % 2 === 0) {
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.65)';
+      } else if (species === 'borer_ash' && i % 2 === 0) {
+        ctx.fillStyle = 'rgba(214, 192, 150, 0.55)';
+      } else if (species === 'boss_bogoak' && i % 2 === 0) {
+        ctx.fillStyle = i % 4 === 0 ? 'rgba(56, 189, 248, 0.55)' : 'rgba(251, 191, 36, 0.52)';
+      } else if ((species === 'lightning_oak' || species === 'boss_locust') && i % 2 === 0) {
+        ctx.fillStyle = i % 4 === 0 ? 'rgba(251, 146, 60, 0.68)' : 'rgba(239, 68, 68, 0.55)';
+      } else if ((species === 'ironwood_hazard' || species === 'boss_osage') && i % 3 === 0) {
+        ctx.fillStyle = 'rgba(165, 62, 20, 0.48)';
       } else if (species === 'boss_oak' && i % 2 === 0) {
         ctx.fillStyle = 'rgba(76, 118, 48, 0.46)';
       } else {
@@ -314,17 +353,30 @@ export function createEndGrainTextures(species = 'oak') {
     pine: { sap: '#edd39c', heart0: '#d49b54', heart1: '#e4b976', ring: 'rgba(162, 102, 42, 0.48)', rings: 16 },
     birch: { sap: '#efe0be', heart0: '#c99c68', heart1: '#e3c796', ring: 'rgba(148, 104, 58, 0.42)', rings: 22 },
     hollow_sycamore: { sap: '#dfcbb0', heart0: '#4a3525', heart1: '#9c7c58', ring: 'rgba(110, 78, 48, 0.46)', rings: 24 },
+    pitch_pine: { sap: '#f7d683', heart0: '#b45309', heart1: '#d97706', ring: 'rgba(180, 83, 9, 0.65)', rings: 22 },
     maple: { sap: '#e5c699', heart0: '#a86b3e', heart1: '#cf9e6c', ring: 'rgba(122, 72, 36, 0.50)', rings: 26 },
     swamp_cypress: { sap: '#c9c29f', heart0: '#5b5234', heart1: '#8b7e54', ring: 'rgba(72, 68, 38, 0.56)', rings: 28 },
     oak: { sap: '#d8b584', heart0: '#966436', heart1: '#b88754', ring: 'rgba(96, 56, 24, 0.58)', rings: 30 },
     forked_apple: { sap: '#e3be91', heart0: '#8a3e24', heart1: '#b86842', ring: 'rgba(108, 45, 22, 0.58)', rings: 28 },
+    frozen_tamarack: { sap: '#dbeafe', heart0: '#60a5fa', heart1: '#93c5fd', ring: 'rgba(30, 64, 175, 0.52)', rings: 30 },
     knotty_oak: { sap: '#cfa672', heart0: '#7d4d25', heart1: '#a87644', ring: 'rgba(82, 44, 18, 0.65)', rings: 32 },
+    borer_ash: { sap: '#ded1b4', heart0: '#7d6e54', heart1: '#a89674', ring: 'rgba(88, 74, 52, 0.56)', rings: 28 },
     gnarled_stump: { sap: '#deb86e', heart0: '#804a14', heart1: '#b87624', ring: 'rgba(92, 50, 12, 0.65)', rings: 34 },
     hickory: { sap: '#e2c391', heart0: '#784621', heart1: '#9c6639', ring: 'rgba(75, 40, 16, 0.65)', rings: 36 },
+    cherry_crotch: { sap: '#e6c6a5', heart0: '#6e2219', heart1: '#a63e2e', ring: 'rgba(88, 24, 16, 0.62)', rings: 34 },
+    lightning_oak: { sap: '#c9a677', heart0: '#3b180e', heart1: '#7c2d12', ring: 'rgba(234, 88, 12, 0.58)', rings: 36 },
     twisted_elm: { sap: '#d4b88c', heart0: '#6e4f35', heart1: '#997452', ring: 'rgba(84, 56, 32, 0.62)', rings: 38 },
+    geode_sycamore: { sap: '#e2d4f0', heart0: '#3b0764', heart1: '#7e22ce', ring: 'rgba(126, 34, 206, 0.56)', rings: 34 },
+    burl_maple: { sap: '#f2d49b', heart0: '#854d0e', heart1: '#ca8a04', ring: 'rgba(113, 63, 18, 0.68)', rings: 40 },
     ironwood_hazard: { sap: '#cbbfa8', heart0: '#544a40', heart1: '#7d7062', ring: 'rgba(62, 52, 42, 0.68)', rings: 44 },
+    walnut_burl: { sap: '#e2cba4', heart0: '#2e160d', heart1: '#572f1c', ring: 'rgba(42, 20, 10, 0.72)', rings: 44 },
+    chainsaw_hickory: { sap: '#e8d09e', heart0: '#6b3b18', heart1: '#9a5828', ring: 'rgba(82, 42, 16, 0.68)', rings: 42 },
     boss_oak: { sap: '#d4a66a', heart0: '#5e2714', heart1: '#8f4726', ring: 'rgba(68, 28, 12, 0.72)', rings: 48 },
-    boss_stump: { sap: '#c4b293', heart0: '#3d281c', heart1: '#6e4c36', ring: 'rgba(54, 34, 20, 0.74)', rings: 52 }
+    boss_stump: { sap: '#c4b293', heart0: '#3d281c', heart1: '#6e4c36', ring: 'rgba(54, 34, 20, 0.74)', rings: 52 },
+    boss_osage: { sap: '#fde047', heart0: '#b45309', heart1: '#ea580c', ring: 'rgba(124, 45, 18, 0.72)', rings: 50 },
+    boss_bogoak: { sap: '#475569', heart0: '#0f172a', heart1: '#1e293b', ring: 'rgba(148, 163, 184, 0.52)', rings: 56 },
+    boss_locust: { sap: '#d9c77e', heart0: '#3f2e10', heart1: '#785616', ring: 'rgba(249, 115, 22, 0.65)', rings: 58 },
+    boss_ironbark: { sap: '#c7b8d6', heart0: '#1e1b4b', heart1: '#4c1d95', ring: 'rgba(168, 85, 247, 0.65)', rings: 64 }
   };
   const sc = schemes[species] || schemes.oak;
 
@@ -342,7 +394,7 @@ export function createEndGrainTextures(species = 'oak') {
   ctx.fillStyle = heartGrad;
   ctx.fillRect(0, 0, size, size);
 
-  if (species === 'forked_apple') {
+  if (species === 'forked_apple' || species === 'walnut_burl' || species === 'chainsaw_hickory') {
     // Twin figure-8 pith centers for Y-shaped forked round!
     [-28, 28].forEach((offsetX) => {
       const px = cx + offsetX;
@@ -352,6 +404,20 @@ export function createEndGrainTextures(species = 'oak') {
         ctx.arc(px, cy, rad, 0, Math.PI * 2);
         ctx.strokeStyle = sc.ring;
         ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+    });
+  } else if (species === 'cherry_crotch') {
+    // Trefoil 3-pith centers for Trifurcated Black Cherry 3-Way Crown Fork!
+    [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3].forEach((ang) => {
+      const px = cx + Math.cos(ang) * 28;
+      const py = cy + Math.sin(ang) * 28;
+      for (let r = 1; r <= 12; r++) {
+        const rad = (r / 12) * 38;
+        ctx.beginPath();
+        ctx.arc(px, py, rad, 0, Math.PI * 2);
+        ctx.strokeStyle = sc.ring;
+        ctx.lineWidth = 1.25;
         ctx.stroke();
       }
     });
@@ -365,9 +431,11 @@ export function createEndGrainTextures(species = 'oak') {
     bumpCtx.beginPath();
     for (let a = 0; a <= Math.PI * 2 + 0.08; a += 0.08) {
       const forkStretch =
-        species === 'forked_apple'
+        species === 'forked_apple' || species === 'chainsaw_hickory'
           ? Math.cos(a * 2) * (10 * (1 - r / ringCount))
-          : species === 'gnarled_stump' || species === 'boss_stump'
+          : species === 'burl_maple'
+          ? Math.sin(a * 5 + r * 0.6) * (7 * (r / ringCount))
+          : species === 'gnarled_stump' || species === 'boss_stump' || species === 'boss_bogoak' || species === 'boss_ironbark'
           ? Math.sin(a * 4 + 0.5) * (8 * (r / ringCount))
           : 0;
       const wobble =
@@ -394,13 +462,20 @@ export function createEndGrainTextures(species = 'oak') {
     bumpCtx.stroke();
   }
 
-  // Hollow Sycamore: render dark rotted central cavity & punky ring
-  if (species === 'hollow_sycamore') {
+  // Hollow Sycamore & Mineralized Quartz-Geode Sycamore / Boss Ironbark: render central cavity or crystal druzy ring
+  if (species === 'hollow_sycamore' || species === 'geode_sycamore' || species === 'boss_ironbark') {
     const rotGrad = ctx.createRadialGradient(cx, cy, 6, cx, cy, size * 0.22);
-    rotGrad.addColorStop(0, '#140d08');
-    rotGrad.addColorStop(0.58, '#291a10');
-    rotGrad.addColorStop(0.85, '#593e25');
-    rotGrad.addColorStop(1, 'rgba(90, 62, 37, 0.0)');
+    if (species === 'geode_sycamore' || species === 'boss_ironbark') {
+      rotGrad.addColorStop(0, '#0f0720');
+      rotGrad.addColorStop(0.5, '#581c87');
+      rotGrad.addColorStop(0.82, '#c084fc');
+      rotGrad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+    } else {
+      rotGrad.addColorStop(0, '#140d08');
+      rotGrad.addColorStop(0.58, '#291a10');
+      rotGrad.addColorStop(0.85, '#593e25');
+      rotGrad.addColorStop(1, 'rgba(90, 62, 37, 0.0)');
+    }
     ctx.fillStyle = rotGrad;
     ctx.beginPath();
     ctx.arc(cx, cy, size * 0.22, 0, Math.PI * 2);
@@ -410,6 +485,79 @@ export function createEndGrainTextures(species = 'oak') {
     bumpCtx.beginPath();
     bumpCtx.arc(cx, cy, size * 0.14, 0, Math.PI * 2);
     bumpCtx.fill();
+  }
+
+  // Mis-Bucked Sawmill Hickory Crotch: diagonal pinched chainsaw kerf burn & yellow lumber chalk line
+  if (species === 'chainsaw_hickory') {
+    ctx.strokeStyle = '#140d07';
+    ctx.lineWidth = 5.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, 14);
+    ctx.lineTo(cx + 4, size - 14);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(163, 230, 53, 0.85)';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.moveTo(cx, 18);
+    ctx.lineTo(cx, size - 18);
+    ctx.stroke();
+  }
+
+  // Figured Birdseye Sugar Maple Burl & Black Walnut Crotch-Burl: swirling birdseye knots across the end-grain
+  if (species === 'burl_maple' || species === 'walnut_burl') {
+    for (let b = 0; b < 32; b++) {
+      const ba = (b / 32) * Math.PI * 2 + rand() * 0.4;
+      const br = size * (0.14 + rand() * 0.28);
+      const bx = cx + Math.cos(ba) * br;
+      const by = cy + Math.sin(ba) * br;
+      ctx.strokeStyle = species === 'walnut_burl' ? 'rgba(42, 18, 8, 0.78)' : 'rgba(120, 53, 15, 0.68)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(bx, by, 3.5 + rand() * 3.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (species === 'lightning_oak' || species === 'boss_locust') {
+    // Scorched Lichtenberg lightning-scar fissure lines radiating from center
+    for (let f = 0; f < 6; f++) {
+      const fa = (f / 6) * Math.PI * 2 + 0.12;
+      ctx.strokeStyle = f % 2 === 0 ? 'rgba(251, 146, 60, 0.88)' : 'rgba(239, 68, 68, 0.78)';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      let lx = cx;
+      let ly = cy;
+      ctx.moveTo(lx, ly);
+      for (let step = 1; step <= 6; step++) {
+        const rad = (step / 6) * (size * 0.45);
+        const jitter = (rand() - 0.5) * 0.26;
+        lx = cx + Math.cos(fa + jitter) * rad;
+        ly = cy + Math.sin(fa + jitter) * rad;
+        ctx.lineTo(lx, ly);
+      }
+      ctx.stroke();
+    }
+  } else if (species === 'borer_ash') {
+    // Emerald Ash-Borer serpentine larval gallery tracks in the sapwood ring
+    for (let g = 0; g < 14; g++) {
+      const ga = (g / 14) * Math.PI * 2;
+      const gr = size * (0.24 + (g % 3) * 0.06);
+      ctx.strokeStyle = '#291d12';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, gr, ga, ga + 0.28);
+      ctx.stroke();
+    }
+  } else if (species === 'boss_bogoak') {
+    // Petrified Bog-Oak shimmering pyrite & quartz mineral veins
+    for (let v = 0; v < 8; v++) {
+      const va = (v / 8) * Math.PI * 2 + 0.2;
+      ctx.strokeStyle = v % 2 === 0 ? 'rgba(56, 189, 248, 0.78)' : 'rgba(251, 191, 36, 0.78)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(va) * 14, cy + Math.sin(va) * 14);
+      ctx.lineTo(cx + Math.cos(va + 0.18) * (size * 0.44), cy + Math.sin(va + 0.18) * (size * 0.44));
+      ctx.stroke();
+    }
   }
 
   // Medullary rays radiating from pith
@@ -473,17 +621,30 @@ export function createSplitWoodTextures(species = 'oak') {
     pine: ['#dfb97c', '#f3dca8', '#fae8be', '#edd096', '#cfa468'],
     birch: ['#d8be98', '#efe0c2', '#f7ebd2', '#ead5b3', '#c6a882'],
     hollow_sycamore: ['#6e5034', '#bca07c', '#dfd0b8', '#bfa380', '#705236'],
+    pitch_pine: ['#d97706', '#f59e0b', '#fde68a', '#fbbf24', '#b45309'],
     maple: ['#c79868', '#e3be92', '#edd0ab', '#ddb486', '#b58354'],
     swamp_cypress: ['#736c48', '#a39b70', '#c7be93', '#9c9468', '#635c3b'],
     oak: ['#c69762', '#dfc092', '#e8cfa6', '#dcb989', '#b88652'],
     forked_apple: ['#a85838', '#cf845c', '#e6ad86', '#c97c52', '#94492b'],
+    frozen_tamarack: ['#93c5fd', '#dbeafe', '#eff6ff', '#bfdbfe', '#60a5fa'],
     knotty_oak: ['#b88550', '#d4ae7a', '#e0be8e', '#cfa470', '#a3713e'],
+    borer_ash: ['#8c7b60', '#c4b393', '#dfd3b8', '#b8a686', '#73644c'],
     gnarled_stump: ['#9c621c', '#cc8c33', '#e8b358', '#c4832b', '#875114'],
     hickory: ['#9c683a', '#cfa474', '#e3be92', '#c89966', '#8a562b'],
+    cherry_crotch: ['#7f291e', '#b84a39', '#d9735e', '#ad4232', '#691f16'],
+    lightning_oak: ['#271712', '#7c2d12', '#ea580c', '#9a3412', '#1c120e'],
     twisted_elm: ['#8f6d4c', '#bda07e', '#d6bc9c', '#b59470', '#7d5c3d'],
+    geode_sycamore: ['#6b21a8', '#c084fc', '#f3e8ff', '#a855f7', '#4c1d95'],
+    burl_maple: ['#a16207', '#eab308', '#fef08a', '#ca8a04', '#854d0e'],
     ironwood_hazard: ['#786c5e', '#a89b88', '#c7bca8', '#9e907d', '#665b4e'],
+    walnut_burl: ['#2e160d', '#5c331e', '#854d2b', '#4d2816', '#241109'],
+    chainsaw_hickory: ['#854d27', '#c48f5a', '#e6c594', '#b87f49', '#6e3c1b'],
     boss_oak: ['#7a381c', '#b5683c', '#d99868', '#ad5e34', '#692d14'],
-    boss_stump: ['#5c4230', '#8c694f', '#b59072', '#826046', '#4d3524']
+    boss_stump: ['#5c4230', '#8c694f', '#b59072', '#826046', '#4d3524'],
+    boss_osage: ['#b45309', '#ea580c', '#fbbf24', '#d97706', '#9a3412'],
+    boss_bogoak: ['#0f172a', '#1e293b', '#334155', '#1e293b', '#090d16'],
+    boss_locust: ['#3f2e10', '#785616', '#d97706', '#854d0e', '#261c0a'],
+    boss_ironbark: ['#1e1b4b', '#581c87', '#a855f7', '#3b0764', '#0f172a']
   };
   const cols = tones[species] || tones.oak;
 
@@ -517,9 +678,9 @@ export function createSplitWoodTextures(species = 'oak') {
     ctx.moveTo(x, 0);
     bumpCtx.moveTo(x, 0);
     const waviness =
-      species === 'twisted_elm'
-        ? 10.5
-        : species === 'knotty_oak' || species === 'forked_apple' || species === 'boss_oak'
+      species === 'twisted_elm' || species === 'burl_maple'
+        ? 11.5
+        : species === 'knotty_oak' || species === 'forked_apple' || species === 'boss_oak' || species === 'boss_bogoak'
         ? 5.8
         : 2.0;
     for (let y = 0; y <= height; y += 16) {

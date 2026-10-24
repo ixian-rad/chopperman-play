@@ -163,6 +163,37 @@ export function buildBackyardEnvironment(scene, world, materials) {
   const snowGroup = buildSnowBlankets();
   envGroup.add(snowGroup);
 
+  // 10. Dynamic House Chimney Fireplace Woodsmoke Plume (scales with stacked cordwood & weather!)
+  const { smokeGroup, smokePuffs } = buildChimneySmokePlume();
+  envGroup.add(smokeGroup);
+
+  // 11. Backyard Fieldstone Patio Firepit (stoked by Kindling Quarter-Chops & [B] Bonfire action!)
+  const {
+    firepitGroup,
+    fireFlames,
+    fireEmbers,
+    emberBedMat
+  } = buildBackyardFirepit(world, materials.woodPhysMat);
+  envGroup.add(firepitGroup);
+
+  // 12. Suburban NJ Roadside Firewood Stand & Twine-Wrapped Bundle Shelf
+  const {
+    standGroup: firewoodStandGroup,
+    orderBundleMeshes
+  } = buildRoadsideFirewoodStand(fenceTex, barkTex, endGrainTex, world, materials.woodPhysMat);
+  envGroup.add(firewoodStandGroup);
+
+  // 13. Animated 3D Backyard Bluejay & Squirrel Fence Critters
+  const {
+    critterGroup,
+    critters
+  } = buildBackyardCritters();
+  envGroup.add(critterGroup);
+
+  let currentSmokeIntensity = 0.45;
+  let currentBonfireLevel = 1;
+  let critterScatterTimer = 0;
+
   return {
     envGroup,
     groundBody,
@@ -180,13 +211,451 @@ export function buildBackyardEnvironment(scene, world, materials) {
     puddleGroup,
     rippleRings,
     snowGroup,
-    updateCordwoodStack(logsSplitCount = 0) {
+    smokeGroup,
+    smokePuffs,
+    firepitGroup,
+    fireFlames,
+    fireEmbers,
+    emberBedMat,
+    firewoodStandGroup,
+    orderBundleMeshes,
+    critterGroup,
+    critters,
+    getSmokeIntensity() {
+      return currentSmokeIntensity;
+    },
+    getBonfireLevel() {
+      return currentBonfireLevel;
+    },
+    setBonfireLevel(lvl = 1) {
+      currentBonfireLevel = Math.max(1, Math.min(5, Number(lvl) || 1));
+    },
+    getCritterScatterTimer() {
+      return critterScatterTimer;
+    },
+    tickCritterScatterTimer(dt = 0) {
+      if (critterScatterTimer > 0) {
+        critterScatterTimer = Math.max(0, critterScatterTimer - dt);
+      }
+      return critterScatterTimer;
+    },
+    scatterCritters(duration = 3.8) {
+      critterScatterTimer = Math.max(critterScatterTimer, duration);
+      return true;
+    },
+    updateFirewoodStand(ordersCompletedCount = 0, currentProgress = 0) {
+      const visibleBundles = Math.min(
+        orderBundleMeshes.length,
+        Math.max(1, ordersCompletedCount * 2 + currentProgress)
+      );
+      for (let i = 0; i < orderBundleMeshes.length; i++) {
+        orderBundleMeshes[i].visible = i < visibleBundles;
+      }
+    },
+    updateCordwoodStack(logsSplitCount = 0, ordersCompletedCount = 0, currentProgress = 0) {
       const visibleBonus = Math.min(cordwoodMeshes.length, Math.max(0, logsSplitCount));
       for (let i = 0; i < cordwoodMeshes.length; i++) {
         cordwoodMeshes[i].visible = i < visibleBonus;
       }
+      currentSmokeIntensity = Math.min(1.0, 0.4 + logsSplitCount * 0.05);
+      this.updateFirewoodStand(ordersCompletedCount, currentProgress);
     }
   };
+}
+
+function buildRoadsideFirewoodStand(fenceTex, barkTex, endGrainTex, world, woodPhysMat) {
+  const standGroup = new THREE.Group();
+  standGroup.name = 'SuburbanRoadsideFirewoodStand';
+  standGroup.position.set(-4.35, 0, 1.35);
+  standGroup.rotation.y = 0.52;
+
+  const cedarMat = new THREE.MeshStandardMaterial({
+    map: fenceTex,
+    roughness: 0.86
+  });
+  const signMat = new THREE.MeshStandardMaterial({
+    color: 0xfef3c7,
+    roughness: 0.72
+  });
+  const cashBoxMat = new THREE.MeshStandardMaterial({
+    color: 0x15803d,
+    roughness: 0.4,
+    metalness: 0.65
+  });
+  const twineMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    roughness: 0.65
+  });
+  const logBarkMat = new THREE.MeshStandardMaterial({
+    map: barkTex.map,
+    roughness: 0.88
+  });
+  const logEndMat = new THREE.MeshStandardMaterial({
+    map: endGrainTex.map,
+    roughness: 0.8
+  });
+
+  // 4 Corner timber posts + lower & upper bundle shelves
+  [-0.78, 0.78].forEach((px) => {
+    [-0.28, 0.28].forEach((pz) => {
+      const post = new THREE.Mesh(
+        new THREE.BoxGeometry(0.075, 1.58, 0.075),
+        cedarMat
+      );
+      post.position.set(px, 0.79, pz);
+      post.castShadow = true;
+      standGroup.add(post);
+    });
+  });
+
+  [0.24, 0.76].forEach((sy) => {
+    const shelf = new THREE.Mesh(
+      new THREE.BoxGeometry(1.64, 0.055, 0.64),
+      cedarMat
+    );
+    shelf.position.set(0, sy, 0);
+    shelf.castShadow = true;
+    shelf.receiveShadow = true;
+    standGroup.add(shelf);
+  });
+
+  // Pitched cedar roof & "FIREWOOD BUNDLES" sign board
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(1.82, 0.065, 0.82),
+    cedarMat
+  );
+  roof.position.set(0, 1.62, 0);
+  roof.rotation.x = 0.22;
+  roof.castShadow = true;
+  standGroup.add(roof);
+
+  const signBoard = new THREE.Mesh(
+    new THREE.BoxGeometry(1.36, 0.24, 0.04),
+    signMat
+  );
+  signBoard.position.set(0, 1.38, 0.31);
+  standGroup.add(signBoard);
+
+  // Honor-system green metal cash box mounted on right post
+  const cashBox = new THREE.Mesh(
+    new THREE.BoxGeometry(0.16, 0.22, 0.14),
+    cashBoxMat
+  );
+  cashBox.position.set(0.84, 1.05, 0.22);
+  cashBox.castShadow = true;
+  standGroup.add(cashBox);
+
+  // 8 Twine-wrapped 3D Firewood Bundles stacked across the two shelves
+  const orderBundleMeshes = [];
+  const stickGeo = new THREE.CylinderGeometry(0.052, 0.055, 0.38, 7);
+  stickGeo.rotateX(Math.PI / 2);
+  const stickMats = [logBarkMat, logEndMat, logEndMat];
+
+  for (let b = 0; b < 8; b++) {
+    const bundle = new THREE.Group();
+    const row = Math.floor(b / 4);
+    const col = b % 4;
+    bundle.position.set(-0.54 + col * 0.36, 0.34 + row * 0.52, 0);
+
+    // 3 bundled split sticks + orange twine wrap band
+    [
+      [-0.045, -0.02],
+      [0.045, -0.02],
+      [0, 0.045]
+    ].forEach(([ox, oy]) => {
+      const stick = new THREE.Mesh(stickGeo, stickMats);
+      stick.position.set(ox, oy, 0);
+      stick.castShadow = true;
+      bundle.add(stick);
+    });
+
+    const strap = new THREE.Mesh(
+      new THREE.TorusGeometry(0.088, 0.011, 6, 12),
+      twineMat
+    );
+    strap.position.set(0, 0.01, 0);
+    bundle.add(strap);
+
+    bundle.visible = b === 0;
+    standGroup.add(bundle);
+    orderBundleMeshes.push(bundle);
+  }
+
+  const standBody = new CANNON.Body({ mass: 0, material: woodPhysMat });
+  standBody.addShape(new CANNON.Box(new CANNON.Vec3(0.84, 0.8, 0.36)));
+  standBody.position.set(-4.35, 0.8, 1.35);
+  standBody.quaternion.setFromEuler(0, 0.52, 0);
+  standBody.userData = { label: 'RoadsideFirewoodStandCollider' };
+  world.addBody(standBody);
+
+  return { standGroup, orderBundleMeshes };
+}
+
+function buildBackyardCritters() {
+  const critterGroup = new THREE.Group();
+  critterGroup.name = 'BackyardFenceCritters';
+  const critters = [];
+
+  const jayBlueMat = new THREE.MeshStandardMaterial({
+    color: 0x2563eb,
+    roughness: 0.55
+  });
+  const jayWhiteMat = new THREE.MeshStandardMaterial({
+    color: 0xf8fafc,
+    roughness: 0.65
+  });
+  const beakMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.4
+  });
+
+  // 2 Suburban NJ Bluejays perched on the cedar fence rail
+  const jayPerches = [
+    { x: -5.8, y: 1.94, z: -9.18, rotY: 0.45, phase: 0.0 },
+    { x: 6.1, y: 1.94, z: -9.18, rotY: -0.52, phase: 1.7 }
+  ];
+
+  jayPerches.forEach((p, idx) => {
+    const jay = new THREE.Group();
+    jay.name = `BackyardBluejay_${idx}`;
+    jay.position.set(p.x, p.y, p.z);
+    jay.rotation.y = p.rotY;
+
+    const body = new THREE.Mesh(
+      new THREE.SphereGeometry(0.068, 10, 8),
+      jayBlueMat
+    );
+    body.scale.set(0.88, 0.92, 1.35);
+    jay.add(body);
+
+    const breast = new THREE.Mesh(
+      new THREE.SphereGeometry(0.055, 8, 8),
+      jayWhiteMat
+    );
+    breast.position.set(0, -0.015, 0.032);
+    jay.add(breast);
+
+    const crest = new THREE.Mesh(
+      new THREE.ConeGeometry(0.035, 0.075, 6),
+      jayBlueMat
+    );
+    crest.position.set(0, 0.072, 0.025);
+    crest.rotation.x = -0.55;
+    jay.add(crest);
+
+    const beak = new THREE.Mesh(
+      new THREE.ConeGeometry(0.016, 0.048, 5),
+      beakMat
+    );
+    beak.position.set(0, 0.035, 0.092);
+    beak.rotation.x = Math.PI / 2;
+    jay.add(beak);
+
+    const leftWing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.014, 0.08),
+      jayBlueMat
+    );
+    leftWing.position.set(0.065, 0.01, 0);
+    jay.add(leftWing);
+
+    const rightWing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.014, 0.08),
+      jayBlueMat
+    );
+    rightWing.position.set(-0.065, 0.01, 0);
+    jay.add(rightWing);
+
+    critterGroup.add(jay);
+    critters.push({
+      type: 'bluejay',
+      node: jay,
+      leftWing,
+      rightWing,
+      homePos: new THREE.Vector3(p.x, p.y, p.z),
+      homeRotY: p.rotY,
+      phase: p.phase
+    });
+  });
+
+  // 1 Eastern Gray Squirrel perched on the right fence rail with a bushy bobbing tail
+  const squirrelMat = new THREE.MeshStandardMaterial({
+    color: 0x78716c,
+    roughness: 0.82
+  });
+  const squirrel = new THREE.Group();
+  squirrel.name = 'BackyardGraySquirrel';
+  const sqHome = new THREE.Vector3(9.55, 1.94, -2.4);
+  squirrel.position.copy(sqHome);
+  squirrel.rotation.y = -Math.PI / 2;
+
+  const sBody = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.052, 0.09, 6, 8),
+    squirrelMat
+  );
+  sBody.rotation.x = Math.PI / 2;
+  squirrel.add(sBody);
+
+  const sHead = new THREE.Mesh(
+    new THREE.SphereGeometry(0.046, 8, 8),
+    squirrelMat
+  );
+  sHead.position.set(0, 0.038, 0.075);
+  squirrel.add(sHead);
+
+  const sTail = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.044, 0.14, 6, 8),
+    squirrelMat
+  );
+  sTail.position.set(0, 0.085, -0.085);
+  sTail.rotation.x = -0.45;
+  squirrel.add(sTail);
+
+  critterGroup.add(squirrel);
+  critters.push({
+    type: 'squirrel',
+    node: squirrel,
+    tail: sTail,
+    homePos: sqHome,
+    homeRotY: -Math.PI / 2,
+    phase: 2.9
+  });
+
+  return { critterGroup, critters };
+}
+
+function buildBackyardFirepit(world, woodPhysMat) {
+  const firepitGroup = new THREE.Group();
+  firepitGroup.name = 'BackyardFieldstoneFirepit';
+  firepitGroup.position.set(1.85, 0, 0.95);
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0x6c737a,
+    roughness: 0.85,
+    metalness: 0.12,
+    flatShading: true
+  });
+  const charWoodMat = new THREE.MeshStandardMaterial({
+    color: 0x1e1815,
+    emissive: 0x7c2d12,
+    emissiveIntensity: 0.35,
+    roughness: 0.92
+  });
+  const emberBedMat = new THREE.MeshStandardMaterial({
+    color: 0xdc2626,
+    emissive: 0xf97316,
+    emissiveIntensity: 1.4,
+    roughness: 0.6
+  });
+
+  // Ring of 10 rugged New Jersey fieldstones
+  const ringRadius = 0.46;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const stone = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.135, 0),
+      stoneMat
+    );
+    stone.position.set(Math.cos(a) * ringRadius, 0.09, Math.sin(a) * ringRadius);
+    stone.scale.set(1.25, 0.82, 1.1);
+    stone.rotation.set(i * 0.4, a, 0.2);
+    stone.castShadow = true;
+    stone.receiveShadow = true;
+    firepitGroup.add(stone);
+  }
+
+  // Glowing coal & ember mound at center of firepit
+  const emberBed = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+    emberBedMat
+  );
+  emberBed.scale.set(1.0, 0.32, 1.0);
+  firepitGroup.add(emberBed);
+
+  // 4 Teepeed charred oak split logs inside the firepit
+  for (let l = 0; l < 4; l++) {
+    const la = (l / 4) * Math.PI * 2 + 0.35;
+    const logMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.055, 0.48, 7),
+      charWoodMat
+    );
+    logMesh.position.set(Math.cos(la) * 0.14, 0.18, Math.sin(la) * 0.14);
+    logMesh.rotation.z = Math.cos(la) * 0.58;
+    logMesh.rotation.x = -Math.sin(la) * 0.58;
+    logMesh.castShadow = true;
+    firepitGroup.add(logMesh);
+  }
+
+  // Multi-layered flickering 3D Flame Cones
+  const fireFlames = [];
+  const flameDefs = [
+    { x: 0, z: 0, r: 0.16, h: 0.52, color: 0xf97316, phase: 0.0 },
+    { x: 0.06, z: -0.05, r: 0.12, h: 0.42, color: 0xfbbf24, phase: 1.4 },
+    { x: -0.06, z: 0.05, r: 0.11, h: 0.38, color: 0xfde047, phase: 2.8 }
+  ];
+  flameDefs.forEach((fd) => {
+    const fMat = new THREE.MeshBasicMaterial({
+      color: fd.color,
+      transparent: true,
+      opacity: 0.84,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const fMesh = new THREE.Mesh(new THREE.ConeGeometry(fd.r, fd.h, 8), fMat);
+    fMesh.position.set(fd.x, 0.24, fd.z);
+    firepitGroup.add(fMesh);
+    fireFlames.push({ mesh: fMesh, mat: fMat, baseH: fd.h, phase: fd.phase });
+  });
+
+  // Rising glowing ember sparks above the firepit
+  const fireEmbers = [];
+  const emberGeo = new THREE.OctahedronGeometry(0.016, 0);
+  for (let e = 0; e < 12; e++) {
+    const eMat = new THREE.MeshBasicMaterial({
+      color: e % 2 === 0 ? 0xfde047 : 0xf97316,
+      transparent: true,
+      opacity: 0.9
+    });
+    const eMesh = new THREE.Mesh(emberGeo, eMat);
+    const phase = e / 12;
+    eMesh.position.set(0, 0.2 + phase * 1.4, 0);
+    firepitGroup.add(eMesh);
+    fireEmbers.push({ mesh: eMesh, mat: eMat, phase });
+  }
+
+  // Static collider so split logs bounce off the stone firepit ring!
+  const pitBody = new CANNON.Body({ mass: 0, material: woodPhysMat });
+  pitBody.addShape(new CANNON.Cylinder(0.48, 0.52, 0.22, 12));
+  pitBody.position.set(1.85, 0.11, 0.95);
+  pitBody.userData = { label: 'FirepitCollider' };
+  world.addBody(pitBody);
+
+  return { firepitGroup, fireFlames, fireEmbers, emberBedMat };
+}
+
+function buildChimneySmokePlume() {
+  const smokeGroup = new THREE.Group();
+  smokeGroup.name = 'ChimneyFireplaceWoodsmoke';
+  // Brick chimney top world position: house (0,0,-9.2) + chimney (6.85, 8.75, -1.8)
+  smokeGroup.position.set(6.85, 8.85, -11.0);
+
+  const smokePuffs = [];
+  const puffGeo = new THREE.DodecahedronGeometry(0.28, 1);
+
+  for (let i = 0; i < 10; i++) {
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xe2e8f0,
+      transparent: true,
+      opacity: 0.25,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(puffGeo, mat);
+    const phase = i / 10;
+    mesh.position.set(0, phase * 3.6, 0);
+    smokeGroup.add(mesh);
+    smokePuffs.push({ mesh, mat, phase });
+  }
+
+  return { smokeGroup, smokePuffs };
 }
 
 function buildRainPuddles() {

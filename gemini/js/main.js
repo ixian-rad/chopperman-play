@@ -12,7 +12,7 @@ import { buildBackyardEnvironment } from './environment.js';
 import { ChoppingStation } from './chopping.js';
 import { HumanoidChopper } from './humanoid.js';
 import { PhysicsDebugWireframe } from './debugWireframe.js';
-import { GameStateManager, LOG_TYPES, LOG_ORDER, AXE_TIERS } from './rpgState.js';
+import { GameStateManager, LOG_TYPES, LOG_ORDER, AXE_TIERS, HANDLE_WRAPS } from './rpgState.js';
 import { AtmosphereController } from './weatherAndLight.js';
 
 /**
@@ -92,12 +92,29 @@ class AxeSplittingSimulation {
     );
     this.debugWireframe = new PhysicsDebugWireframe(this.scene, this.world);
 
-    // Sync initial log, cordwood rack & axe visuals from saved RPG state
+    // Sync initial log, block collar, cordwood rack, roadside stand, handle wrap & axe visuals from saved RPG state
     this.choppingStation.spawnFreshLog(this.gameState.logType);
+    this.choppingStation.setBlockCollarVisible(this.gameState.collarActive);
     this.humanoid.applyAxeVisuals(this.gameState.getEquippedAxe());
+    this.humanoid.applyHandleWrapVisuals(this.gameState.getHandleWrap());
     if (this.environment && typeof this.environment.updateCordwoodStack === 'function') {
-      this.environment.updateCordwoodStack(this.gameState.logsSplitCount);
+      this.environment.updateCordwoodStack(
+        this.gameState.logsSplitCount,
+        this.gameState.ordersCompletedCount,
+        this.gameState.currentOrder ? this.gameState.currentOrder.progress : 0
+      );
     }
+
+    // Wire thunderstorm lightning callback for thunderclap audio, critter scatter & subtle camera rumble
+    this.atmosphere.onLightningStrike = () => {
+      if (this.sound && typeof this.sound.playThunderclap === 'function') {
+        this.sound.playThunderclap(1.0);
+      }
+      this.scatterBackyardCritters(3.8);
+      this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.32);
+      this._updateWeatherBadge(this.atmosphere.weather);
+      this._updateAimReadout();
+    };
 
     // Wire blade impact callback from humanoid downswing to chopping station physics
     this.humanoid.onImpactCallback = (bladePos, bladeVel) => {
@@ -313,12 +330,18 @@ class AxeSplittingSimulation {
     yardLight.position.set(-1.03, 1.60, 0.15);
     this.scene.add(yardLight);
 
+    // Warm flickering patio firepit point light
+    const firepitLight = new THREE.PointLight(0xff7b29, 1.4, 7.5, 1.7);
+    firepitLight.position.set(1.85, 0.55, 0.95);
+    this.scene.add(firepitLight);
+
     this.lights = {
       hemiLight,
       sunLight,
       rimLight,
       porchLight,
-      yardLight
+      yardLight,
+      firepitLight
     };
   }
 
@@ -633,7 +656,11 @@ class AxeSplittingSimulation {
     this.timingTrack = document.getElementById('timing-meter-track');
     this.resetBtn = document.getElementById('reset-btn');
     this.wedgeBtn = document.getElementById('wedge-btn');
+    this.flipBtn = document.getElementById('flip-btn');
+    this.peaveyBtn = document.getElementById('peavey-btn');
     this.honeBtn = document.getElementById('hone-btn');
+    this.bonfireBtn = document.getElementById('bonfire-btn');
+    this.bundleBtn = document.getElementById('bundle-btn');
     this.rotLeftBtn = document.getElementById('rot-left-btn');
     this.rotRightBtn = document.getElementById('rot-right-btn');
     this.slowmoToggle = document.getElementById('slowmo-toggle');
@@ -692,9 +719,33 @@ class AxeSplittingSimulation {
       });
     }
 
+    if (this.bonfireBtn) {
+      this.bonfireBtn.addEventListener('click', () => {
+        this.stokeBackyardBonfire();
+      });
+    }
+
+    if (this.bundleBtn) {
+      this.bundleBtn.addEventListener('click', () => {
+        this.bundleFirewoodContract();
+      });
+    }
+
     if (this.wedgeBtn) {
       this.wedgeBtn.addEventListener('click', () => {
         this.plantSplittingWedge();
+      });
+    }
+
+    if (this.flipBtn) {
+      this.flipBtn.addEventListener('click', () => {
+        this.flipActiveLog();
+      });
+    }
+
+    if (this.peaveyBtn) {
+      this.peaveyBtn.addEventListener('click', () => {
+        this.heaveLogWithPeavey();
       });
     }
 
@@ -828,6 +879,8 @@ class AxeSplittingSimulation {
       resetProgBtn.addEventListener('click', () => {
         this.gameState.resetProgress();
         this.humanoid.applyAxeVisuals(this.gameState.getEquippedAxe());
+        this.humanoid.applyHandleWrapVisuals(this.gameState.getHandleWrap());
+        this.choppingStation.setBlockCollarVisible(this.gameState.collarActive);
         this.resetScene();
         this._refreshAllHUD();
       });
@@ -849,6 +902,30 @@ class AxeSplittingSimulation {
     bindStatBtn('upg-weight-btn', 'weight');
     bindStatBtn('upg-stam-btn', 'stamina');
 
+    // Tire & Chain Collar buy/toggle button inside Shop
+    const collarBtn = document.getElementById('upg-collar-btn');
+    if (collarBtn) {
+      collarBtn.addEventListener('click', () => {
+        if (this.gameState.buyOrToggleCollar()) {
+          this.choppingStation.setBlockCollarVisible(this.gameState.collarActive);
+          this._refreshAllHUD();
+          this._refreshShopUI();
+        }
+      });
+    }
+
+    // Custom Handle Grip Wrap & Shock-Mount upgrade button inside Shop
+    const wrapBtn = document.getElementById('upg-wrap-btn');
+    if (wrapBtn) {
+      wrapBtn.addEventListener('click', () => {
+        if (this.gameState.upgradeHandleWrap()) {
+          this.humanoid.applyHandleWrapVisuals(this.gameState.getHandleWrap());
+          this._refreshAllHUD();
+          this._refreshShopUI();
+        }
+      });
+    }
+
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
@@ -866,6 +943,16 @@ class AxeSplittingSimulation {
         }
       } else if (e.code === 'KeyW') {
         this.plantSplittingWedge();
+      } else if (e.code === 'KeyV') {
+        this.flipActiveLog();
+      } else if (e.code === 'KeyP') {
+        this.heaveLogWithPeavey();
+      } else if (e.code === 'KeyC') {
+        if (this.gameState.collarUnlocked && this.gameState.buyOrToggleCollar()) {
+          this.choppingStation.setBlockCollarVisible(this.gameState.collarActive);
+          this._refreshAllHUD();
+          this._refreshShopUI();
+        }
       } else if (e.code === 'KeyR') {
         this.resetScene();
       } else if (e.code === 'KeyQ') {
@@ -901,14 +988,19 @@ class AxeSplittingSimulation {
         }
       } else if (e.code === 'KeyH') {
         this.honeAxeBlade();
+      } else if (e.code === 'KeyB') {
+        this.stokeBackyardBonfire();
+      } else if (e.code === 'KeyO') {
+        this.bundleFirewoodContract();
       }
     });
   }
 
   /**
-   * Sharpens/hones the axe blade back to 100% razor edge using the whetstone.
+   * Sharpens/hones the axe blade back to 100% razor edge using the whetstone & wipes off sticky pine pitch sap.
    */
   honeAxeBlade() {
+    const hadSap = (this.gameState.axeSapBuildup || 0) >= 10;
     this.gameState.honeBlade();
     const bladePos = new THREE.Vector3();
     if (this.humanoid && this.humanoid.bladeTipNode) {
@@ -917,7 +1009,9 @@ class AxeSplittingSimulation {
     }
     this._refreshAllHUD();
     this._showHitBanner({
-      rating: 'BLADE HONED TO 100% RAZOR EDGE!',
+      rating: hadSap
+        ? 'BLADE HONED & STICKY PINE PITCH WIPED CLEAN!'
+        : 'BLADE HONED TO 100% RAZOR EDGE!',
       points: 0,
       xpGained: 0,
       split: true,
@@ -928,8 +1022,73 @@ class AxeSplittingSimulation {
   }
 
   /**
-   * Plants a 3D forged-steel splitting wedge into the log's top kerf at the current aim offset.
-   * Driving the planted wedge with the maul multiplies cleavage force and bypasses spiral twist!
+   * Stokes the Backyard Fieldstone Patio Firepit (`B` key / Bonfire button / `window.stokeBonfire()`):
+   * Searing the axe head over the flames burns off sticky pine pitch sap (`axeSapBuildup = 0`),
+   * boosts `bonfireLevel` up to 5 (igniting the Level-5 Ember-Tempered Blade!), and warms the woodchopper (+25 Stamina).
+   */
+  stokeBackyardBonfire() {
+    const res = this.gameState.stokeBonfire();
+    if (this.environment && typeof this.environment.setBonfireLevel === 'function') {
+      this.environment.setBonfireLevel(res.bonfireLevel);
+    }
+    const fireOrigin = new THREE.Vector3(1.85, 0.35, 0.95);
+    this.choppingStation._spawnSparkBurst(fireOrigin, res.emberTempered ? 1.35 : 0.85);
+    this._refreshAllHUD();
+    this._showHitBanner({
+      rating: res.emberTempered
+        ? 'BONFIRE LV 5! EMBER-TEMPERED BLADE IGNITED (+20% CLEAVE & SAP IMMUNITY)!'
+        : `BACKYARD BONFIRE STOKED (LV ${res.bonfireLevel})! SAP SEARED & +25 STAMINA`,
+      points: 0,
+      xpGained: 0,
+      split: true,
+      glancing: false,
+      leveledUp: false
+    });
+    return res;
+  }
+
+  /**
+   * Ties & stacks a twine-wrapped firewood bundle onto the Suburban NJ Roadside Stand (`O` key / Bundle button / `window.claimFirewoodOrder()`):
+   * Awards +45 immediate Bundle Tying Credits and advances active Roadside Stand Contract Order progress by +1.
+   */
+  bundleFirewoodContract() {
+    const res = this.gameState.bundleFirewoodOrder();
+    if (this.environment && typeof this.environment.updateFirewoodStand === 'function') {
+      this.environment.updateFirewoodStand(
+        this.gameState.ordersCompletedCount,
+        this.gameState.currentOrder ? this.gameState.currentOrder.progress : 0
+      );
+    }
+    this._refreshAllHUD();
+    this._showHitBanner({
+      rating: res.completed
+        ? `ROADSIDE CONTRACT COMPLETE: ${res.completedTitle}! (+${res.rewardCredits + res.bundleBonus} CREDITS)`
+        : `CORDWOOD BUNDLE STACKED ON ROADSIDE STAND! (${res.progress}/${res.target} \u2022 +${res.bundleBonus} CREDITS)`,
+      points: res.completed ? res.rewardCredits + res.bundleBonus : res.bundleBonus,
+      xpGained: res.completed ? res.rewardXp : 0,
+      split: true,
+      glancing: false,
+      leveledUp: false
+    });
+    return res;
+  }
+
+  /**
+   * Scatters the 3D backyard bluejays & gray squirrel perched on the cedar fence (`window.scatterCritters()`).
+   */
+  scatterBackyardCritters(duration = 3.8) {
+    if (this.environment && typeof this.environment.scatterCritters === 'function') {
+      this.environment.scatterCritters(duration);
+    }
+    if (this.sound && typeof this.sound.playCritterScatter === 'function') {
+      this.sound.playCritterScatter();
+    }
+    return true;
+  }
+
+  /**
+   * Plants up to 2 forged-steel splitting wedges into the log's top kerf (`W` key).
+   * Alternating strikes between Dual Tandem Wedges triggers Tandem Crack-Walking!
    */
   plantSplittingWedge() {
     if (this.choppingStation.isLogSplit || !this.choppingStation.intactLog) {
@@ -938,15 +1097,77 @@ class AxeSplittingSimulation {
     const offsetX = this.choppingStation.aimOffsetX;
     this.gameState.plantWedge(offsetX);
     this.choppingStation.plantSteelWedge(offsetX);
+    const count = this.gameState.plantedWedgeCount;
     this._refreshAllHUD();
     this._showHitBanner({
-      rating: 'STEEL SPLITTING WEDGE SET! (STRIKE TO DRIVE)',
+      rating:
+        count >= 2
+          ? 'DUAL TANDEM WEDGES SET! (ALTERNATE STRIKES TO WALK CRACK)'
+          : 'STEEL SPLITTING WEDGE SET! (PRESS [W] ELSEWHERE FOR TANDEM)',
       points: 0,
       xpGained: 0,
       split: true,
       glancing: false,
       leveledUp: false
     });
+    return true;
+  }
+
+  /**
+   * Flips the active intact log 180 degrees upside-down on the chopping block (`V` key).
+   * Exposes straight basal trunk grain on Forked/Stump rounds (+22% cleavage) and shifts top hazards downward.
+   */
+  flipActiveLog() {
+    if (this.choppingStation.isLogSplit || !this.choppingStation.intactLog) {
+      return false;
+    }
+    const isFlipped = this.gameState.flipLog();
+    this.choppingStation.flipLogOnBlock(isFlipped);
+    this._refreshAllHUD();
+    this._showHitBanner({
+      rating: isFlipped
+        ? 'LOG INVERTED UPSIDE-DOWN! (BASAL GRAIN EXPOSED)'
+        : 'LOG FLIPPED RIGHT-SIDE UP!',
+      points: 0,
+      xpGained: 0,
+      split: true,
+      glancing: false,
+      leveledUp: false
+    });
+    return isFlipped;
+  }
+
+  /**
+   * Hooks and seats the active log on the chopping block using the Forged-Steel Cant-Hook Peavey (`P` key).
+   * Aligns the check line, restores +8 Stamina, and primes a +18% (+25% against Bosses) next-strike cleavage bonus!
+   */
+  heaveLogWithPeavey() {
+    if (this.choppingStation.isLogSplit || !this.choppingStation.intactLog) {
+      return false;
+    }
+    const res = this.gameState.heaveWithPeavey();
+    this.choppingStation.heaveLogWithPeavey();
+    const isBoss = Boolean(this.gameState.getCurrentLogDef()?.isBoss);
+    this._refreshAllHUD();
+    this._showHitBanner({
+      rating: isBoss
+        ? 'PEAVEY CANT-HOOK BOSS HEAVE! (+25% NEXT-STRIKE CLEAVE & +8 STAMINA)'
+        : 'PEAVEY CANT-HOOK LOG SEATED! (+18% NEXT-STRIKE CLEAVE & +8 STAMINA)',
+      points: 0,
+      xpGained: 0,
+      split: true,
+      glancing: false,
+      leveledUp: false
+    });
+    return res;
+  }
+
+  /**
+   * Triggers a 3D forked thunderstorm lightning bolt in the backyard sky (`window.triggerLightning()`).
+   */
+  triggerThunderstormBolt() {
+    this.atmosphere.triggerLightningStrike();
+    this._refreshAllHUD();
     return true;
   }
 
@@ -1046,7 +1267,32 @@ class AxeSplittingSimulation {
   ) {
     // If previous swing was still mid-flight without having impacted yet, flush its physics first
     if (this.pendingStrikeResult && !this.humanoid.hasTriggeredSplit) {
-      this._handlePhysicalBladeImpact(null, null);
+      if (this.pendingStrikeResult.logType === this.gameState.logType) {
+        this._handlePhysicalBladeImpact(null, null);
+      } else {
+        this.pendingStrikeResult = null;
+      }
+    }
+
+    // If Tire & Chain Collar is holding split halves upright on the block, a rapid manual follow-up swing
+    // quarters them into 8 flying kindling sticks for a +45 Pts / +20 XP / +18 Credits Kindling Bonus!
+    if (
+      !isAutomatedSwing &&
+      this.choppingStation.isLogSplit &&
+      this.gameState.collarActive &&
+      !this.choppingStation.hasShatteredKindling
+    ) {
+      this.pendingStrikeResult = null;
+      this.humanoid.swingForce = swingPower;
+      this.humanoid.triggerSwing(swingPower, skipWindup, true);
+      this.choppingStation.shatterSplitPiecesIntoKindling(this.atmosphere.weather);
+      const kindlingRes = this.gameState.awardKindlingBonus();
+      this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.45);
+      this.hitStopTimer = 0.035;
+      this.autoSpawnTimer = 1.25;
+      this._refreshAllHUD();
+      this._showHitBanner(kindlingRes);
+      return kindlingRes;
     }
 
     // If current log on the block is already split, spawn the next log so the swing hits fresh wood
@@ -1065,6 +1311,7 @@ class AxeSplittingSimulation {
       hitPlantedWedge: isAutomatedSwing ? false : diag.hitPlantedWedge,
       swingPower,
       weather: this.atmosphere.weather,
+      stormCharged: this.atmosphere.isStormCharged(),
       isAutomatedSwing
     });
 
@@ -1083,6 +1330,9 @@ class AxeSplittingSimulation {
   _handlePhysicalBladeImpact(bladeWorldPos, bladeVelocity) {
     const result = this.pendingStrikeResult;
     this.pendingStrikeResult = null;
+    if (this.humanoid) {
+      this.humanoid.hasTriggeredSplit = true;
+    }
 
     this.choppingStation.executeStrikePhysics({
       strikeResult: result,
@@ -1093,18 +1343,22 @@ class AxeSplittingSimulation {
       weather: this.atmosphere.weather
     });
 
-    // Trigger Impact Juice: Hit-Stop freeze, Camera Shake trauma, and Perfect/Boss Slow-Mo pulse!
+    // Trigger Impact Juice: Hit-Stop freeze, Camera Shake trauma, Critter Scatter, and Perfect/Boss Slow-Mo pulse!
     if (result) {
       if (result.isBoss && result.split) {
         this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.78);
         this.hitStopTimer = 0.048;
         this.juiceSlowMoTimer = 0.34;
+        this.scatterBackyardCritters(4.2);
       } else if (result.hitNail || result.glancing) {
         this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.62);
         this.hitStopTimer = 0.038;
       } else if (result.split) {
         this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.42);
         this.hitStopTimer = 0.036;
+        if (result.geodeCrystalShatter || result.lightningFissureShatter) {
+          this.scatterBackyardCritters(3.2);
+        }
         if (result.rating === 'PERFECT GRAIN CLEAVE!') {
           this.juiceSlowMoTimer = 0.25;
         }
@@ -1117,14 +1371,24 @@ class AxeSplittingSimulation {
       }
     }
 
-    // Update stacked cordwood in the backyard firewood rack
+    // Update stacked cordwood in the backyard firewood rack & roadside stand
     if (this.environment && typeof this.environment.updateCordwoodStack === 'function') {
-      this.environment.updateCordwoodStack(this.gameState.logsSplitCount);
+      this.environment.updateCordwoodStack(
+        this.gameState.logsSplitCount,
+        this.gameState.ordersCompletedCount,
+        this.gameState.currentOrder ? this.gameState.currentOrder.progress : 0
+      );
     }
 
-    // If the log split cleanly, schedule next log spawn after pieces settle (faster in Time Attack)
+    // If the log split cleanly, schedule next log spawn after pieces settle (faster in Time Attack,
+    // or slightly longer when Tire Collar is active so player can land a Kindling Quarter-Chop!)
     if (this.choppingStation.isLogSplit) {
-      this.autoSpawnTimer = this.gameState.gameMode === 'time_attack' ? 0.65 : 1.55;
+      this.autoSpawnTimer =
+        this.gameState.gameMode === 'time_attack'
+          ? 0.65
+          : this.gameState.collarActive
+          ? 2.15
+          : 1.55;
     }
 
     this._refreshAllHUD();
@@ -1208,6 +1472,12 @@ class AxeSplittingSimulation {
   _exposeGlobalAPI() {
     window.swing = (power) => this.swing(power);
     window.plantWedge = () => this.plantSplittingWedge();
+    window.flipLog = () => this.flipActiveLog();
+    window.heaveWithPeavey = () => this.heaveLogWithPeavey();
+    window.stokeBonfire = () => this.stokeBackyardBonfire();
+    window.claimFirewoodOrder = () => this.bundleFirewoodContract();
+    window.scatterCritters = () => this.scatterBackyardCritters();
+    window.triggerLightning = () => this.triggerThunderstormBolt();
     window.resetScene = () => this.resetScene();
     window.getGameState = () => this.getGameState();
     window.sim = this;
@@ -1218,7 +1488,9 @@ class AxeSplittingSimulation {
     if (!pill) return;
     const labels = {
       sun: 'Dry Grip (1.0x)',
-      rain: 'Slippery Bark (+20% XP)',
+      rain: this.atmosphere.isStormCharged()
+        ? '\u26A1 Storm Surge (+15% Cleave)'
+        : 'Thunderstorm (+20% XP)',
       snow: 'Frozen Brittle (+25% XP)',
       wind: 'Gust Drift (+15% XP)',
       fog: 'Dense Mist (+20% XP)'
@@ -1254,15 +1526,36 @@ class AxeSplittingSimulation {
 
     let warn = '';
     if (diag.hitPlantedWedge) {
-      warn = ' \u2022 \uD83C\uDFAF STEEL WEDGE LOCKED!';
+      warn =
+        diag.plantedWedgeCount >= 2
+          ? ' \u2022 \uD83C\uDFAF TANDEM WEDGES (2) LOCKED!'
+          : ' \u2022 \uD83C\uDFAF STEEL WEDGE LOCKED!';
     } else if (diag.rockDistance < 0.042) {
       warn = ' \u2022 \u26A0 GRANITE ROCK HAZARD!';
     } else if (diag.nailDistance < 0.038) {
       warn = ' \u2022 \u26A0 NAIL HAZARD!';
     } else if (diag.knotDistance < 0.04) {
       warn = ' \u2022 \u26A0 KNOT HAZARD!';
+    } else if (logDef.hasCrystalGeode && normOff < 0.38) {
+      warn = ' \u2022 \uD83D\uDC8E CRYSTAL GEODE SEAM!';
+    } else if (logDef.hasPinchedKerf && normOff < 0.32 && diag.grainAngleError < 0.38) {
+      warn = ' \u2022 \uD83E\uDE9A PINCHED SAWMILL KERF!';
     } else if (logDef.isHollow && normOff < 0.21) {
       warn = ' \u2022 \u26A0 HOLLOW ROT CORE!';
+    } else if (logDef.isLightningStruck && normOff < 0.34 && diag.grainAngleError < 0.38) {
+      warn = ' \u2022 \u26A1 LIGHTNING FISSURE!';
+    }
+    if (this.gameState.isLogFlipped) {
+      warn += ' \u2022 \u2195 INVERTED BASE';
+    }
+    if (this.gameState.isPeaveySeated) {
+      warn += ' \u2022 \u2693 PEAVEY SEATED';
+    }
+    if (this.gameState.isEmberTempered()) {
+      warn += ' \u2022 \uD83D\uDD25 EMBER BLADE';
+    }
+    if (this.atmosphere.isStormCharged()) {
+      warn += ' \u2022 \u26C8 STORM SURGE';
     }
     el.textContent = `Aim: ${cm} cm \u2022 Grain Offset: ${deg}\u00B0${warn}`;
   }
@@ -1355,18 +1648,57 @@ class AxeSplittingSimulation {
       ).toFixed(1)}%`;
     }
 
-    // Update Blade Edge Sharpness Condition bar
+    // Update Blade Edge Sharpness Condition, Sticky Pine Pitch Sap Buildup & Level-5 Ember-Tempered Blade bar
     const cond = Math.round(gs.axeCondition);
-    setTxt('hud-edge-text', cond < 65 ? `${cond}% (Hone [H])` : `${cond}% Sharp`);
+    const sap = Math.round(gs.axeSapBuildup || 0);
+    const emberOn = gs.isEmberTempered();
+    if (this.humanoid && typeof this.humanoid.updateBladeConditionVisuals === 'function') {
+      this.humanoid.updateBladeConditionVisuals(cond, sap, emberOn);
+    }
+    if (this.environment && typeof this.environment.setBonfireLevel === 'function') {
+      this.environment.setBonfireLevel(gs.bonfireLevel || 1);
+    }
+    if (this.environment && typeof this.environment.updateFirewoodStand === 'function') {
+      this.environment.updateFirewoodStand(
+        gs.ordersCompletedCount,
+        gs.currentOrder ? gs.currentOrder.progress : 0
+      );
+    }
+    setTxt(
+      'hud-edge-text',
+      emberOn
+        ? `${cond}% \u2022 \uD83D\uDD25 Ember (${Math.ceil(gs.emberEdgeTimer)}s)`
+        : sap >= 25
+        ? `${cond}% \u2022 ${sap}% Sap [H/B]`
+        : cond < 65
+        ? `${cond}% (Hone [H])`
+        : `${cond}% Sharp`
+    );
     const edgeFill = document.getElementById('hud-edge-fill');
     if (edgeFill) {
       edgeFill.style.width = `${Math.min(100, cond)}%`;
       edgeFill.style.background =
-        cond < 50
+        emberOn
+          ? 'linear-gradient(90deg, #f97316, #fde047)'
+          : sap >= 40
+          ? 'linear-gradient(90deg, #d97706, #fbbf24)'
+          : cond < 50
           ? 'linear-gradient(90deg, #ef4444, #f97316)'
           : cond < 78
           ? 'linear-gradient(90deg, #f59e0b, #fde047)'
           : 'linear-gradient(90deg, #38bdf8, #818cf8)';
+    }
+
+    // Update Roadside Stand Contract Order status in Left Panel
+    if (gs.currentOrder) {
+      setTxt(
+        'order-status-pill',
+        `${gs.currentOrder.progress} / ${gs.currentOrder.target} (#${gs.ordersCompletedCount + 1})`
+      );
+      const orderDescEl = document.getElementById('order-desc');
+      if (orderDescEl) {
+        orderDescEl.textContent = `${gs.currentOrder.title} (\u2605 ${gs.currentOrder.rewardCredits} Payout) \u2022 Press [O] to Bundle`;
+      }
     }
 
     const logDef = gs.getCurrentLogDef();
@@ -1431,6 +1763,58 @@ class AxeSplittingSimulation {
     updateStatRow('upg-sharp-lvl', 'upg-sharp-btn', 'sharpness', gs.sharpnessLevel);
     updateStatRow('upg-weight-lvl', 'upg-weight-btn', 'weight', gs.weightLevel);
     updateStatRow('upg-stam-lvl', 'upg-stam-btn', 'stamina', gs.staminaLevel);
+
+    // Update Tire & Chain Collar status row
+    const collarLvlEl = document.getElementById('upg-collar-lvl');
+    const collarBtnEl = document.getElementById('upg-collar-btn');
+    if (collarLvlEl) {
+      collarLvlEl.textContent = !gs.collarUnlocked
+        ? 'Locked'
+        : gs.collarActive
+        ? 'Active [C]'
+        : 'Stowed [C]';
+    }
+    if (collarBtnEl) {
+      if (!gs.collarUnlocked) {
+        collarBtnEl.textContent = 'Buy (\u2605 350)';
+        collarBtnEl.disabled = gs.credits < 350;
+        collarBtnEl.className = 'btn btn-buy';
+      } else if (gs.collarActive) {
+        collarBtnEl.textContent = 'Active (Stow)';
+        collarBtnEl.disabled = false;
+        collarBtnEl.className = 'btn btn-buy btn-equipped';
+      } else {
+        collarBtnEl.textContent = 'Equip Collar';
+        collarBtnEl.disabled = false;
+        collarBtnEl.className = 'btn btn-buy';
+      }
+    }
+
+    // Update Custom Handle Grip Wrap & Shock-Mount status row
+    const wrapLvlEl = document.getElementById('upg-wrap-lvl');
+    const wrapDescEl = document.getElementById('upg-wrap-desc');
+    const wrapBtnEl = document.getElementById('upg-wrap-btn');
+    const curWrap = gs.getHandleWrap();
+    const nextWrapCost = gs.getHandleWrapUpgradeCost();
+    const nextWrapDef = HANDLE_WRAPS[(gs.handleWrapLevel || 0) + 1] || curWrap;
+    if (wrapLvlEl && curWrap) {
+      wrapLvlEl.textContent = `Lv ${gs.handleWrapLevel || 0} \u2022 ${curWrap.name}`;
+    }
+    if (wrapDescEl && nextWrapDef) {
+      wrapDescEl.textContent =
+        nextWrapCost === null
+          ? `MAXED: ${curWrap.desc}`
+          : `Next (${nextWrapDef.name}): ${nextWrapDef.desc}`;
+    }
+    if (wrapBtnEl) {
+      if (nextWrapCost === null) {
+        wrapBtnEl.textContent = 'MAXED';
+        wrapBtnEl.disabled = true;
+      } else {
+        wrapBtnEl.textContent = `Upgrade (\u2605 ${nextWrapCost})`;
+        wrapBtnEl.disabled = gs.credits < nextWrapCost;
+      }
+    }
 
     const axeList = document.getElementById('axe-shop-list');
     if (axeList) {
@@ -1596,12 +1980,13 @@ class AxeSplittingSimulation {
       this.choppingStation.update(subDt, this.atmosphere.windVector);
     }
 
-    this.atmosphere.update(dt);
+    this.atmosphere.update(dt, this.gameState.logsSplitCount);
     if (this.sound && typeof this.sound.tickAmbientSoundscape === 'function') {
       this.sound.tickAmbientSoundscape(
         rawDt,
         this.atmosphere.weather,
-        this.atmosphere.timeOfDay
+        this.atmosphere.timeOfDay,
+        this.gameState.bonfireLevel
       );
     }
     this.debugWireframe.update();

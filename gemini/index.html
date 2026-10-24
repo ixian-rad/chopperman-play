@@ -124,11 +124,23 @@
       <button id="rot-right-btn" type="button" class="btn btn-secondary btn-sm" title="Rotate log clockwise (E)">
         &#8635; <kbd>E</kbd>
       </button>
-      <button id="wedge-btn" type="button" class="btn btn-secondary btn-sm" title="Plant forged steel splitting wedge into log kerf (W)">
+      <button id="wedge-btn" type="button" class="btn btn-secondary btn-sm" title="Plant up to 2 Dual Tandem forged steel splitting wedges into log kerf (W)">
         &#9660; Wedge <kbd>W</kbd>
       </button>
-      <button id="hone-btn" type="button" class="btn btn-secondary btn-sm" title="Sharpen &amp; hone axe blade with whetstone (H)">
+      <button id="flip-btn" type="button" class="btn btn-secondary btn-sm" title="Flip / invert log upside-down on the chopping block (V)">
+        &#8693; Flip <kbd>V</kbd>
+      </button>
+      <button id="peavey-btn" type="button" class="btn btn-secondary btn-sm" title="Hook &amp; heave log squarely onto the chopping block with a steel cant-hook peavey for +18% (+25% Boss) cleave power (P)">
+        &#9875; Peavey <kbd>P</kbd>
+      </button>
+      <button id="hone-btn" type="button" class="btn btn-secondary btn-sm" title="Sharpen axe blade with whetstone &amp; wipe off sticky pine pitch sap (H)">
         &#10024; Hone <kbd>H</kbd>
+      </button>
+      <button id="bonfire-btn" type="button" class="btn btn-secondary btn-sm" title="Stoke backyard firepit to sear off sticky sap, boost stamina regen &amp; ignite Lv 5 Ember-Tempered Blade (B)">
+        &#128293; Bonfire <kbd>B</kbd>
+      </button>
+      <button id="bundle-btn" type="button" class="btn btn-secondary btn-sm" title="Tie &amp; stack a twine-wrapped firewood bundle on the roadside stand for +45 Credits &amp; contract progress (O)">
+        &#128230; Bundle <kbd>O</kbd>
       </button>
       <button id="reset-btn" type="button" class="btn btn-secondary btn-sm" title="Spawn fresh log (R)">
         New Log <kbd>R</kbd>
@@ -159,6 +171,15 @@
         <option value="endless">Endless Endurance (Scaling Hazard Gauntlet)</option>
         <option value="daily_seed">Daily Seed Challenge (Fixed Backyard Seed)</option>
       </select>
+    </div>
+
+    <!-- Roadside Firewood Stand Contract Status -->
+    <div class="control-group">
+      <div class="label-row">
+        <span>Roadside Stand Order</span>
+        <span id="order-status-pill" class="value-pill">0 / 3 Splits</span>
+      </div>
+      <small id="order-desc" class="control-hint">Patio Firepit Bundle (&#9733; 180 Payout) &bull; Split logs or press <kbd>O</kbd> to bundle</small>
     </div>
 
     <!-- Log Species Progression Selector -->
@@ -333,6 +354,22 @@
                 <small>Increases max stamina, faster recovery &amp; lower drain per swing.</small>
               </div>
               <button id="upg-stam-btn" type="button" class="btn btn-buy">Upgrade (90)</button>
+            </div>
+
+            <div class="upgrade-item">
+              <div class="upgrade-info">
+                <strong>Block Tire &amp; Chain Collar <span id="upg-collar-lvl" class="lvl-tag">Gear</span></strong>
+                <small>Wraps a heavy rubber tire &amp; bungee chain around the block: prevents wet slips, adds +12% cleave transfer &amp; holds split halves upright for 8-stick Kindling Quarter-Chops!</small>
+              </div>
+              <button id="upg-collar-btn" type="button" class="btn btn-buy">Buy (&#9733; 350)</button>
+            </div>
+
+            <div class="upgrade-item">
+              <div class="upgrade-info">
+                <strong>Handle Grip Wrap &amp; Shock-Mount <span id="upg-wrap-lvl" class="lvl-tag">Lv 0</span></strong>
+                <small id="upg-wrap-desc">Equip Leather, Vulcanized Rubber, or Copper Paracord wraps to cut stamina drain, absorb rock/nail shock &amp; boost cleave transfer.</small>
+              </div>
+              <button id="upg-wrap-btn" type="button" class="btn btn-buy">Upgrade (&#9733; 220)</button>
             </div>
           </div>
         </div>

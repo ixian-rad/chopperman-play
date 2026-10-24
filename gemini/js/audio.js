@@ -443,11 +443,375 @@ export class SoundEffects {
     }
   }
 
+  playLogFlip() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // Short loft whoosh followed by solid inverted wood thump on the block
+      this.playWhoosh(0.65);
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(168, now + 0.08);
+      osc.frequency.exponentialRampToValueAtTime(48, now + 0.22);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.setValueAtTime(0.32, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.23);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + 0.08);
+      osc.stop(now + 0.24);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playTandemCrackWalk() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      this.playWedgeHammer(3);
+      this.playWoodSplit(1.25, true);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playKindlingShatter() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      this.playWoodSplit(1.3, false);
+      // Multi-stick kindling clatter cascade
+      [0.05, 0.11, 0.17].forEach((delay, idx) => {
+        setTimeout(() => {
+          this.playWoodKnock(0.75 - idx * 0.15);
+        }, delay * 1000);
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playSapSizzle() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const dur = 0.25;
+      const len = Math.floor(ctx.sampleRate * dur);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.4);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(3400, now);
+      bp.frequency.exponentialRampToValueAtTime(1600, now + dur);
+      bp.Q.value = 2.6;
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      src.connect(bp);
+      bp.connect(gain);
+      gain.connect(ctx.destination);
+      src.start(now);
+      src.stop(now + dur);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playBurlShear() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      this.playBranchLop();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(280, now);
+      osc.frequency.exponentialRampToValueAtTime(95, now + 0.15);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.24, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.17);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playBonfireStoke() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // 1. Warm low fire whoosh
+      const dur = 0.34;
+      const len = Math.floor(ctx.sampleRate * dur);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.sin((i / len) * Math.PI);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(420, now);
+      lp.frequency.exponentialRampToValueAtTime(980, now + dur * 0.6);
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.22, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      noise.connect(lp);
+      lp.connect(g);
+      g.connect(ctx.destination);
+      noise.start(now);
+      noise.stop(now + dur);
+
+      // 2. Crisp ember crackle pops
+      [0.06, 0.14, 0.22].forEach((offset) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1400 + Math.random() * 900, now + offset);
+        const cg = ctx.createGain();
+        cg.gain.setValueAtTime(0.05, now + offset);
+        cg.gain.exponentialRampToValueAtTime(0.0008, now + offset + 0.025);
+        osc.connect(cg);
+        cg.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.03);
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playThunderclap(intensity = 1.0) {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // 1. Sharp electrostatic lightning crack
+      const crackDur = 0.18;
+      const crackLen = Math.floor(ctx.sampleRate * crackDur);
+      const crackBuf = ctx.createBuffer(1, crackLen, ctx.sampleRate);
+      const crackData = crackBuf.getChannelData(0);
+      for (let i = 0; i < crackLen; i++) {
+        crackData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / crackLen, 1.8);
+      }
+      const crackSrc = ctx.createBufferSource();
+      crackSrc.buffer = crackBuf;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'bandpass';
+      hp.frequency.setValueAtTime(1450, now);
+      hp.Q.value = 1.1;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.28 * intensity, now);
+      cg.gain.exponentialRampToValueAtTime(0.001, now + crackDur);
+      crackSrc.connect(hp);
+      hp.connect(cg);
+      cg.connect(ctx.destination);
+      crackSrc.start(now);
+      crackSrc.stop(now + crackDur);
+
+      // 2. Deep rolling suburban thunderstorm rumble
+      const rumbleDur = 0.75;
+      const rumbleLen = Math.floor(ctx.sampleRate * rumbleDur);
+      const rumbleBuf = ctx.createBuffer(1, rumbleLen, ctx.sampleRate);
+      const rumbleData = rumbleBuf.getChannelData(0);
+      for (let i = 0; i < rumbleLen; i++) {
+        const t = i / rumbleLen;
+        const env = Math.sin(t * Math.PI) * (0.7 + 0.3 * Math.sin(t * 28));
+        rumbleData[i] = (Math.random() * 2 - 1) * env;
+      }
+      const rumbleSrc = ctx.createBufferSource();
+      rumbleSrc.buffer = rumbleBuf;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(145, now + 0.04);
+      lp.frequency.exponentialRampToValueAtTime(52, now + rumbleDur);
+      const rg = ctx.createGain();
+      rg.gain.setValueAtTime(0.34 * intensity, now + 0.04);
+      rg.gain.exponentialRampToValueAtTime(0.001, now + 0.04 + rumbleDur);
+      rumbleSrc.connect(lp);
+      lp.connect(rg);
+      rg.connect(ctx.destination);
+      rumbleSrc.start(now + 0.04);
+      rumbleSrc.stop(now + 0.04 + rumbleDur);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playPeaveyHeave() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // 1. Steel cant-hook dog-tooth bite clink into bark
+      const clink = ctx.createOscillator();
+      clink.type = 'triangle';
+      clink.frequency.setValueAtTime(1680, now);
+      clink.frequency.exponentialRampToValueAtTime(740, now + 0.09);
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.2, now);
+      cg.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      clink.connect(cg);
+      cg.connect(ctx.destination);
+      clink.start(now);
+      clink.stop(now + 0.11);
+
+      // 2. Ash-handle lever creak + heavy log seat thud on the oak block
+      this.playFiberCreak(0.95);
+      const thud = ctx.createOscillator();
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(142, now + 0.1);
+      thud.frequency.exponentialRampToValueAtTime(44, now + 0.25);
+      const tg = ctx.createGain();
+      tg.gain.setValueAtTime(0.001, now);
+      tg.gain.setValueAtTime(0.34, now + 0.1);
+      tg.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      thud.connect(tg);
+      tg.connect(ctx.destination);
+      thud.start(now + 0.1);
+      thud.stop(now + 0.27);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playLightningFissureShatter() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      this.playWoodSplit(1.38, true);
+      this.playSapSizzle();
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playGeodeCrystalShatter() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      this.playWoodSplit(1.25, true);
+      const now = ctx.currentTime;
+      const crystalNotes = [1567.98, 2093.0, 2637.02, 3135.96];
+      crystalNotes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const t0 = now + i * 0.032;
+        osc.frequency.setValueAtTime(freq, t0);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.04, t0 + 0.34);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.09 / (1 + i * 0.25), t0);
+        gain.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.36);
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playContractComplete() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // 1. Crisp twine-tie & roadside cash-box clink
+      const clink = ctx.createOscillator();
+      clink.type = 'triangle';
+      clink.frequency.setValueAtTime(2240, now);
+      clink.frequency.exponentialRampToValueAtTime(3480, now + 0.09);
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.14, now);
+      cg.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      clink.connect(cg);
+      cg.connect(ctx.destination);
+      clink.start(now);
+      clink.stop(now + 0.11);
+
+      // 2. Cheerful 3-note contract payout chime
+      const chord = [523.25, 659.25, 783.99, 1046.5];
+      chord.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        const t0 = now + 0.05 + idx * 0.055;
+        osc.frequency.setValueAtTime(f, t0);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.11, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.25);
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playCritterScatter() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // Quick bluejay chirp + wing flutter
+      [0, 0.07].forEach((offset, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const t0 = now + offset;
+        osc.frequency.setValueAtTime(i === 0 ? 2680 : 3240, t0);
+        osc.frequency.exponentialRampToValueAtTime(1920, t0 + 0.055);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.055, t0);
+        g.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.06);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.065);
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  playEmberTemperIgnite() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      this.playBonfireStoke();
+      this.playWhetstoneHone();
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
   /**
-   * Subtle procedural backyard weather & time-of-day soundscape pulse (rain patter, wind rustle, evening crickets).
+   * Subtle procedural backyard weather, bonfire crackle & time-of-day soundscape pulse.
    * Only runs when AudioContext is already unlocked and running.
    */
-  tickAmbientSoundscape(dt, weather = 'sun', timeOfDay = 17.0) {
+  tickAmbientSoundscape(dt, weather = 'sun', timeOfDay = 17.0, bonfireLevel = 1) {
     if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
     this._ambientTimer = (this._ambientTimer || 0) + dt;
     if (this._ambientTimer < 1.8) return;
@@ -456,6 +820,20 @@ export class SoundEffects {
     try {
       const now = this.ctx.currentTime;
       const isNight = timeOfDay < 5.8 || timeOfDay > 19.2;
+
+      if (bonfireLevel >= 2 && weather !== 'rain') {
+        // Subtle backyard firepit ember pop
+        const popOsc = this.ctx.createOscillator();
+        popOsc.type = 'triangle';
+        popOsc.frequency.setValueAtTime(1150 + Math.random() * 600, now + 0.03);
+        const pg = this.ctx.createGain();
+        pg.gain.setValueAtTime(0.014 * Math.min(2, bonfireLevel * 0.45), now + 0.03);
+        pg.gain.exponentialRampToValueAtTime(0.0005, now + 0.06);
+        popOsc.connect(pg);
+        pg.connect(this.ctx.destination);
+        popOsc.start(now + 0.03);
+        popOsc.stop(now + 0.065);
+      }
 
       if (weather === 'rain') {
         // Gentle rain patter pulse
