@@ -1,0 +1,946 @@
+{
+ "generated": "2026-10-23 23:10 EDT",
+ "rows": [
+  {
+   "key": "v1",
+   "label": "v1",
+   "tag": "v1",
+   "desc": "First build from the brief"
+  },
+  {
+   "key": "v2",
+   "label": "v2",
+   "tag": "v2",
+   "desc": "Second prompt round"
+  },
+  {
+   "key": "classic",
+   "label": "Classic final",
+   "tag": "pre-assets",
+   "desc": "Frozen pre-assets build"
+  },
+  {
+   "key": "assets",
+   "label": "Assets v2",
+   "tag": "assets-v2-release",
+   "desc": "Sergey, two backyards, walk and fell"
+  },
+  {
+   "key": "polish",
+   "label": "Polish",
+   "tag": "polish-1",
+   "desc": "Extra polish pass (Codex only)"
+  },
+  {
+   "key": "coop",
+   "label": "Co-op + voice",
+   "tag": "coop-voice-release",
+   "desc": "Online co-op and proximity voice chat"
+  }
+ ],
+ "harness": {
+  "codex": {
+   "name": "Codex",
+   "cells": {
+    "v1": {
+     "state": "ok",
+     "tag": "v1",
+     "iter": null,
+     "commit": "ae18255",
+     "at": "2026-10-21T14:34:36-04:00",
+     "at_text": "Oct 21 14:34",
+     "cost": {
+      "total": 0.76,
+      "reported": 0,
+      "token_priced": 0.76,
+      "est": 0,
+      "balance": 0,
+      "runs": 1
+     },
+     "cost_short": "$0.76 cum.",
+     "cost_long": "Cost to here: $0.76 over 1 game-build runs = $0.76 token-priced.",
+     "img": "assets/milestones/codex/v1",
+     "hud_min_px": 7,
+     "hud_small": true,
+     "live": false
+    },
+    "v2": {
+     "state": "ok",
+     "tag": "v2",
+     "iter": null,
+     "commit": "1d15d4e",
+     "at": "2026-10-21T15:07:32-04:00",
+     "at_text": "Oct 21 15:07",
+     "cost": {
+      "total": 1.59,
+      "reported": 0,
+      "token_priced": 1.59,
+      "est": 0,
+      "balance": 0,
+      "runs": 2
+     },
+     "cost_short": "$1.59 cum.",
+     "cost_long": "Cost to here: $1.59 over 2 game-build runs = $1.59 token-priced.",
+     "img": "assets/milestones/codex/v2",
+     "hud_min_px": 7,
+     "hud_small": true,
+     "live": false
+    },
+    "classic": {
+     "state": "ok",
+     "tag": "pre-assets",
+     "iter": "iter-10",
+     "commit": "831d6dc",
+     "at": "2026-10-22T12:54:49-04:00",
+     "at_text": "Oct 22 12:54",
+     "cost": {
+      "total": 9.1,
+      "reported": 0,
+      "token_priced": 8.3,
+      "est": 0.8,
+      "balance": 0,
+      "runs": 13
+     },
+     "cost_short": "$9.10 cum. \u00b7 incl. est. $0.80",
+     "cost_long": "Cost to here: $9.10 over 13 game-build runs = $8.30 token-priced + est. $0.80.",
+     "img": "assets/milestones/codex/classic",
+     "hud_min_px": 14,
+     "hud_small": true,
+     "live": false
+    },
+    "assets": {
+     "state": "ok",
+     "tag": "assets-v2-release",
+     "iter": "iter-11",
+     "commit": "15a5271",
+     "at": "2026-10-22T19:23:00-04:00",
+     "at_text": "Oct 22 19:23",
+     "cost": {
+      "total": 17.62,
+      "reported": 0,
+      "token_priced": 16.82,
+      "est": 0.8,
+      "balance": 0,
+      "runs": 16
+     },
+     "cost_short": "$17.62 cum. \u00b7 incl. est. $0.80",
+     "cost_long": "Cost to here: $17.62 over 16 game-build runs = $16.82 token-priced + est. $0.80.",
+     "img": "assets/milestones/codex/assets",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    },
+    "polish": {
+     "state": "ok",
+     "tag": "polish-1",
+     "iter": null,
+     "commit": "d9bbf61",
+     "at": "2026-10-23T01:44:38-04:00",
+     "at_text": "Oct 23 01:44",
+     "cost": {
+      "total": 21.09,
+      "reported": 0,
+      "token_priced": 20.3,
+      "est": 0.8,
+      "balance": 0,
+      "runs": 17
+     },
+     "cost_short": "$21.09 cum. \u00b7 incl. est. $0.80",
+     "cost_long": "Cost to here: $21.09 over 17 game-build runs = $20.30 token-priced + est. $0.80.",
+     "img": "assets/milestones/codex/polish",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    },
+    "coop": {
+     "state": "ok",
+     "tag": "coop-voice-release",
+     "iter": null,
+     "commit": "d9215ba",
+     "at": "2026-10-23T21:48:02-04:00",
+     "at_text": "Oct 23 21:48",
+     "cost": {
+      "total": 24.87,
+      "reported": 0,
+      "token_priced": 24.08,
+      "est": 0.8,
+      "balance": 0,
+      "runs": 20
+     },
+     "cost_short": "$24.87 cum. \u00b7 incl. est. $0.80",
+     "cost_long": "Cost to here: $24.87 over 20 game-build runs = $24.08 token-priced + est. $0.80.",
+     "img": "assets/milestones/codex/coop",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    }
+   },
+   "iterations": [
+    {
+     "n": 1,
+     "tag": "iter-1",
+     "commit": "6bfbcfc",
+     "at": "2026-10-21T15:25:31-04:00",
+     "at_text": "Oct 21 15:25",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-1"
+    },
+    {
+     "n": 2,
+     "tag": "iter-2",
+     "commit": "1addd0f",
+     "at": "2026-10-21T15:36:31-04:00",
+     "at_text": "Oct 21 15:36",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-2"
+    },
+    {
+     "n": 3,
+     "tag": "iter-3",
+     "commit": "9213a99",
+     "at": "2026-10-21T15:47:33-04:00",
+     "at_text": "Oct 21 15:47",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-3"
+    },
+    {
+     "n": 4,
+     "tag": "iter-4",
+     "commit": "7975e9f",
+     "at": "2026-10-21T16:00:17-04:00",
+     "at_text": "Oct 21 16:00",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-4"
+    },
+    {
+     "n": 5,
+     "tag": "iter-5",
+     "commit": "c378c92",
+     "at": "2026-10-21T16:11:12-04:00",
+     "at_text": "Oct 21 16:11",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-5"
+    },
+    {
+     "n": 6,
+     "tag": "iter-6",
+     "commit": "15f9543",
+     "at": "2026-10-21T18:39:53-04:00",
+     "at_text": "Oct 21 18:39",
+     "same_as_prev": true,
+     "img": "assets/milestones/codex/iter-6"
+    },
+    {
+     "n": 7,
+     "tag": "iter-7",
+     "commit": "ca82b1f",
+     "at": "2026-10-21T20:48:03-04:00",
+     "at_text": "Oct 21 20:48",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-7"
+    },
+    {
+     "n": 8,
+     "tag": "iter-8",
+     "commit": "d0523a2",
+     "at": "2026-10-22T02:59:42-04:00",
+     "at_text": "Oct 22 02:59",
+     "same_as_prev": true,
+     "img": "assets/milestones/codex/iter-8"
+    },
+    {
+     "n": 9,
+     "tag": "iter-9",
+     "commit": "e9b8992",
+     "at": "2026-10-22T03:20:40-04:00",
+     "at_text": "Oct 22 03:20",
+     "same_as_prev": true,
+     "img": "assets/milestones/codex/iter-9"
+    },
+    {
+     "n": 10,
+     "tag": "iter-10",
+     "commit": "831d6dc",
+     "at": "2026-10-22T12:54:49-04:00",
+     "at_text": "Oct 22 12:54",
+     "same_as_prev": false,
+     "img": "assets/milestones/codex/iter-10"
+    }
+   ],
+   "iter_tags": 11
+  },
+  "claude": {
+   "name": "Claude",
+   "cells": {
+    "v1": {
+     "state": "ok",
+     "tag": "v1",
+     "iter": null,
+     "commit": "614efc7",
+     "at": "2026-10-21T14:43:45-04:00",
+     "at_text": "Oct 21 14:43",
+     "cost": {
+      "total": 6.35,
+      "reported": 0,
+      "token_priced": 6.35,
+      "est": 0,
+      "balance": 0,
+      "runs": 1
+     },
+     "cost_short": "$6.35 cum.",
+     "cost_long": "Cost to here: $6.35 over 1 game-build runs = $6.35 token-priced.",
+     "img": "assets/milestones/claude/v1",
+     "hud_min_px": 10,
+     "hud_small": true,
+     "live": false
+    },
+    "v2": {
+     "state": "ok",
+     "tag": "v2",
+     "iter": null,
+     "commit": "a108a1c",
+     "at": "2026-10-21T16:01:07-04:00",
+     "at_text": "Oct 21 16:01",
+     "cost": {
+      "total": 23.91,
+      "reported": 17.55,
+      "token_priced": 6.35,
+      "est": 0,
+      "balance": 0,
+      "runs": 2
+     },
+     "cost_short": "$23.91 cum.",
+     "cost_long": "Cost to here: $23.91 over 2 game-build runs = $17.55 reported + $6.35 token-priced.",
+     "img": "assets/milestones/claude/v2",
+     "hud_min_px": 9,
+     "hud_small": true,
+     "live": false
+    },
+    "classic": {
+     "state": "ok",
+     "tag": "pre-assets",
+     "iter": "iter-3",
+     "commit": "3974092",
+     "at": "2026-10-22T12:51:07-04:00",
+     "at_text": "Oct 22 12:51",
+     "cost": {
+      "total": 39.28,
+      "reported": 27.74,
+      "token_priced": 11.54,
+      "est": 0,
+      "balance": 0,
+      "runs": 7
+     },
+     "cost_short": "$39.28 cum.",
+     "cost_long": "Cost to here: $39.28 over 7 game-build runs = $27.74 reported + $11.54 token-priced.",
+     "img": "assets/milestones/claude/classic",
+     "hud_min_px": 14,
+     "hud_small": true,
+     "live": false
+    },
+    "assets": {
+     "state": "ok",
+     "tag": "assets-v2-release",
+     "iter": "iter-4",
+     "commit": "f84f19b",
+     "at": "2026-10-22T22:18:24-04:00",
+     "at_text": "Oct 22 22:18",
+     "cost": {
+      "total": 85.07,
+      "reported": 66.39,
+      "token_priced": 11.54,
+      "est": 7.15,
+      "balance": 0,
+      "runs": 12
+     },
+     "cost_short": "$85.07 cum. \u00b7 incl. est. $7.15",
+     "cost_long": "Cost to here: $85.07 over 12 game-build runs = $66.39 reported + $11.54 token-priced + est. $7.15.",
+     "img": "assets/milestones/claude/assets",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    },
+    "polish": {
+     "state": "na"
+    },
+    "coop": {
+     "state": "ok",
+     "tag": "coop-voice-release",
+     "iter": null,
+     "commit": "c7b88ab",
+     "at": "2026-10-23T21:36:08-04:00",
+     "at_text": "Oct 23 21:36",
+     "cost": {
+      "total": 102.32,
+      "reported": 83.63,
+      "token_priced": 11.54,
+      "est": 7.15,
+      "balance": 0,
+      "runs": 15
+     },
+     "cost_short": "$102.32 cum. \u00b7 incl. est. $7.15",
+     "cost_long": "Cost to here: $102.32 over 15 game-build runs = $83.63 reported + $11.54 token-priced + est. $7.15.",
+     "img": "assets/milestones/claude/coop",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    }
+   },
+   "iterations": [
+    {
+     "n": 1,
+     "tag": "iter-1",
+     "commit": "1faf566",
+     "at": "2026-10-21T18:42:00-04:00",
+     "at_text": "Oct 21 18:42",
+     "same_as_prev": false,
+     "img": "assets/milestones/claude/iter-1"
+    },
+    {
+     "n": 2,
+     "tag": "iter-2",
+     "commit": "c150cb7",
+     "at": "2026-10-22T02:54:40-04:00",
+     "at_text": "Oct 22 02:54",
+     "same_as_prev": false,
+     "img": "assets/milestones/claude/iter-2"
+    },
+    {
+     "n": 3,
+     "tag": "iter-3",
+     "commit": "3974092",
+     "at": "2026-10-22T12:51:07-04:00",
+     "at_text": "Oct 22 12:51",
+     "same_as_prev": false,
+     "img": "assets/milestones/claude/iter-3"
+    }
+   ],
+   "iter_tags": 4
+  },
+  "deepseek": {
+   "name": "DeepSeek",
+   "cells": {
+    "v1": {
+     "state": "ok",
+     "tag": "v1",
+     "iter": null,
+     "commit": "de03d47",
+     "at": "2026-10-21T14:34:36-04:00",
+     "at_text": "Oct 21 14:34",
+     "cost": {
+      "total": 0.14,
+      "reported": 0,
+      "token_priced": 0.14,
+      "est": 0,
+      "balance": 0,
+      "runs": 1
+     },
+     "cost_short": "$0.14 cum.",
+     "cost_long": "Cost to here: $0.14 over 1 game-build runs = $0.14 token-priced.",
+     "img": "assets/milestones/deepseek/v1",
+     "hud_min_px": 7,
+     "hud_small": true,
+     "live": false
+    },
+    "v2": {
+     "state": "ok",
+     "tag": "v2",
+     "iter": null,
+     "commit": "b8d2274",
+     "at": "2026-10-21T15:44:34-04:00",
+     "at_text": "Oct 21 15:44",
+     "cost": {
+      "total": 0.61,
+      "reported": 0,
+      "token_priced": 0.61,
+      "est": 0,
+      "balance": 0,
+      "runs": 4
+     },
+     "cost_short": "$0.61 cum.",
+     "cost_long": "Cost to here: $0.61 over 4 game-build runs = $0.61 token-priced.",
+     "img": "assets/milestones/deepseek/v2",
+     "hud_min_px": 5.5,
+     "hud_small": true,
+     "live": false
+    },
+    "classic": {
+     "state": "ok",
+     "tag": "pre-assets",
+     "iter": "iter-27",
+     "commit": "1f2bd26",
+     "at": "2026-10-22T14:19:46-04:00",
+     "at_text": "Oct 22 14:19",
+     "cost": {
+      "total": 7.46,
+      "reported": 0,
+      "token_priced": 7.46,
+      "est": 0,
+      "balance": 0,
+      "runs": 54
+     },
+     "cost_short": "$7.46 cum.",
+     "cost_long": "Cost to here: $7.46 over 54 game-build runs = $7.46 token-priced.",
+     "img": "assets/milestones/deepseek/classic",
+     "hud_min_px": 14,
+     "hud_small": true,
+     "live": false
+    },
+    "assets": {
+     "state": "ok",
+     "tag": "assets-v2-release",
+     "iter": "iter-28",
+     "commit": "2998b40",
+     "at": "2026-10-22T22:39:57-04:00",
+     "at_text": "Oct 22 22:39",
+     "cost": {
+      "total": 9.03,
+      "reported": 0,
+      "token_priced": 8.74,
+      "est": 0,
+      "balance": 0.29,
+      "runs": 58
+     },
+     "cost_short": "$9.03 cum. \u00b7 incl. $0.29 by balance",
+     "cost_long": "Cost to here: $9.03 over 58 game-build runs = $8.74 token-priced + $0.29 measured by balance.",
+     "img": "assets/milestones/deepseek/assets",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    },
+    "polish": {
+     "state": "na"
+    },
+    "coop": {
+     "state": "ok",
+     "tag": "coop-voice-release",
+     "iter": null,
+     "commit": "550fa30",
+     "at": "2026-10-23T21:48:04-04:00",
+     "at_text": "Oct 23 21:48",
+     "cost": {
+      "total": 9.84,
+      "reported": 0,
+      "token_priced": 9.55,
+      "est": 0,
+      "balance": 0.29,
+      "runs": 61
+     },
+     "cost_short": "$9.84 cum. \u00b7 incl. $0.29 by balance",
+     "cost_long": "Cost to here: $9.84 over 61 game-build runs = $9.55 token-priced + $0.29 measured by balance.",
+     "img": "assets/milestones/deepseek/coop",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
+    }
+   },
+   "iterations": [
+    {
+     "n": 1,
+     "tag": "iter-1",
+     "commit": "01beb89",
+     "at": "2026-10-21T15:55:59-04:00",
+     "at_text": "Oct 21 15:55",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-1"
+    },
+    {
+     "n": 2,
+     "tag": "iter-2",
+     "commit": "f8c3d61",
+     "at": "2026-10-21T16:11:54-04:00",
+     "at_text": "Oct 21 16:11",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-2"
+    },
+    {
+     "n": 3,
+     "tag": "iter-3",
+     "commit": "3b8aa41",
+     "at": "2026-10-21T20:52:43-04:00",
+     "at_text": "Oct 21 20:52",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-3"
+    },
+    {
+     "n": 4,
+     "tag": "iter-4",
+     "commit": "d8eb2ed",
+     "at": "2026-10-21T22:03:43-04:00",
+     "at_text": "Oct 21 22:03",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-4"
+    },
+    {
+     "n": 5,
+     "tag": "iter-5",
+     "commit": "28f96cc",
+     "at": "2026-10-21T22:21:09-04:00",
+     "at_text": "Oct 21 22:21",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-5"
+    },
+    {
+     "n": 6,
+     "tag": "iter-6",
+     "commit": "5f9357a",
+     "at": "2026-10-21T22:36:12-04:00",
+     "at_text": "Oct 21 22:36",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-6"
+    },
+    {
+     "n": 7,
+     "tag": "iter-7",
+     "commit": "a3da3cb",
+     "at": "2026-10-21T22:54:29-04:00",
+     "at_text": "Oct 21 22:54",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-7"
+    },
+    {
+     "n": 8,
+     "tag": "iter-8",
+     "commit": "1c2a3e2",
+     "at": "2026-10-21T23:44:41-04:00",
+     "at_text": "Oct 21 23:44",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-8"
+    },
+    {
+     "n": 9,
+     "tag": "iter-9",
+     "commit": "8949940",
+     "at": "2026-10-22T00:03:08-04:00",
+     "at_text": "Oct 22 00:03",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-9"
+    },
+    {
+     "n": 10,
+     "tag": "iter-10",
+     "commit": "c1204da",
+     "at": "2026-10-22T00:23:44-04:00",
+     "at_text": "Oct 22 00:23",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-10"
+    },
+    {
+     "n": 11,
+     "tag": "iter-11",
+     "commit": "37ffeb0",
+     "at": "2026-10-22T01:35:11-04:00",
+     "at_text": "Oct 22 01:35",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-11"
+    },
+    {
+     "n": 12,
+     "tag": "iter-12",
+     "commit": "571ac4a",
+     "at": "2026-10-22T01:46:35-04:00",
+     "at_text": "Oct 22 01:46",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-12"
+    },
+    {
+     "n": 13,
+     "tag": "iter-13",
+     "commit": "3bea9a4",
+     "at": "2026-10-22T02:09:37-04:00",
+     "at_text": "Oct 22 02:09",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-13"
+    },
+    {
+     "n": 14,
+     "tag": "iter-14",
+     "commit": "0bef531",
+     "at": "2026-10-22T11:06:07-04:00",
+     "at_text": "Oct 22 11:06",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-14"
+    },
+    {
+     "n": 15,
+     "tag": "iter-15",
+     "commit": "aa0ed79",
+     "at": "2026-10-22T11:08:47-04:00",
+     "at_text": "Oct 22 11:08",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-15"
+    },
+    {
+     "n": 16,
+     "tag": "iter-16",
+     "commit": "6d05bff",
+     "at": "2026-10-22T11:11:06-04:00",
+     "at_text": "Oct 22 11:11",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-16"
+    },
+    {
+     "n": 17,
+     "tag": "iter-17",
+     "commit": "64cd68c",
+     "at": "2026-10-22T11:14:15-04:00",
+     "at_text": "Oct 22 11:14",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-17"
+    },
+    {
+     "n": 18,
+     "tag": "iter-18",
+     "commit": "44da0ad",
+     "at": "2026-10-22T11:18:20-04:00",
+     "at_text": "Oct 22 11:18",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-18"
+    },
+    {
+     "n": 19,
+     "tag": "iter-19",
+     "commit": "1ec3362",
+     "at": "2026-10-22T12:04:06-04:00",
+     "at_text": "Oct 22 12:04",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-19"
+    },
+    {
+     "n": 20,
+     "tag": "iter-20",
+     "commit": "99e4483",
+     "at": "2026-10-22T12:04:57-04:00",
+     "at_text": "Oct 22 12:04",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-20"
+    },
+    {
+     "n": 21,
+     "tag": "iter-21",
+     "commit": "bb4bd7f",
+     "at": "2026-10-22T12:14:57-04:00",
+     "at_text": "Oct 22 12:14",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-21"
+    },
+    {
+     "n": 22,
+     "tag": "iter-22",
+     "commit": "56f00df",
+     "at": "2026-10-22T12:15:48-04:00",
+     "at_text": "Oct 22 12:15",
+     "same_as_prev": true,
+     "img": "assets/milestones/deepseek/iter-22"
+    },
+    {
+     "n": 23,
+     "tag": "iter-23",
+     "commit": "4bb4ce7",
+     "at": "2026-10-22T12:33:18-04:00",
+     "at_text": "Oct 22 12:33",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-23"
+    },
+    {
+     "n": 24,
+     "tag": "iter-24",
+     "commit": "4cbabed",
+     "at": "2026-10-22T13:36:32-04:00",
+     "at_text": "Oct 22 13:36",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-24"
+    },
+    {
+     "n": 25,
+     "tag": "iter-25",
+     "commit": "0317eb1",
+     "at": "2026-10-22T13:37:30-04:00",
+     "at_text": "Oct 22 13:37",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-25"
+    },
+    {
+     "n": 26,
+     "tag": "iter-26",
+     "commit": "b8a4220",
+     "at": "2026-10-22T13:40:00-04:00",
+     "at_text": "Oct 22 13:40",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-26"
+    },
+    {
+     "n": 27,
+     "tag": "iter-27",
+     "commit": "1f2bd26",
+     "at": "2026-10-22T14:19:46-04:00",
+     "at_text": "Oct 22 14:19",
+     "same_as_prev": false,
+     "img": "assets/milestones/deepseek/iter-27"
+    }
+   ],
+   "iter_tags": 28
+  },
+  "gemini": {
+   "name": "Gemini",
+   "cells": {
+    "v1": {
+     "state": "ok",
+     "tag": "v1",
+     "iter": null,
+     "commit": "89bddca",
+     "at": "2026-10-23T05:16:37-04:00",
+     "at_text": "Oct 23 05:16",
+     "cost": {
+      "total": 1.24,
+      "est": 1.24,
+      "basis": "est.",
+      "runs": 1,
+      "phases": [
+       "v1"
+      ]
+     },
+     "cost_short": "est. $1.24 cum.",
+     "cost_long": "Cost to here: est. $1.24 over 1 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "img": "assets/milestones/gemini/v1",
+     "hud_min_px": 10.56,
+     "hud_small": true,
+     "live": false
+    },
+    "v2": {
+     "state": "ok",
+     "tag": "v2",
+     "iter": null,
+     "commit": "0eddf61",
+     "at": "2026-10-23T05:58:12-04:00",
+     "at_text": "Oct 23 05:58",
+     "cost": {
+      "total": 3.56,
+      "est": 3.56,
+      "basis": "est.",
+      "runs": 2,
+      "phases": [
+       "v1",
+       "v2"
+      ]
+     },
+     "cost_short": "est. $3.56 cum.",
+     "cost_long": "Cost to here: est. $3.56 over 2 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "img": "assets/milestones/gemini/v2",
+     "hud_min_px": 9.92,
+     "hud_small": true,
+     "live": false
+    },
+    "classic": {
+     "state": "live",
+     "tag": "iter-7",
+     "iter": null,
+     "commit": "9bdbf17",
+     "at": "2026-10-23T21:45:26-04:00",
+     "at_text": "Oct 23 21:45",
+     "cost": {
+      "total": 22.02,
+      "est": 22.02,
+      "basis": "est.",
+      "runs": 10,
+      "phases": [
+       "v1",
+       "v2",
+       "iter-1",
+       "iter-2",
+       "iter-3",
+       "iter-4",
+       "iter-5",
+       "iter-6 (audio) quota-blocked",
+       "iter-6",
+       "iter-7"
+      ]
+     },
+     "cost_short": "est. $22.02 cum.",
+     "cost_long": "Cost to here: est. $22.02 over 10 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "img": "assets/milestones/gemini/classic",
+     "hud_min_px": 9.92,
+     "hud_small": true,
+     "live": true
+    },
+    "assets": {
+     "state": "todo"
+    },
+    "polish": {
+     "state": "todo"
+    },
+    "coop": {
+     "state": "todo"
+    }
+   },
+   "iterations": [
+    {
+     "n": 1,
+     "tag": "iter-1",
+     "commit": "61728ec",
+     "at": "2026-10-23T14:18:09-04:00",
+     "at_text": "Oct 23 14:18",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-1"
+    },
+    {
+     "n": 2,
+     "tag": "iter-2",
+     "commit": "4c14ee5",
+     "at": "2026-10-23T14:36:39-04:00",
+     "at_text": "Oct 23 14:36",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-2"
+    },
+    {
+     "n": 3,
+     "tag": "iter-3",
+     "commit": "d4b2382",
+     "at": "2026-10-23T17:03:32-04:00",
+     "at_text": "Oct 23 17:03",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-3"
+    },
+    {
+     "n": 4,
+     "tag": "iter-4",
+     "commit": "36a1827",
+     "at": "2026-10-23T19:09:03-04:00",
+     "at_text": "Oct 23 19:09",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-4"
+    },
+    {
+     "n": 5,
+     "tag": "iter-5",
+     "commit": "b1f6af9",
+     "at": "2026-10-23T19:14:07-04:00",
+     "at_text": "Oct 23 19:14",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-5"
+    },
+    {
+     "n": 6,
+     "tag": "iter-6",
+     "commit": "f47173e",
+     "at": "2026-10-23T20:21:00-04:00",
+     "at_text": "Oct 23 20:21",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-6"
+    },
+    {
+     "n": 7,
+     "tag": "iter-7",
+     "commit": "9bdbf17",
+     "at": "2026-10-23T21:45:26-04:00",
+     "at_text": "Oct 23 21:45",
+     "same_as_prev": false,
+     "img": "assets/milestones/gemini/iter-7"
+    }
+   ],
+   "iter_tags": 7
+  }
+ },
+ "note": "Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (login-based, not billed).",
+ "latest_at": "2026-10-23T21:48:04-04:00"
+}
