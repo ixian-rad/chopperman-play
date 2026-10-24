@@ -1,6 +1,6 @@
 :root {
-  /* Legible Type Scale (1rem = 16px) */
-  --fs-label: 0.875rem;      /* 14px — ONLY for bold, uppercase, high-contrast secondary labels/badges */
+  /* Legible Type Scale (1rem = 16px) — nothing smaller than 16px for any visible text */
+  --fs-label: 1rem;          /* 16px — minimum for all labels, badges, kbd, and secondary text */
   --fs-body: 1rem;           /* 16px — minimum for all body copy, controls, buttons, selects, hints */
   --fs-subhead: 1.125rem;    /* 18px — upgrade item titles & emphasized labels */
   --fs-hud-val: 1.25rem;     /* 20px — primary HUD readouts (timer, power, stamina/energy, HP, telemetry) */
@@ -77,8 +77,6 @@ body {
   padding: 8px 12px;
   border-radius: 14px;
   background: var(--bg-panel);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   display: flex;
@@ -320,6 +318,86 @@ body {
 }
 
 /* ==========================================================================
+   On-Screen Tree Target & Free-Roam Yard Prompt + Asset Loading Overlay
+   ========================================================================== */
+.yard-prompt-banner {
+  position: fixed;
+  top: 94px;
+  left: calc(50% + 174px);
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: rgba(10, 15, 25, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.65);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.6);
+  color: var(--text-primary);
+  font-size: var(--fs-subhead);
+  line-height: var(--lh-base);
+  font-weight: 700;
+  text-shadow: var(--text-shadow-strong);
+  text-align: center;
+  z-index: 14;
+  pointer-events: none;
+}
+
+.yard-prompt-banner.target-active {
+  border-color: rgba(251, 191, 36, 0.85);
+  background: rgba(20, 14, 8, 0.95);
+  color: #fde047;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 60;
+}
+
+.loading-card {
+  width: min(460px, 92vw);
+  padding: 24px 28px;
+  border-radius: 18px;
+  background: var(--bg-panel-solid);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.loading-logo {
+  max-width: 240px;
+  max-height: 120px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.loading-title {
+  font-size: var(--fs-hud-hero);
+  line-height: var(--lh-tight);
+  font-weight: 800;
+  color: #fde047;
+}
+
+.loading-sub {
+  font-size: var(--fs-body);
+  line-height: var(--lh-base);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.loading-track {
+  height: 12px;
+  margin-top: 4px;
+}
+
+/* ==========================================================================
    Bottom-Center Timing / Power Meter
    ========================================================================== */
 .timing-hud {
@@ -331,8 +409,6 @@ body {
   padding: 10px 14px;
   border-radius: 15px;
   background: var(--bg-panel);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
   display: flex;
@@ -462,8 +538,6 @@ body {
   padding: 13px;
   border-radius: 16px;
   background: var(--bg-panel);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.52);
   display: flex;
@@ -863,8 +937,7 @@ kbd {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(6, 10, 16, 0.82);
-  backdrop-filter: blur(8px);
+  background: rgba(6, 10, 16, 0.88);
   display: flex;
   align-items: center;
   justify-content: center;

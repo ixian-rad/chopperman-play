@@ -11,8 +11,8 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
         "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
       }
     }
@@ -98,6 +98,23 @@
     <div id="hit-banner-sub" class="hit-banner-sub">+180 PTS &bull; +45 XP</div>
   </div>
 
+  <!-- On-Screen Tree Target & Free-Roam Mode Prompt -->
+  <div id="yard-prompt-banner" class="yard-prompt-banner hidden" aria-live="polite">
+    <span id="yard-prompt-text">Free-Roam Yard Mode &bull; Walk with WASD (Shift = Run) &bull; Press E for Stump</span>
+  </div>
+
+  <!-- Parallel GLB Asset Loading Overlay (auto-hides when ready) -->
+  <div id="loading-overlay" class="loading-overlay" aria-label="Loading 3D Assets">
+    <div class="loading-card">
+      <img src="./assets/art/common/logo_title_card.webp" alt="Backyard Lumberjack RPG Title Card" class="loading-logo" />
+      <h2 class="loading-title">Loading Backyard Lumberjack Assets&hellip;</h2>
+      <p id="loading-status-text" class="loading-sub">Loading Sergey PBR rig, axes, and trees_v2 in parallel&hellip;</p>
+      <div class="progress-track loading-track">
+        <div id="loading-progress-fill" class="progress-fill xp-fill" style="width: 18%"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Bottom-Center Timing / Power Meter & Mouse Gesture Guide -->
   <section class="timing-hud" aria-label="Swing Power and Timing Meter">
     <div class="timing-header">
@@ -155,8 +172,33 @@
         <h1>Backyard Wood Splitter</h1>
         <span id="status-badge" class="status-badge status-ready">Ready</span>
       </div>
-      <p class="subtitle">Suburban NJ Backyard &bull; Physics &amp; RPG</p>
+      <p id="setting-subtitle" class="subtitle">Sergey &bull; Suburban NJ Backyard &bull; RPG</p>
     </header>
+
+    <!-- Setting, Sergey Costume & Yard/Stump Mode Controls -->
+    <div class="control-group">
+      <div class="label-row">
+        <label for="setting-select">Backyard Setting</label>
+        <span id="trees-count-pill" class="value-pill">Trees: 28</span>
+      </div>
+      <select id="setting-select" class="ui-select">
+        <option value="nj" selected>NJ Backyard (Sage Shed &amp; Pine/Oak)</option>
+        <option value="tiraspol">Tiraspol Backyard (Cathedral &amp; Walnut)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <div class="label-row">
+        <label for="costume-select">Sergey Costume</label>
+        <button id="toggle-roam-btn" type="button" class="btn btn-chip" title="Toggle Free-Roam Yard Mode (WASD) and Stump Mode (E / Esc)">
+          Roam Yard <kbd>E</kbd>
+        </button>
+      </div>
+      <select id="costume-select" class="ui-select">
+        <option value="tee" selected>Black Tee (Default)</option>
+        <option value="jacket">Blue Zip Jacket</option>
+      </select>
+    </div>
 
     <!-- Game Mode / Challenge Selector -->
     <div class="control-group">

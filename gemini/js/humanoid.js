@@ -1,13 +1,19 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { createFlannelTexture, createDenimTexture } from './textures.js';
+import {
+  loadGLB,
+  toFastPropMaterial,
+  COSTUME_MODEL_URLS,
+  AXE_MODEL_URLS,
+  EXTRA_CLIP_URLS
+} from './assetsLoader.js';
+import { normalizeAxeId } from './rpgState.js';
 
 /**
- * Articulated Anonymous Humanoid Woodchopper + Upgradeable Felling/Splitting Axes.
- * Features a full hierarchical joint rig (pelvis, lowerSpine, upperTorso, neck, head,
- * thighs, shins, boots, shoulders, elbows, wrists/hands, and 2-bone IK for the sliding
- * guide hand on the axe shaft), interactive mouse-drag windup, cursor-aimed torso/arm yaw,
- * and a synchronized cannon-es rigid body for the axe.
+ * Playable Character Controller for SERGEY (with two switchable costumes: 'tee' and 'jacket',
+ * 24-bone Meshy PBR rig, AnimationMixer with crossfades, and 4 attachable 3D GLB axes on RightHand),
+ * plus the articulated procedural fallback rig & kinematic physics collider for log-splitting.
  */
 export class HumanoidChopper {
   constructor(scene, world, physMaterials, choppingStation, soundEffects) {
@@ -28,19 +34,474 @@ export class HumanoidChopper {
     this.whooshPlayed = false;
     this.onImpactCallback = null;
 
+    // Mode & Locomotion state ('stump' | 'yard')
+    this.interactionMode = 'stump';
+    this.isMoving = false;
+    this.isRunning = false;
+    this.footstepTimer = 0;
+
+    // Sergey assets-v2 state
+    this.costume = 'tee';
+    this.equippedAxeId = 'sergey';
+    this.characterLoaded = false;
+    this.axeAttachedTo = 'RightHand';
+    this.currentAnimName = 'Axe_Stance';
+    this._cheerTimer = 0;
+
+    this._costumeRecords = {}; // costume -> { root, mixer, actions, rightHandBone, armScale }
+    this._extraClips = {}; // 'Walk' | 'Run' -> THREE.AnimationClip
+    this._axeTemplates = {}; // axeId -> THREE.Group
+    this._activeCostumeRecord = null;
+
     this.prevBladePos = new THREE.Vector3();
     this.currentBladeVelocity = new THREE.Vector3();
 
     this.root = new THREE.Group();
-    this.root.name = 'AnonymousWoodchopper';
+    this.root.name = 'SergeyPlayerRoot';
     this.root.position.set(0, 0, -0.80);
+    this.root.rotation.set(0, 0, 0);
     this.scene.add(this.root);
+
+    // Fallback procedural rig group (hidden once Sergey GLB is loaded, still drives kinematic axe collider)
+    this.fallbackRigGroup = new THREE.Group();
+    this.fallbackRigGroup.name = 'FallbackProceduralRig';
+    this.root.add(this.fallbackRigGroup);
+
+    // Container for Sergey GLB character
+    this.sergeyContainer = new THREE.Group();
+    this.sergeyContainer.name = 'SergeyGLBContainer';
+    this.root.add(this.sergeyContainer);
+
+    // Socket attached to Sergey's RightHand bone
+    this.rightHandSocket = new THREE.Group();
+    this.rightHandSocket.name = 'RightHandAxeSocket';
 
     this.joints = {};
     this._buildArticulatedBody();
     this._buildAxeAndPhysics();
     this._applyPose(this._getPoseForState('IDLE', 0));
     this._syncPhysicsFromRig(1 / 60);
+  }
+
+  /**
+   * Loads Sergey's GLB character (both costumes share the 24-bone Meshy skeleton),
+   * extra walking/running armature clips, and all 4 axe GLBs in parallel so swapping is instant.
+   */
+  async initAssets(initialCostume = 'tee', initialAxeId = 'sergey') {
+    this.costume = initialCostume === 'jacket' ? 'jacket' : 'tee';
+    this.equippedAxeId = normalizeAxeId(initialAxeId);
+
+    await this._loadExtraLocomotionClips();
+    await Promise.all([
+      this._ensureCostumeLoaded('tee'),
+      this._ensureCostumeLoaded('jacket'),
+      this._ensureAxeTemplateLoaded('sergey'),
+      this._ensureAxeTemplateLoaded('double_bit'),
+      this._ensureAxeTemplateLoaded('maul'),
+      this._ensureAxeTemplateLoaded('golden')
+    ]);
+    await Promise.all([
+      this.setCostume(this.costume),
+      this.setAxeModel(this.equippedAxeId)
+    ]);
+
+    return this.characterLoaded;
+  }
+
+  async _loadExtraLocomotionClips() {
+    if (this._extraClipsLoaded) return;
+    try {
+      const [walkGltf, runGltf] = await Promise.all([
+        loadGLB(EXTRA_CLIP_URLS.walk),
+        loadGLB(EXTRA_CLIP_URLS.run)
+      ]);
+      if (walkGltf?.animations?.length) {
+        this._extraClips.Walk = this._sanitizeClip(walkGltf.animations[0], 'Walk');
+      }
+      if (runGltf?.animations?.length) {
+        this._extraClips.Run = this._sanitizeClip(runGltf.animations[0], 'Run');
+      }
+      this._extraClipsLoaded = true;
+    } catch {
+      // Optional extra clips; built-in Casual_Walk is always present on character GLB
+    }
+  }
+
+  /**
+   * Removes horizontal root-motion drift on Hips.position and locks Armature.scale
+   * so Sergey stays centered on `this.root.position` during locomotion and swings.
+   */
+  _sanitizeClip(clip, overrideName = null) {
+    const cloned = clip.clone();
+    if (overrideName) {
+      cloned.name = overrideName;
+    }
+    cloned.tracks = cloned.tracks.filter((track) => {
+      if (track.name.endsWith('Armature.scale') || track.name.endsWith('Armature.position')) {
+        return false;
+      }
+      return true;
+    });
+
+    for (const track of cloned.tracks) {
+      if (track.name.endsWith('Hips.position')) {
+        const vals = track.values;
+        for (let i = 0; i < vals.length; i += 3) {
+          vals[i] = 0; // Lock local X root motion
+          vals[i + 1] = Math.max(76, Math.min(106, vals[i + 1])); // Keep vertical hip bounce
+          vals[i + 2] = 0; // Lock local Z root motion
+        }
+      }
+    }
+
+    // Trim Axe_Stance to its clean ready-stance segment (0.0s .. 1.05s) where Sergey holds the axe
+    // in front of him at waist/chest level, avoiding the mid-clip overhead arm wave during idle
+    if (cloned.name === 'Axe_Stance') {
+      const maxTime = 1.05;
+      for (const track of cloned.tracks) {
+        const valueSize = track.getValueSize();
+        let keepCount = 0;
+        for (let i = 0; i < track.times.length; i++) {
+          if (track.times[i] <= maxTime + 1e-4) {
+            keepCount++;
+          } else {
+            break;
+          }
+        }
+        if (keepCount >= 2 && keepCount < track.times.length) {
+          track.times = track.times.slice(0, keepCount);
+          track.values = track.values.slice(0, keepCount * valueSize);
+        }
+      }
+      cloned.duration = maxTime;
+    }
+
+    return cloned;
+  }
+
+  async _ensureCostumeLoaded(target) {
+    if (this._costumeRecords[target]) return true;
+    const url = COSTUME_MODEL_URLS[target] || COSTUME_MODEL_URLS.tee;
+    try {
+      const gltf = await loadGLB(url);
+      const modelRoot = gltf.scene;
+      modelRoot.name = `Sergey_${target}`;
+
+      let rightHandBone = null;
+      let armatureNode = null;
+      modelRoot.traverse((node) => {
+        if (node.isMesh || node.isSkinnedMesh) {
+          node.castShadow = false;
+          node.receiveShadow = true;
+          node.frustumCulled = false;
+          if (node.material) {
+            node.material = toFastPropMaterial(node.material, true, 0.04);
+          }
+        }
+        if (node.name === 'RightHand') {
+          rightHandBone = node;
+        } else if (node.name === 'Armature') {
+          armatureNode = node;
+        }
+      });
+
+      // Normalize Sergey height to ~1.78m and ensure feet sit at y = 0
+      modelRoot.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(modelRoot);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      if (size.y > 0.1 && (size.y < 1.4 || size.y > 2.1)) {
+        const s = 1.78 / size.y;
+        modelRoot.scale.multiplyScalar(s);
+        modelRoot.updateMatrixWorld(true);
+      }
+
+      const mixer = new THREE.AnimationMixer(modelRoot);
+      const actions = {};
+
+      for (const rawClip of gltf.animations || []) {
+        const clean = this._sanitizeClip(rawClip, rawClip.name);
+        const action = mixer.clipAction(clean);
+        actions[clean.name] = action;
+      }
+      for (const [extraName, extraClip] of Object.entries(this._extraClips)) {
+        if (!actions[extraName]) {
+          actions[extraName] = mixer.clipAction(extraClip);
+        }
+      }
+
+      const armScale = armatureNode && armatureNode.scale.x > 0 ? armatureNode.scale.x : 0.01;
+
+      this._costumeRecords[target] = {
+        costume: target,
+        root: modelRoot,
+        mixer,
+        actions,
+        activeAction: null,
+        rightHandBone,
+        armScale
+      };
+      return true;
+    } catch (err) {
+      console.warn('Failed to load Sergey costume GLB, using fallback rig:', err);
+      this.fallbackRigGroup.visible = true;
+      return false;
+    }
+  }
+
+  /**
+   * Switches Sergey's costume ('tee' | 'jacket') and resolves when the GLB model is active.
+   */
+  async setCostume(costumeName = 'tee') {
+    const target = costumeName === 'jacket' ? 'jacket' : 'tee';
+    this.costume = target;
+
+    await this._loadExtraLocomotionClips();
+    const ok = await this._ensureCostumeLoaded(target);
+    if (!ok) return false;
+
+    // Hide all loaded costume roots and activate the chosen one
+    for (const rec of Object.values(this._costumeRecords)) {
+      if (rec.root.parent === this.sergeyContainer) {
+        this.sergeyContainer.remove(rec.root);
+      }
+    }
+
+    const activeRec = this._costumeRecords[target];
+    if (activeRec) {
+      this.sergeyContainer.add(activeRec.root);
+      this._activeCostumeRecord = activeRec;
+      this.characterLoaded = true;
+      this.fallbackRigGroup.visible = false;
+
+      // Attach the rightHandSocket to this costume's RightHand bone
+      if (activeRec.rightHandBone) {
+        this.axeAttachedTo = activeRec.rightHandBone.name || 'RightHand';
+        activeRec.rightHandBone.add(this.rightHandSocket);
+        // Compensate for Armature 0.01 cm-to-m scale so socket children are in metres
+        const invScale = 1.0 / (activeRec.armScale || 0.01);
+        this.rightHandSocket.scale.setScalar(invScale);
+        // Place socket in Sergey's right palm (in bone cm coordinates)
+        this.rightHandSocket.position.set(-1.0, 9.5, 1.5);
+        this.rightHandSocket.rotation.set(Math.PI * 0.5, -0.15, Math.PI * 0.5);
+      }
+
+      // Start appropriate animation immediately (start Axe_Stance at 0.35s for natural grip pose)
+      const desiredClip = this._getDesiredIdleOrMoveClip();
+      this.playAnimation(
+        desiredClip,
+        0.05,
+        true,
+        desiredClip === 'Axe_Stance' ? 0.45 : 1.0,
+        desiredClip === 'Axe_Stance' ? 0.35 : 0
+      );
+      activeRec.mixer.update(0.016);
+      activeRec.root.updateMatrixWorld(true);
+    }
+
+    return true;
+  }
+
+  async _ensureAxeTemplateLoaded(normId) {
+    if (this._axeTemplates[normId]) return true;
+    const url = AXE_MODEL_URLS[normId] || AXE_MODEL_URLS.sergey;
+    try {
+      const gltf = await loadGLB(url);
+      const rawScene = gltf.scene.clone(true);
+
+      // Pre-orient each axe so the shaft always runs vertically along +Y
+      // (pommel at -Y, head at +Y, blade facing forward)
+      const orientGroup = new THREE.Group();
+      orientGroup.add(rawScene);
+
+      if (normId === 'double_bit') {
+        // double_bit GLB has shaft along +X (pommel at -X, head at +X)
+        rawScene.rotation.set(0, 0, Math.PI / 2);
+      } else if (normId === 'maul') {
+        // splitting_maul GLB has shaft diagonally from (-X,+Y) to (+X,-Y)
+        rawScene.rotation.set(0, 0, 2.24);
+      } else {
+        // axe_sergey and axe_golden have shaft along +Y and blade facing -X
+        rawScene.rotation.set(0, Math.PI, 0);
+      }
+
+      orientGroup.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(orientGroup);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+
+      const targetLen = normId === 'maul' ? 0.88 : 0.82;
+      const maxAxis = Math.max(size.x, size.y, size.z, 0.001);
+      const scale = targetLen / maxAxis;
+
+      const normalizedAxe = new THREE.Group();
+      normalizedAxe.name = `AxeGLB_${normId}`;
+      orientGroup.scale.setScalar(scale);
+
+      // Place grip point (~16% up from the bottom pommel) at local (0, 0, 0)
+      const gripY = box.min.y + size.y * 0.16;
+      orientGroup.position.set(
+        -center.x * scale,
+        -gripY * scale,
+        -center.z * scale
+      );
+
+      orientGroup.traverse((c) => {
+        if (c.isMesh) {
+          c.castShadow = false;
+          c.receiveShadow = true;
+          c.frustumCulled = false;
+          if (c.material) {
+            c.material = toFastPropMaterial(c.material, true, 0.05);
+          }
+        }
+      });
+
+      normalizedAxe.add(orientGroup);
+      this._axeTemplates[normId] = normalizedAxe;
+      return true;
+    } catch (err) {
+      console.warn(`Failed to load axe GLB (${normId}):`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Loads and attaches one of the 4 GLB axes ('sergey' | 'double_bit' | 'maul' | 'golden')
+   * to Sergey's RightHand bone socket.
+   */
+  async setAxeModel(axeId = 'sergey') {
+    const normId = normalizeAxeId(axeId);
+    this.equippedAxeId = normId;
+
+    const ok = await this._ensureAxeTemplateLoaded(normId);
+    if (!ok) return false;
+
+    // Clear previous axe children from rightHandSocket
+    while (this.rightHandSocket.children.length > 0) {
+      this.rightHandSocket.remove(this.rightHandSocket.children[0]);
+    }
+
+    const template = this._axeTemplates[normId];
+    if (template) {
+      const instance = template.clone(true);
+      this.rightHandSocket.add(instance);
+    }
+    return true;
+  }
+
+  _getDesiredIdleOrMoveClip() {
+    if (this._cheerTimer > 0) {
+      return 'Victory_Cheer';
+    }
+    if (this.interactionMode === 'yard') {
+      if (this.isMoving) {
+        if (this.isRunning && this._activeCostumeRecord?.actions?.Run) {
+          return 'Run';
+        }
+        return 'Casual_Walk';
+      }
+      return 'Idle';
+    }
+    return 'Axe_Stance';
+  }
+
+  /**
+   * Crossfades Sergey's AnimationMixer to the specified clip name.
+   */
+  playAnimation(clipName, fadeDuration = 0.18, loop = true, timeScale = 1.0, startTime = 0) {
+    const rec = this._activeCostumeRecord;
+    if (!rec || !rec.mixer) {
+      this.currentAnimName = clipName;
+      return;
+    }
+
+    const action =
+      rec.actions[clipName] ||
+      rec.actions.Axe_Stance ||
+      rec.actions.Idle ||
+      Object.values(rec.actions)[0];
+    if (!action) return;
+
+    const resolvedName = action.getClip().name;
+    this.currentAnimName = resolvedName;
+
+    if (rec.activeAction === action && loop) {
+      action.timeScale = timeScale;
+      return;
+    }
+
+    action.enabled = true;
+    const loopMode =
+      loop && resolvedName === 'Axe_Stance'
+        ? THREE.LoopPingPong
+        : loop
+        ? THREE.LoopRepeat
+        : THREE.LoopOnce;
+    action.setLoop(loopMode, loop ? Infinity : 1);
+    action.clampWhenFinished = !loop;
+    action.timeScale = resolvedName === 'Axe_Stance' && loop ? Math.min(timeScale, 0.45) : timeScale;
+
+    if (!loop || rec.activeAction !== action) {
+      action.reset();
+      if (startTime > 0) {
+        action.time = startTime;
+      }
+    }
+
+    if (rec.activeAction && rec.activeAction !== action) {
+      rec.activeAction.crossFadeTo(action, fadeDuration, false);
+    }
+    action.play();
+    rec.activeAction = action;
+  }
+
+  /**
+   * Triggers Sergey's `Victory_Cheer` animation on milestones (level up, boss log, tree felled).
+   */
+  playVictoryCheer(duration = 2.2) {
+    this._cheerTimer = duration;
+    this.playAnimation('Victory_Cheer', 0.2, true, 1.15);
+  }
+
+  setInteractionMode(mode = 'stump') {
+    this.interactionMode = mode === 'yard' ? 'yard' : 'stump';
+    if (this.interactionMode === 'stump') {
+      this.isMoving = false;
+      this.isRunning = false;
+      this.root.position.set(0, 0, -0.80);
+      this.root.rotation.set(0, 0, 0);
+      this._cheerTimer = 0;
+      this.playAnimation('Axe_Stance', 0.2, true, 0.45, 0.35);
+    } else {
+      this.playAnimation(this._getDesiredIdleOrMoveClip(), 0.2, true);
+    }
+  }
+
+  setLocomotionState(isMoving, isRunning = false, dt = 0, surface = 'grass') {
+    this.isMoving = Boolean(isMoving);
+    this.isRunning = Boolean(isRunning && isMoving);
+
+    if (this.state === 'IDLE') {
+      const nextClip = this._getDesiredIdleOrMoveClip();
+      const speedScale = this.isMoving ? (this.isRunning ? 1.35 : 1.1) : 1.0;
+      this.playAnimation(nextClip, 0.16, true, speedScale);
+    }
+
+    if (this.isMoving && dt > 0) {
+      const stepInterval = this.isRunning ? 0.31 : 0.46;
+      this.footstepTimer += dt;
+      if (this.footstepTimer >= stepInterval) {
+        this.footstepTimer -= stepInterval;
+        if (this.sound && typeof this.sound.playFootstep === 'function') {
+          this.sound.playFootstep(surface, this.isRunning);
+        }
+      }
+    } else {
+      this.footstepTimer = 0.25;
+    }
   }
 
   _buildArticulatedBody() {
@@ -80,7 +541,7 @@ export class HumanoidChopper {
     // 1. Pelvis / Hips root joint
     const pelvis = new THREE.Group();
     pelvis.position.set(0, 0.94, 0);
-    this.root.add(pelvis);
+    this.fallbackRigGroup.add(pelvis);
     this.joints.pelvis = pelvis;
 
     const pelvisMesh = new THREE.Mesh(
@@ -363,7 +824,6 @@ export class HumanoidChopper {
       this.handleWrapGroup.add(ring);
     }
 
-    // Overstrike neck collar guard right below the axe head
     const collarGeo = new THREE.CylinderGeometry(0.023, 0.025, 0.09, 12);
     collarGeo.rotateX(Math.PI / 2);
     const neckCollar = new THREE.Mesh(collarGeo, this.wrapBandMat);
@@ -398,7 +858,6 @@ export class HumanoidChopper {
     bitMesh.castShadow = true;
     this.axeHeadGroup.add(bitMesh);
 
-    // Level-5 Bonfire Ember-Tempered Blade incandescent edge glow (`emberTempered = true`)
     this.emberGlowMat = new THREE.MeshBasicMaterial({
       color: 0xf97316,
       transparent: true,
@@ -412,7 +871,6 @@ export class HumanoidChopper {
     this.emberGlowMesh.visible = false;
     this.axeHeadGroup.add(this.emberGlowMesh);
 
-    // Sticky amber Pine Pitch / Sap Gum coating on the axe head cheeks (visible when axeSapBuildup > 0)
     this.sapCoatingMat = new THREE.MeshStandardMaterial({
       color: 0xd97706,
       emissive: 0x92400e,
@@ -491,11 +949,9 @@ export class HumanoidChopper {
         axeDef.headScale[2]
       );
     }
+    this.setAxeModel(axeDef.id);
   }
 
-  /**
-   * Updates the 3D custom handle grip wrap & neck overstrike collar when upgraded in the Shop.
-   */
   applyHandleWrapVisuals(wrapDef) {
     if (!this.handleWrapGroup || !wrapDef) return;
     this.handleWrapGroup.visible = Boolean(wrapDef.visible);
@@ -507,10 +963,6 @@ export class HumanoidChopper {
     }
   }
 
-  /**
-   * Updates the 3D blade bit metallic sheen (`axeCondition`), sticky amber pine-pitch sap coating (`axeSapBuildup`),
-   * and incandescent Level-5 Bonfire Ember-Tempered Blade glow (`emberTempered`).
-   */
   updateBladeConditionVisuals(
     axeCondition = 100,
     axeSapBuildup = 0,
@@ -531,9 +983,6 @@ export class HumanoidChopper {
     }
   }
 
-  /**
-   * Interactive mouse-drag windup pose control (0 = idle stance, 1 = peak overhead windup).
-   */
   setDragWindup(ratio) {
     this.dragWindupRatio = Math.max(0, Math.min(1, ratio));
     this.state = 'DRAG_WINDUP';
@@ -547,18 +996,24 @@ export class HumanoidChopper {
     if (this.state === 'DRAG_WINDUP') {
       this.state = 'IDLE';
       this.dragWindupRatio = 0;
+      this.playAnimation(this._getDesiredIdleOrMoveClip(), 0.15, true);
     }
   }
 
   /**
-   * Triggers a full biomechanical axe swing.
+   * Triggers a full biomechanical axe swing (synced with Sergey's AnimationMixer clip).
    */
   triggerSwing(forceMultiplier = null, skipWindup = false, preserveSplitState = false) {
     if (forceMultiplier !== null && !Number.isNaN(Number(forceMultiplier))) {
       this.swingForce = Math.max(0.2, Math.min(1.6, Number(forceMultiplier)));
     }
 
-    if (!preserveSplitState && this.choppingStation.isLogSplit) {
+    if (
+      this.interactionMode === 'stump' &&
+      !preserveSplitState &&
+      this.choppingStation &&
+      this.choppingStation.isLogSplit
+    ) {
       this.choppingStation.reset();
     }
 
@@ -566,6 +1021,20 @@ export class HumanoidChopper {
     this.stateTime = 0;
     this.hasTriggeredSplit = false;
     this.whooshPlayed = false;
+    this._cheerTimer = 0;
+
+    // Trigger Sergey's swing animation clip synced so blade lands at hit
+    const useMaulClip =
+      this.equippedAxeId === 'maul' &&
+      this._activeCostumeRecord?.actions?.Heavy_Hammer_Swing;
+    if (useMaulClip) {
+      this.playAnimation('Heavy_Hammer_Swing', 0.08, false, 2.2, skipWindup ? 0.35 : 0.0);
+    } else if (this._activeCostumeRecord?.actions?.Charged_Axe_Chop) {
+      this.playAnimation('Charged_Axe_Chop', 0.08, false, 3.2, skipWindup ? 2.1 : 1.5);
+    } else {
+      this.playAnimation('Heavy_Hammer_Swing', 0.08, false, 2.2, 0);
+    }
+
     if (skipWindup && this.sound) {
       this.whooshPlayed = true;
       this.sound.playWhoosh(this.swingForce, true);
@@ -580,23 +1049,18 @@ export class HumanoidChopper {
     this.pryRockAngle = 0;
     this.hasTriggeredSplit = false;
     this.whooshPlayed = false;
+    this._cheerTimer = 0;
+    this.playAnimation(this._getDesiredIdleOrMoveClip(), 0.15, true);
     this._applyPose(this._getPoseForState('IDLE', 0));
     this._syncPhysicsFromRig(1 / 60);
   }
 
-  /**
-   * Places the humanoid in the `WEDGED_PRY` state with the blade embedded in the kerf crack.
-   * Player can wiggle the mouse or tap Space/F to lever the blade free (or auto-recovers after 0.85s).
-   */
   enterWedgedPry() {
     this.state = 'WEDGED_PRY';
     this.stateTime = 0;
     this.pryRockAngle = 0;
   }
 
-  /**
-   * Rocks the embedded axe handle laterally to pry the kerf open or extract the wedged blade.
-   */
   rockWedgedBlade(dir = 1) {
     if (this.state !== 'WEDGED_PRY') return false;
     this.pryRockAngle = dir * 0.22;
@@ -606,7 +1070,10 @@ export class HumanoidChopper {
   }
 
   _getPoseForState(stateName, phaseProgress) {
-    const aimOffX = this.choppingStation ? this.choppingStation.aimOffsetX : 0;
+    const aimOffX =
+      this.interactionMode === 'stump' && this.choppingStation
+        ? this.choppingStation.aimOffsetX
+        : 0;
     const aimYaw = -aimOffX * 0.85;
 
     const poses = {
@@ -719,26 +1186,21 @@ export class HumanoidChopper {
       p.rShoulderX += breath * 1.4;
       return p;
     }
-
     if (stateName === 'DRAG_WINDUP') {
       return lerpPose(poses.IDLE, poses.PEAK_WINDUP, this.dragWindupRatio);
     }
-
     if (stateName === 'WINDUP') {
       const ease = 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, phaseProgress));
       return lerpPose(poses.IDLE, poses.PEAK_WINDUP, ease);
     }
-
     if (stateName === 'DOWNSWING') {
       const accel = Math.pow(Math.min(1, phaseProgress), 1.65);
       return lerpPose(poses.PEAK_WINDUP, poses.IMPACT, accel);
     }
-
     if (stateName === 'IMPACT_HOLD') {
       const ease = 1 - Math.pow(1 - Math.min(1, phaseProgress), 2);
       return lerpPose(poses.IMPACT, poses.FOLLOW_THROUGH, ease);
     }
-
     if (stateName === 'WEDGED_PRY') {
       const p = { ...poses.IMPACT };
       const pryOsc = Math.sin(this.stateTime * 18.0) * 0.08 + this.pryRockAngle;
@@ -746,12 +1208,10 @@ export class HumanoidChopper {
       p.rShoulderZ += pryOsc;
       return p;
     }
-
     if (stateName === 'RECOVERY') {
       const ease = 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, phaseProgress));
       return lerpPose(poses.FOLLOW_THROUGH, poses.IDLE, ease);
     }
-
     return poses.IDLE;
   }
 
@@ -779,7 +1239,7 @@ export class HumanoidChopper {
 
     this.leftGripNode.position.set(0, 0, pose.leftSlideZ);
 
-    this.root.updateMatrixWorld(true);
+    this.fallbackRigGroup.updateMatrixWorld(true);
     this._solveLeftArmIK();
   }
 
@@ -829,7 +1289,7 @@ export class HumanoidChopper {
   }
 
   _syncPhysicsFromRig(dt) {
-    this.root.updateMatrixWorld(true);
+    this.fallbackRigGroup.updateMatrixWorld(true);
 
     const headWorldPos = new THREE.Vector3();
     const headWorldQuat = new THREE.Quaternion();
@@ -858,10 +1318,23 @@ export class HumanoidChopper {
       this.currentBladeVelocity.y,
       this.currentBladeVelocity.z
     );
+
+    this.humanoidBody.position.set(this.root.position.x, 0, this.root.position.z);
   }
 
   update(dt) {
     this.idleClock += dt;
+
+    if (this._cheerTimer > 0) {
+      this._cheerTimer = Math.max(0, this._cheerTimer - dt);
+      if (this._cheerTimer <= 0 && this.state === 'IDLE') {
+        this.playAnimation(this._getDesiredIdleOrMoveClip(), 0.22, true);
+      }
+    }
+
+    if (this._activeCostumeRecord && this._activeCostumeRecord.mixer) {
+      this._activeCostumeRecord.mixer.update(dt);
+    }
 
     if (this.state === 'IDLE' || this.state === 'DRAG_WINDUP') {
       this._applyPose(this._getPoseForState(this.state, 0));
@@ -908,7 +1381,7 @@ export class HumanoidChopper {
         this.hasTriggeredSplit = true;
         if (typeof this.onImpactCallback === 'function') {
           this.onImpactCallback(bladeWorldPos, this.currentBladeVelocity);
-        } else {
+        } else if (this.interactionMode === 'stump') {
           this.choppingStation.fractureLog(
             this.swingForce,
             bladeWorldPos,
@@ -955,6 +1428,7 @@ export class HumanoidChopper {
       if (p >= 1.0) {
         this.state = 'IDLE';
         this.stateTime = 0;
+        this.playAnimation(this._getDesiredIdleOrMoveClip(), 0.2, true);
       }
     }
   }

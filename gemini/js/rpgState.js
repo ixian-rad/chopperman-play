@@ -702,8 +702,9 @@ export const FIREWOOD_ORDERS = [
 
 export const AXE_TIERS = [
   {
-    id: 'hickory_splitter',
-    name: 'American Hickory Felling Axe',
+    id: 'sergey',
+    legacyId: 'hickory_splitter',
+    name: "Sergey's Hatchet (Default)",
     cost: 0,
     massKg: 2.2,
     sharpnessBonus: 1.0,
@@ -713,16 +714,32 @@ export const AXE_TIERS = [
     headColor: 0x393e46,
     bitColor: 0xd8dee6,
     headScale: [1.0, 1.0, 1.0],
-    desc: 'Balanced 4.8 lb forged carbon-steel splitter on a curved hickory handle.'
+    desc: "Sergey's balanced forged carbon-steel hatchet on a seasoned ash handle."
   },
   {
-    id: 'splitting_maul',
-    name: '8 lb Heavy Cast Splitting Maul',
+    id: 'double_bit',
+    legacyId: 'swedish_forest',
+    name: 'Double-Bit Felling Axe',
     cost: 450,
-    massKg: 3.4,
-    sharpnessBonus: 1.12,
-    wedgeFactor: 1.38,
-    staminaFactor: 1.12,
+    massKg: 2.8,
+    sharpnessBonus: 1.32,
+    wedgeFactor: 1.25,
+    staminaFactor: 0.92,
+    handleColor: 0xd9b88c,
+    headColor: 0x46515e,
+    bitColor: 0xf8fafc,
+    headScale: [1.18, 1.15, 1.22],
+    desc: 'Twin-bevel high-carbon felling head slices cleanly through standing timber and knots.'
+  },
+  {
+    id: 'maul',
+    legacyId: 'splitting_maul',
+    name: '8 lb Heavy Cast Splitting Maul',
+    cost: 1200,
+    massKg: 3.6,
+    sharpnessBonus: 1.24,
+    wedgeFactor: 1.48,
+    staminaFactor: 1.1,
     handleColor: 0x9e632f,
     headColor: 0x22262b,
     bitColor: 0xe2e8f0,
@@ -730,34 +747,35 @@ export const AXE_TIERS = [
     desc: 'Broad flared wedge cheeks transfer massive lateral cleavage force into dense oak.'
   },
   {
-    id: 'swedish_forest',
-    name: 'Hand-Forged Swedish Damascus Axe',
-    cost: 1200,
-    massKg: 2.7,
-    sharpnessBonus: 1.42,
-    wedgeFactor: 1.25,
-    staminaFactor: 0.9,
-    handleColor: 0xd9b88c,
-    headColor: 0x46515e,
-    bitColor: 0xf8fafc,
-    headScale: [1.15, 1.15, 1.22],
-    desc: 'Razor-honed high-carbon bit slices cleanly through twisted grain and stubborn knots.'
-  },
-  {
-    id: 'titanium_pro',
-    name: 'Titanium-Core Lumberjack Pro',
+    id: 'golden',
+    legacyId: 'titanium_pro',
+    name: 'Golden Lumberjack Pro Axe',
     cost: 2600,
-    massKg: 3.2,
-    sharpnessBonus: 1.72,
-    wedgeFactor: 1.55,
+    massKg: 3.3,
+    sharpnessBonus: 1.75,
+    wedgeFactor: 1.58,
     staminaFactor: 0.78,
-    handleColor: 0x1e242b,
-    headColor: 0x15181e,
+    handleColor: 0x7c2d12,
+    headColor: 0xd97706,
     bitColor: 0xfbbf24,
     headScale: [1.32, 1.18, 1.28],
-    desc: 'Gold-nitride bevel edge with tungsten inertia core and composite anti-vibe shaft.'
+    desc: 'Engraved 24k gold-nitride bevel edge with maximum cleavage and tree-felling power.'
   }
 ];
+
+export function normalizeAxeId(axeId) {
+  const map = {
+    hickory_splitter: 'sergey',
+    swedish_forest: 'double_bit',
+    splitting_maul: 'maul',
+    titanium_pro: 'golden',
+    sergey: 'sergey',
+    double_bit: 'double_bit',
+    maul: 'maul',
+    golden: 'golden'
+  };
+  return map[axeId] || 'sergey';
+}
 
 export const HANDLE_WRAPS = [
   {
@@ -839,9 +857,14 @@ export class GameStateManager {
     this.weightLevel = 1;
     this.staminaLevel = 1;
 
+    // Backyard Setting ('nj' | 'tiraspol') and Sergey Costume ('tee' | 'jacket')
+    this.setting = 'nj';
+    this.costume = 'tee';
+    this.treesFelledCount = 0;
+
     // Axe equipment, live blade condition (0..100%), and sticky resin/sap buildup (0..100%)
-    this.unlockedAxes = ['hickory_splitter'];
-    this.equippedAxeId = 'hickory_splitter';
+    this.unlockedAxes = ['sergey'];
+    this.equippedAxeId = 'sergey';
     this.axeCondition = 100;
     this.axeSapBuildup = 0;
 
@@ -1427,11 +1450,12 @@ export class GameStateManager {
   }
 
   buyOrEquipAxe(axeId) {
-    const axe = AXE_TIERS.find((a) => a.id === axeId);
+    const normId = normalizeAxeId(axeId);
+    const axe = AXE_TIERS.find((a) => a.id === normId);
     if (!axe) return false;
 
-    if (this.unlockedAxes.includes(axeId)) {
-      this.equippedAxeId = axeId;
+    if (this.unlockedAxes.includes(normId)) {
+      this.equippedAxeId = normId;
       this.axeCondition = 100;
       if (this.sound) this.sound.playUpgrade();
       this.saveToStorage();
@@ -1440,8 +1464,8 @@ export class GameStateManager {
 
     if (this.credits >= axe.cost) {
       this.credits -= axe.cost;
-      this.unlockedAxes.push(axeId);
-      this.equippedAxeId = axeId;
+      this.unlockedAxes.push(normId);
+      this.equippedAxeId = normId;
       this.axeCondition = 100;
       if (this.sound) this.sound.playUpgrade();
       this.saveToStorage();
@@ -1451,6 +1475,72 @@ export class GameStateManager {
       this.sound.playErrorBuzz();
     }
     return false;
+  }
+
+  forceEquipAxe(axeId) {
+    const normId = normalizeAxeId(axeId);
+    const axe = AXE_TIERS.find((a) => a.id === normId);
+    if (!axe) return false;
+    if (!this.unlockedAxes.includes(normId)) {
+      this.unlockedAxes.push(normId);
+    }
+    this.equippedAxeId = normId;
+    this.axeCondition = 100;
+    this.saveToStorage();
+    return true;
+  }
+
+  setSettingState(setting) {
+    if (setting !== 'nj' && setting !== 'tiraspol') return false;
+    this.setting = setting;
+    this.saveToStorage();
+    return true;
+  }
+
+  setCostumeState(costume) {
+    if (costume !== 'tee' && costume !== 'jacket') return false;
+    this.costume = costume;
+    this.saveToStorage();
+    return true;
+  }
+
+  awardTreeFelled(species = 'oak', hitsToFell = 6) {
+    const points = Math.round(140 + (Number(hitsToFell) || 6) * 25);
+    const xpGained = Math.round(55 + (Number(hitsToFell) || 6) * 12);
+    this.treesFelledCount = (this.treesFelledCount || 0) + 1;
+    this.logsSplitCount = (this.logsSplitCount || 0) + 1;
+    this.combo = (this.combo || 0) + 1;
+    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+    this.score += points;
+    this.credits += points;
+    this.xp += xpGained;
+
+    let leveledUp = false;
+    while (this.xp >= this.getXpForNextLevel(this.level)) {
+      this.xp -= this.getXpForNextLevel(this.level);
+      this.level++;
+      leveledUp = true;
+      this.credits += 100 * this.level;
+      this.maxStamina = this.getComputedMaxStamina();
+      this.stamina = this.maxStamina;
+    }
+    if (leveledUp && this.sound && typeof this.sound.playLevelUp === 'function') {
+      this.sound.playLevelUp();
+    }
+    this._advanceOrderProgress(1);
+    const label = species.charAt(0).toUpperCase() + species.slice(1);
+    const res = {
+      hit: true,
+      split: true,
+      glancing: false,
+      leveledUp,
+      points,
+      xpGained,
+      rating: `${label.toUpperCase()} TREE FELLED! (+${points} CREDITS & CORDWOOD ADDED)`
+    };
+    this.lastHit = res;
+    this.saveToStorage();
+    return res;
   }
 
   setLogType(typeId, forceUnlock = false) {
@@ -2255,6 +2345,10 @@ export class GameStateManager {
       currentLogHp: Math.round(this.currentLogHp),
       currentLogMaxHp: Math.round(this.currentLogMaxHp),
       logsSplitCount: this.logsSplitCount,
+      treesFelledCount: this.treesFelledCount || 0,
+      setting: this.setting || 'nj',
+      costume: this.costume || 'tee',
+      equippedAxeId: this.equippedAxeId || 'sergey',
       gameMode: this.gameMode,
       lastHit: this.lastHit
     };
@@ -2270,6 +2364,9 @@ export class GameStateManager {
         xp: this.xp,
         level: this.level,
         logsSplitCount: this.logsSplitCount,
+        treesFelledCount: this.treesFelledCount,
+        setting: this.setting,
+        costume: this.costume,
         sharpnessLevel: this.sharpnessLevel,
         weightLevel: this.weightLevel,
         staminaLevel: this.staminaLevel,
@@ -2309,14 +2406,17 @@ export class GameStateManager {
       if (typeof data.xp === 'number') this.xp = data.xp;
       if (typeof data.level === 'number') this.level = Math.max(1, data.level);
       if (typeof data.logsSplitCount === 'number') this.logsSplitCount = data.logsSplitCount;
+      if (typeof data.treesFelledCount === 'number') this.treesFelledCount = data.treesFelledCount;
+      if (data.setting === 'nj' || data.setting === 'tiraspol') this.setting = data.setting;
+      if (data.costume === 'tee' || data.costume === 'jacket') this.costume = data.costume;
       if (typeof data.sharpnessLevel === 'number') this.sharpnessLevel = data.sharpnessLevel;
       if (typeof data.weightLevel === 'number') this.weightLevel = data.weightLevel;
       if (typeof data.staminaLevel === 'number') this.staminaLevel = data.staminaLevel;
       if (Array.isArray(data.unlockedAxes) && data.unlockedAxes.length > 0) {
-        this.unlockedAxes = data.unlockedAxes;
+        this.unlockedAxes = [...new Set(data.unlockedAxes.map((id) => normalizeAxeId(id)))];
       }
       if (typeof data.equippedAxeId === 'string') {
-        this.equippedAxeId = data.equippedAxeId;
+        this.equippedAxeId = normalizeAxeId(data.equippedAxeId);
       }
       if (typeof data.axeCondition === 'number') {
         this.axeCondition = Math.max(15, Math.min(100, data.axeCondition));

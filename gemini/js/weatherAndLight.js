@@ -454,6 +454,10 @@ export class AtmosphereController {
         mesh.quaternion.copy(rayQuat);
       });
     }
+
+    if (this.env && typeof this.env.updateBackdropForTime === 'function') {
+      this.env.updateBackdropForTime(this.env.getSetting(), this.timeOfDay);
+    }
   }
 
   _redrawSkyCanvas(topHex, midHex, horizHex, isNight) {
@@ -518,13 +522,13 @@ export class AtmosphereController {
     // Update Fog density
     if (this.scene.fog) {
       const densities = {
-        sun: 0.012,
-        wind: 0.013,
-        rain: 0.025,
-        snow: 0.028,
-        fog: 0.058
+        sun: 0.0045,
+        wind: 0.0052,
+        rain: 0.015,
+        snow: 0.017,
+        fog: 0.036
       };
-      this.scene.fog.density = densities[this.weather] || 0.012;
+      this.scene.fog.density = densities[this.weather] || 0.0045;
     }
 
     // Update surface PBR wetness / frostiness & cannon-es Physics Contact Materials!

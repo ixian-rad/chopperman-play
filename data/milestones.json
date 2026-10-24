@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-24 08:51 EDT",
+ "generated": "2026-10-24 16:02 EDT",
  "rows": [
   {
    "key": "v1",
@@ -869,7 +869,44 @@
      "live": false
     },
     "assets": {
-     "state": "todo"
+     "state": "ok",
+     "tag": "assets-v2-release",
+     "iter": "iter-10",
+     "commit": "d8d75ca",
+     "at": "2026-10-24T15:50:04-04:00",
+     "at_text": "Oct 24 15:50",
+     "cost": {
+      "total": 53.41,
+      "est": 53.41,
+      "basis": "est.",
+      "runs": 18,
+      "phases": [
+       "v1",
+       "v2",
+       "iter-1",
+       "iter-2",
+       "iter-3",
+       "iter-4",
+       "iter-5",
+       "iter-6 (audio) quota-blocked",
+       "iter-6",
+       "iter-7",
+       "iter-8",
+       "iter-8",
+       "iter-8 (audio)",
+       "iter-8 (audio)",
+       "iter-9 (legibility)",
+       "assets-v2 attempt-1",
+       "assets-v2 attempt-2",
+       "assets-v2 docs"
+      ]
+     },
+     "cost_short": "est. $53.41 logged so far",
+     "cost_long": "Cost to here: est. $53.41 over 18 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "img": "assets/milestones/gemini/assets",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
     },
     "polish": {
      "state": "todo"
@@ -961,9 +998,9 @@
      "img": "assets/milestones/gemini/iter-9"
     }
    ],
-   "iter_tags": 9
+   "iter_tags": 10
   }
  },
  "note": "Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (login-based, not billed).",
- "latest_at": "2026-10-24T06:15:06-04:00"
+ "latest_at": "2026-10-24T15:50:04-04:00"
 }

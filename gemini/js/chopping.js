@@ -6,6 +6,7 @@ import {
   createSplitWoodTextures
 } from './textures.js';
 import { LOG_TYPES } from './rpgState.js';
+import { toFastPropMaterial } from './assetsLoader.js';
 
 /**
  * Manages the Chopping Block, Species-Specific Logs with 3D Knots & Grain Check Lines,
@@ -120,6 +121,8 @@ export class ChoppingStation {
   _buildChoppingBlock() {
     const stumpGroup = new THREE.Group();
     stumpGroup.position.copy(this.blockPosition);
+    this.stumpGroup = stumpGroup;
+    this.proceduralStumpParts = [];
 
     const stumpGeo = new THREE.CylinderGeometry(
       this.blockRadius,
@@ -134,6 +137,7 @@ export class ChoppingStation {
     stumpMesh.receiveShadow = true;
     stumpGroup.add(stumpMesh);
     this.stumpTopMesh = stumpMesh;
+    this.proceduralStumpParts.push(stumpMesh);
 
     // Forged iron reinforcement band + iron hazard cleats near top of chopping block
     const bandGeo = new THREE.CylinderGeometry(
@@ -154,6 +158,7 @@ export class ChoppingStation {
     bandMesh.position.y = this.blockHeight - 0.07;
     bandMesh.castShadow = true;
     stumpGroup.add(bandMesh);
+    this.proceduralStumpParts.push(bandMesh);
 
     // Left & right iron log-dog hazard brackets on outer rim of block
     [-1, 1].forEach((side) => {
@@ -275,8 +280,8 @@ export class ChoppingStation {
     cantHookClaw.castShadow = true;
     this.peaveyToolGroup.add(cantHookClaw);
 
-    this.peaveyToolGroup.position.set(this.blockRadius + 0.11, 0.08, -0.05);
-    this.peaveyToolGroup.rotation.set(0.12, 0.25, -0.36);
+    this.peaveyToolGroup.position.set(-this.blockRadius - 0.14, 0.08, 0.32);
+    this.peaveyToolGroup.rotation.set(0.12, -0.25, 0.36);
     stumpGroup.add(this.peaveyToolGroup);
 
     // 5 Root buttresses flaring into the soil
@@ -294,6 +299,7 @@ export class ChoppingStation {
       rootMesh.castShadow = true;
       rootMesh.receiveShadow = true;
       stumpGroup.add(rootMesh);
+      this.proceduralStumpParts.push(rootMesh);
     }
 
     // Ambient resting wood chips around the base of the chopping block
@@ -313,6 +319,7 @@ export class ChoppingStation {
 
     // Point light for incandescent hazard spark flashes
     this.sparkLight = new THREE.PointLight(0xff9922, 0, 3.2, 2.0);
+    this.sparkLight.visible = false;
     this.sparkLight.position.set(0, this.blockHeight + 0.25, 0);
     stumpGroup.add(this.sparkLight);
 
@@ -337,6 +344,65 @@ export class ChoppingStation {
     );
     this.blockBody.userData = { label: 'ChoppingBlock' };
     this.world.addBody(this.blockBody);
+  }
+
+  /**
+   * Replaces the procedural chopping block cylinder with the setting's real PBR GLB stump
+   * (`chopping_stump_nj.glb` or `chopping_block.glb`) + `chips_scatter.glb` around its base.
+   */
+  applyGLBStump(stumpGlbScene, chipsGlbScene = null) {
+    if (!this.stumpGroup || !stumpGlbScene) return;
+    if (this.customStumpGroup) {
+      this.stumpGroup.remove(this.customStumpGroup);
+      this.customStumpGroup = null;
+    }
+
+    const holder = new THREE.Group();
+    holder.name = 'GLBChoppingStumpHolder';
+
+    const clone = stumpGlbScene.clone(true);
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+
+    const scaleXZ = size.x > 0.001 ? 0.82 / Math.max(size.x, size.z) : 1.0;
+    const scaleY = size.y > 0.001 ? this.blockHeight / size.y : 1.0;
+    clone.scale.set(scaleXZ, scaleY, scaleXZ);
+    clone.position.set(-center.x * scaleXZ, -box.min.y * scaleY, -center.z * scaleXZ);
+    clone.traverse((c) => {
+      if (c.isMesh) {
+        c.castShadow = false;
+        c.receiveShadow = true;
+        if (c.material) {
+          c.material = toFastPropMaterial(c.material, true, 0);
+        }
+      }
+    });
+    holder.add(clone);
+
+    if (chipsGlbScene) {
+      const chipsClone = chipsGlbScene.clone(true);
+      chipsClone.position.set(0, 0.012, 0);
+      chipsClone.traverse((c) => {
+        if (c.isMesh) {
+          c.receiveShadow = true;
+          if (c.material) {
+            c.material = toFastPropMaterial(c.material, true, 0);
+          }
+        }
+      });
+      holder.add(chipsClone);
+    }
+
+    this.stumpGroup.add(holder);
+    this.customStumpGroup = holder;
+
+    for (const part of this.proceduralStumpParts) {
+      part.visible = false;
+    }
   }
 
   setBlockCollarVisible(visible) {

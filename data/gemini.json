@@ -1,10 +1,10 @@
 {
- "generated": "2026-10-24 08:54 EDT",
+ "generated": "2026-10-24 16:03 EDT",
  "status": "in progress",
  "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est., login-based, not billed; NOT included in data/costs.json totals",
- "driver_phase": "v2-attempt-1",
- "driver_updated_et": "2026-10-24 08:49:07 EDT",
+ "driver_phase": "coop-attempt-1",
+ "driver_updated_et": "2026-10-24 16:02:19 EDT",
  "finished_rounds": [
   "v1",
   "v2",
@@ -12,24 +12,29 @@
   "audio",
   "legibility",
   "freeze",
-  "v2-setup"
+  "v2-setup",
+  "v2-attempt-1",
+  "v2-attempt-2",
+  "v2-docs",
+  "v2-final",
+  "coop-setup"
  ],
  "playable": {
-  "commit": "c4d6ded",
-  "tag": "iter-9"
+  "commit": "d8d75ca",
+  "tag": "assets-v2-release"
  },
  "classic": {
   "commit": "c4d6ded",
   "tag": "iter-9"
  },
- "runs": 15,
- "wall_h": 15.33,
- "input_uncached": 9328654,
- "input_cached": 86506269,
- "output": 910358,
- "reasoning": 247557,
- "cost_usd_est": 36.41,
- "per_agent_hour_est": 2.37,
+ "runs": 18,
+ "wall_h": 21.83,
+ "input_uncached": 13285184,
+ "input_cached": 133319542,
+ "output": 1350570,
+ "reasoning": 497247,
+ "cost_usd_est": 53.41,
+ "per_agent_hour_est": 2.45,
  "runs_detail": [
   {
    "phase": "v1",
@@ -120,6 +125,24 @@
    "wall_s": 1156.0,
    "cost_usd_est": 1.0392,
    "result": "ok; tests n/a"
+  },
+  {
+   "phase": "assets-v2 attempt-1",
+   "wall_s": 10812.0,
+   "cost_usd_est": 6.3063,
+   "result": "verify FAIL; fps low NJ/Tir None/None; tests n/a; ready: page.waitForFunction: Timeout 150000ms exceeded.; fatal: not ready; skipping remaining steps"
+  },
+  {
+   "phase": "assets-v2 attempt-2",
+   "wall_s": 10810.0,
+   "cost_usd_est": 9.0613,
+   "result": "verify ok; fps low NJ/Tir 9/18.2; tests n/a"
+  },
+  {
+   "phase": "assets-v2 docs",
+   "wall_s": 1785.0,
+   "cost_usd_est": 1.6289,
+   "result": "docs; verify ok"
   }
  ]
 }

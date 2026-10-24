@@ -1073,6 +1073,178 @@ export class SoundEffects {
   }
 
   /**
+   * Surface-aware locomotion footstep sound ('grass' | 'mulch' | 'dirt').
+   */
+  playFootstep(surface = 'grass', isRunning = false) {
+    this._recordEvent('footstep');
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const gainMult = isRunning ? 1.25 : 0.85;
+      const thudFreq = surface === 'mulch' ? 115 : surface === 'dirt' ? 128 : 96;
+
+      // Low boot-sole ground thump
+      this._playTone({
+        oscType: 'sine',
+        startTime: now,
+        duration: 0.065,
+        freqStart: thudFreq + (Math.random() - 0.5) * 14,
+        freqEnd: 38,
+        gainPeak: 0.14 * gainMult
+      });
+
+      // Surface texture crunch/rustle
+      if (surface === 'mulch') {
+        this._playNoiseSlice({
+          type: 'white',
+          startTime: now + 0.005,
+          duration: 0.075,
+          filterType: 'bandpass',
+          freqStart: 1850 + Math.random() * 350,
+          freqEnd: 920,
+          q: 1.8,
+          gainStart: 0.14 * gainMult
+        });
+      } else if (surface === 'dirt') {
+        this._playNoiseSlice({
+          type: 'pink',
+          startTime: now + 0.004,
+          duration: 0.06,
+          filterType: 'bandpass',
+          freqStart: 1120 + Math.random() * 220,
+          freqEnd: 580,
+          q: 1.5,
+          gainStart: 0.11 * gainMult
+        });
+      } else {
+        // Grass blade swish
+        this._playNoiseSlice({
+          type: 'pink',
+          startTime: now + 0.005,
+          duration: 0.08,
+          filterType: 'bandpass',
+          freqStart: 1420 + Math.random() * 260,
+          freqEnd: 760,
+          q: 1.4,
+          gainStart: 0.095 * gainMult
+        });
+      }
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  /**
+   * Standing tree trunk axe impact thunk + flying bark chip transient.
+   */
+  playTreeHitThunk(power = 1.0, progressRatio = 0.25) {
+    this._recordEvent('tree_hit_thunk');
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const mult = Math.max(0.5, Math.min(1.5, power));
+      const pitchBoost = 1.0 + Math.max(0, Math.min(1, progressRatio)) * 0.22;
+
+      // Deep resonant standing trunk thud
+      this._playTone({
+        oscType: 'triangle',
+        startTime: now,
+        duration: 0.14,
+        freqStart: 168 * pitchBoost,
+        freqEnd: 46,
+        gainPeak: 0.42 * mult
+      });
+
+      // Sharp wood-notch bite crack
+      this._playNoiseSlice({
+        type: 'pink',
+        startTime: now,
+        duration: 0.11,
+        filterType: 'bandpass',
+        freqStart: 1280 * pitchBoost,
+        freqEnd: 620,
+        q: 1.8,
+        gainStart: 0.34 * mult
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  /**
+   * Straining timber hinge creak & fiber groan right before a chopped tree falls.
+   */
+  playTreeFallCreak() {
+    this._recordEvent('tree_fall_creak');
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      [0, 0.14, 0.31].forEach((offset, idx) => {
+        this._playTone({
+          oscType: 'sawtooth',
+          startTime: now + offset,
+          duration: 0.22,
+          freqStart: 145 - idx * 18,
+          freqMid: 88,
+          freqEnd: 132 + idx * 14,
+          gainPeak: 0.18,
+          filterFreq: 440
+        });
+      });
+      this._playNoiseSlice({
+        type: 'pink',
+        startTime: now + 0.06,
+        duration: 0.42,
+        filterType: 'bandpass',
+        freqStart: 980,
+        freqEnd: 420,
+        q: 2.1,
+        gainStart: 0.22
+      });
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  /**
+   * Heavy canopy rustle + branch snap + ground-shaking thud when a felled tree lands.
+   */
+  playTreeFallCrash() {
+    this._recordEvent('tree_fall_crash');
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // 1. Deep ground-shaking trunk impact thud
+      this._playTone({
+        oscType: 'sine',
+        startTime: now,
+        duration: 0.42,
+        freqStart: 112,
+        freqEnd: 28,
+        gainPeak: 0.52
+      });
+      // 2. Crashing branches & leaf canopy rush
+      this._playNoiseSlice({
+        type: 'pink',
+        startTime: now,
+        duration: 0.58,
+        filterType: 'bandpass',
+        freqStart: 1350,
+        freqEnd: 340,
+        q: 1.1,
+        gainStart: 0.38
+      });
+      this.playCelebratoryStinger(true);
+    } catch {
+      // Ignore audio errors
+    }
+  }
+
+  /**
    * Clean wood split: satisfying wood-core "pop" + tearing wood fibers + deep chopping block thump.
    */
   playWoodSplit(forceRatio = 1.0, isFrozen = false) {

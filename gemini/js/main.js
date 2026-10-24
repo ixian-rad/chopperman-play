@@ -12,8 +12,16 @@ import { buildBackyardEnvironment } from './environment.js';
 import { ChoppingStation } from './chopping.js';
 import { HumanoidChopper } from './humanoid.js';
 import { PhysicsDebugWireframe } from './debugWireframe.js';
-import { GameStateManager, LOG_TYPES, LOG_ORDER, AXE_TIERS, HANDLE_WRAPS } from './rpgState.js';
+import {
+  GameStateManager,
+  LOG_TYPES,
+  LOG_ORDER,
+  AXE_TIERS,
+  HANDLE_WRAPS,
+  normalizeAxeId
+} from './rpgState.js';
 import { AtmosphereController } from './weatherAndLight.js';
+import { WoodchipsSpriteBurst } from './assetsLoader.js';
 
 /**
  * Main Application Entry Point for the 3D Backyard Lumberjack RPG & Physics Simulation.
@@ -61,12 +69,23 @@ class AxeSplittingSimulation {
     this.sound = new SoundEffects();
     this.gameState = new GameStateManager(this.sound);
     this._lastActionTime = 0;
+    this._assetsReady = false;
+    this._elapsedClock = 0;
+
+    // Interaction mode ('stump' | 'yard') & free-roam locomotion state
+    this.interactionMode = 'stump';
+    this.playerYaw = 0;
+    this.playerPitch = 0.18;
+    this.moveKeys = {};
+    this._pickedTreeHit = null;
+    this._targetedTree = null;
+    this._treeSwingInProgress = false;
 
     this._initThree();
     this._initLights();
     this._initPhysics();
 
-    // Build Suburban NJ Backyard, Chopping Station, Articulated Humanoid, Atmosphere & Debug Wireframes
+    // Build Backyard Environment (NJ / Tiraspol), Chopping Station, Sergey Humanoid, Atmosphere, Woodchips & Debug Wireframes
     this.environment = buildBackyardEnvironment(
       this.scene,
       this.world,
@@ -91,6 +110,7 @@ class AxeSplittingSimulation {
       this.lights,
       this.physContacts
     );
+    this.woodchipsBurst = new WoodchipsSpriteBurst(this.scene);
     this.debugWireframe = new PhysicsDebugWireframe(this.scene, this.world);
 
     // Sync initial log, block collar, cordwood rack, roadside stand, handle wrap & axe visuals from saved RPG state
@@ -128,39 +148,98 @@ class AxeSplittingSimulation {
     this._exposeGlobalAPI();
     this._refreshAllHUD();
 
+    // Kick off parallel GLB loading for Sergey, equipped axe, setting props, and trees_v2
+    this._initAssetsV2();
+
     this._lastTickTime = performance.now();
     this._animate = this._animate.bind(this);
     requestAnimationFrame(this._animate);
 
     // Fallback timer ensures physics & swing animation progress at 1:1 wall-clock speed
-    // even when headless browser compositors throttle requestAnimationFrame
+    // only when headless browser compositors completely pause requestAnimationFrame (> 250ms)
     this._headlessTimer = setInterval(() => {
       const now = performance.now();
-      if (now - this._lastTickTime >= 40) {
+      if (now - this._lastTickTime >= 250) {
         this._stepFrame(false);
       }
-    }, 25);
+    }, 100);
+  }
+
+  async _initAssetsV2() {
+    const overlay = document.getElementById('loading-overlay');
+    const fill = document.getElementById('loading-progress-fill');
+    const statusTxt = document.getElementById('loading-status-text');
+    const setProgress = (pct, msg) => {
+      if (fill) fill.style.width = `${pct}%`;
+      if (statusTxt && msg) statusTxt.textContent = msg;
+    };
+
+    try {
+      setProgress(25, 'Loading Sergey PBR rig, axes, and backyard trees_v2 in parallel...');
+      const initialSetting = this.gameState.setting || 'nj';
+      const initialCostume = this.gameState.costume || 'tee';
+      const initialAxe = this.gameState.equippedAxeId || 'sergey';
+
+      await Promise.all([
+        this.humanoid.initAssets(initialCostume, initialAxe).then(() => {
+          setProgress(62, 'Sergey PBR character & axe loaded. Populating backyard setting...');
+        }),
+        this.environment
+          .loadSetting(
+            initialSetting,
+            this.qualityPreset,
+            this.choppingStation,
+            this.atmosphere.timeOfDay
+          )
+          .then(() => {
+            setProgress(92, 'Backyard props & trees_v2 ready...');
+          })
+      ]);
+
+      // Perform an initial TreeField LOD update so instanced meshes are populated immediately
+      this.environment.updateTreesAndWind(
+        this.camera,
+        0.016,
+        this._elapsedClock,
+        this.atmosphere.windStrength
+      );
+      this._syncSettingAndCostumeUI();
+      this._refreshAllHUD();
+      setProgress(100, 'Ready!');
+      this._assetsReady = true;
+    } catch (err) {
+      console.warn('Error during assets-v2 initialization:', err);
+      this._assetsReady = true;
+    } finally {
+      if (overlay) {
+        overlay.classList.add('hidden');
+      }
+    }
   }
 
   _initThree() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xdecbb8);
-    this.scene.fog = new THREE.FogExp2(0xdecbb8, 0.012);
+    this.scene.fog = new THREE.FogExp2(0xdecbb8, 0.0045);
 
     this.camera = new THREE.PerspectiveCamera(
       46,
       window.innerWidth / window.innerHeight,
       0.1,
-      160
+      400
     );
     this.camera.position.set(2.85, 1.92, 2.55);
 
     this.renderer = this._createResilientRenderer();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.setPixelRatio(
+      this._isSoftwareGL ? 0.5 : Math.min(window.devicePixelRatio || 1, 2)
+    );
+    this.renderer.shadowMap.enabled = !this._isSoftwareGL;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMapping = this._isSoftwareGL
+      ? THREE.NoToneMapping
+      : THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
     this.container.appendChild(this.renderer.domElement);
 
@@ -192,12 +271,42 @@ class AxeSplittingSimulation {
   }
 
   _createResilientRenderer() {
+    let isSoftwareGL = false;
+    try {
+      const probe = document.createElement('canvas');
+      const pgl = probe.getContext('webgl2') || probe.getContext('webgl');
+      if (pgl) {
+        const dbg = pgl.getExtension('WEBGL_debug_renderer_info');
+        const rStr = dbg
+          ? pgl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+          : pgl.getParameter(pgl.RENDERER);
+        if (
+          typeof rStr === 'string' &&
+          /swiftshader|llvmpipe|software|softpipe|mesa offscreen/i.test(rStr)
+        ) {
+          isSoftwareGL = true;
+        }
+      }
+    } catch {
+      // Ignore probe error
+    }
+    this._isSoftwareGL = isSoftwareGL;
+
     const canvas = document.createElement('canvas');
     let gl = null;
+    const useAA = !isSoftwareGL;
     try {
       gl =
-        canvas.getContext('webgl2', { antialias: true }) ||
-        canvas.getContext('webgl', { antialias: true }) ||
+        canvas.getContext('webgl2', {
+          antialias: useAA,
+          powerPreference: 'high-performance',
+          stencil: false
+        }) ||
+        canvas.getContext('webgl', {
+          antialias: useAA,
+          powerPreference: 'high-performance',
+          stencil: false
+        }) ||
         canvas.getContext('webgl2', { antialias: false }) ||
         canvas.getContext('webgl', { antialias: false });
     } catch {
@@ -206,7 +315,12 @@ class AxeSplittingSimulation {
 
     if (gl) {
       try {
-        return new THREE.WebGLRenderer({ canvas, context: gl, antialias: true });
+        return new THREE.WebGLRenderer({
+          canvas,
+          context: gl,
+          antialias: useAA,
+          powerPreference: 'high-performance'
+        });
       } catch {
         // Fall through to 2D canvas fallback
       }
@@ -297,13 +411,17 @@ class AxeSplittingSimulation {
   }
 
   _initLights() {
-    const hemiLight = new THREE.HemisphereLight(0xfce3c8, 0x4b5c32, 0.72);
+    const hemiLight = new THREE.HemisphereLight(
+      0xfce3c8,
+      0x4b5c32,
+      this._isSoftwareGL ? 0.95 : 0.72
+    );
     hemiLight.position.set(0, 20, 0);
     this.scene.add(hemiLight);
 
     const sunLight = new THREE.DirectionalLight(0xffd296, 2.45);
     sunLight.position.set(7.5, 12.5, 6.2);
-    sunLight.castShadow = true;
+    sunLight.castShadow = !this._isSoftwareGL;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
     sunLight.shadow.camera.near = 1.0;
@@ -319,21 +437,25 @@ class AxeSplittingSimulation {
 
     const rimLight = new THREE.DirectionalLight(0x9ec5eb, 0.42);
     rimLight.position.set(-6, 5, -8);
+    rimLight.visible = !this._isSoftwareGL;
     this.scene.add(rimLight);
 
     // Warm house porch coach lantern
     const porchLight = new THREE.PointLight(0xffcb7d, 1.2, 8.0, 1.8);
     porchLight.position.set(-0.38, 2.45, -8.9);
+    porchLight.visible = !this._isSoftwareGL;
     this.scene.add(porchLight);
 
     // Warm yard lantern right next to the chopping block
     const yardLight = new THREE.PointLight(0xffb85c, 1.6, 6.5, 1.7);
     yardLight.position.set(-1.03, 1.60, 0.15);
+    yardLight.visible = !this._isSoftwareGL;
     this.scene.add(yardLight);
 
     // Warm flickering patio firepit point light
     const firepitLight = new THREE.PointLight(0xff7b29, 1.4, 7.5, 1.7);
     firepitLight.position.set(1.85, 0.55, 0.95);
+    firepitLight.visible = !this._isSoftwareGL;
     this.scene.add(firepitLight);
 
     this.lights = {
@@ -410,54 +532,39 @@ class AxeSplittingSimulation {
       this.qualityPreset = 'low';
       return;
     }
-    const w = window.innerWidth;
-    const h = window.innerHeight;
 
-    this.composer = new EffectComposer(this.renderer);
-    this.renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(this.renderPass);
+    if (!this._isSoftwareGL) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
 
-    try {
-      this.ssaoPass = new SSAOPass(this.scene, this.camera, w, h);
-      this.ssaoPass.kernelRadius = 0.35;
-      this.ssaoPass.minDistance = 0.002;
-      this.ssaoPass.maxDistance = 0.08;
-      this.ssaoPass.enabled = false;
-      this.composer.addPass(this.ssaoPass);
-    } catch {
-      this.ssaoPass = null;
-    }
+      this.composer = new EffectComposer(this.renderer);
+      this.renderPass = new RenderPass(this.scene, this.camera);
+      this.composer.addPass(this.renderPass);
 
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(w, h),
-      0.24, // strength
-      0.45, // radius
-      0.86  // threshold
-    );
-    this.composer.addPass(this.bloomPass);
-
-    this.outputPass = new OutputPass();
-    this.composer.addPass(this.outputPass);
-
-    // Detect software WebGL renderer (e.g. SwiftShader, llvmpipe, Mesa OffScreen)
-    let isSoftwareGL = false;
-    try {
-      const gl = this.renderer.getContext();
-      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-      const rendererStr = dbg
-        ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
-        : gl.getParameter(gl.RENDERER);
-      if (
-        typeof rendererStr === 'string' &&
-        /swiftshader|llvmpipe|software|softpipe|mesa offscreen/i.test(rendererStr)
-      ) {
-        isSoftwareGL = true;
+      try {
+        this.ssaoPass = new SSAOPass(this.scene, this.camera, w, h);
+        this.ssaoPass.kernelRadius = 0.35;
+        this.ssaoPass.minDistance = 0.002;
+        this.ssaoPass.maxDistance = 0.08;
+        this.ssaoPass.enabled = false;
+        this.composer.addPass(this.ssaoPass);
+      } catch {
+        this.ssaoPass = null;
       }
-    } catch {
-      // Ignore WebGL debug extension errors
+
+      this.bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(w, h),
+        0.24, // strength
+        0.45, // radius
+        0.86  // threshold
+      );
+      this.composer.addPass(this.bloomPass);
+
+      this.outputPass = new OutputPass();
+      this.composer.addPass(this.outputPass);
     }
 
-    this.qualityPreset = isSoftwareGL ? 'low' : 'high';
+    this.qualityPreset = this._isSoftwareGL ? 'low' : 'high';
     this.setQualityPreset(this.qualityPreset);
   }
 
@@ -477,7 +584,12 @@ class AxeSplittingSimulation {
     };
     if (badgeEl) badgeEl.textContent = labels[preset] || preset;
 
-    if (preset === 'ultra') {
+    if (this._isSoftwareGL) {
+      const pr = preset === 'low' ? 0.5 : preset === 'medium' ? 0.62 : 0.72;
+      this.renderer.setPixelRatio(pr);
+      this.renderer.shadowMap.enabled = false;
+      this.useComposer = false;
+    } else if (preset === 'ultra') {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       this.renderer.shadowMap.enabled = true;
       if (this.ssaoPass) this.ssaoPass.enabled = true;
@@ -497,11 +609,15 @@ class AxeSplittingSimulation {
       this.useComposer = false;
     } else {
       // 'low' (Software Renderer safe preset)
-      this.renderer.setPixelRatio(1.0);
+      this.renderer.setPixelRatio(0.75);
       this.renderer.shadowMap.enabled = false;
       if (this.ssaoPass) this.ssaoPass.enabled = false;
       if (this.bloomPass) this.bloomPass.enabled = false;
       this.useComposer = false;
+    }
+
+    if (this.environment && typeof this.environment.applyQualityToEnvironment === 'function') {
+      this.environment.applyQualityToEnvironment(preset);
     }
   }
 
@@ -532,6 +648,19 @@ class AxeSplittingSimulation {
       const rect = dom.getBoundingClientRect();
       this.mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       this.mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      if (this.interactionMode === 'yard') {
+        if ((e.buttons & 1) || (e.buttons & 2) || document.pointerLockElement === dom) {
+          this.playerYaw -= (e.movementX || 0) * 0.0045;
+          this.playerPitch = THREE.MathUtils.clamp(
+            this.playerPitch + (e.movementY || 0) * 0.003,
+            -0.15,
+            0.65
+          );
+          this.humanoid.root.rotation.y = this.playerYaw;
+        }
+        return;
+      }
 
       // If blade is wedged in a tough kerf (`WEDGED_PRY`), wiggling the mouse horizontally pries it free!
       if (this.humanoid.state === 'WEDGED_PRY' && Math.abs(e.movementX || 0) > 14) {
@@ -610,6 +739,19 @@ class AxeSplittingSimulation {
     dom.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return; // Only Left-Click triggers aim/flick gesture
 
+      if (this.interactionMode === 'yard') {
+        const dStump = Math.hypot(
+          this.humanoid.root.position.x - this.choppingStation.blockPosition.x,
+          this.humanoid.root.position.z - this.choppingStation.blockPosition.z
+        );
+        if (this._pickedTreeHit && this._pickedTreeHit.tree) {
+          this._swingAtTreeOnce(this._pickedTreeHit.tree);
+        } else if (dStump < 2.2) {
+          this.enterStumpMode();
+        }
+        return;
+      }
+
       // If timing meter is actively oscillating, clicking anywhere on canvas locks the needle & swings!
       if (this.meterActive) {
         this.triggerTimingMeterStep();
@@ -672,12 +814,39 @@ class AxeSplittingSimulation {
     this.timeSlider = document.getElementById('time-slider');
     this.timeValueEl = document.getElementById('time-value');
     this.qualitySelect = document.getElementById('quality-select');
+    this.settingSelect = document.getElementById('setting-select');
+    this.costumeSelect = document.getElementById('costume-select');
+    this.toggleRoamBtn = document.getElementById('toggle-roam-btn');
 
     this.statusBadge = document.getElementById('status-badge');
     this.statSpeed = document.getElementById('stat-speed');
     this.statPieces = document.getElementById('stat-pieces');
     this.statBodies = document.getElementById('stat-bodies');
     this.statFps = document.getElementById('stat-fps');
+
+    if (this.settingSelect) {
+      this.settingSelect.value = this.gameState.setting || 'nj';
+      this.settingSelect.addEventListener('change', () => {
+        this.switchBackyardSetting(this.settingSelect.value);
+      });
+    }
+
+    if (this.costumeSelect) {
+      this.costumeSelect.value = this.gameState.costume || 'tee';
+      this.costumeSelect.addEventListener('change', () => {
+        this.switchSergeyCostume(this.costumeSelect.value);
+      });
+    }
+
+    if (this.toggleRoamBtn) {
+      this.toggleRoamBtn.addEventListener('click', () => {
+        if (this.interactionMode === 'yard') {
+          this.enterStumpMode();
+        } else {
+          this.enterYardMode();
+        }
+      });
+    }
 
     if (this.forceSlider) {
       this.forceSlider.addEventListener('input', () => {
@@ -997,8 +1166,40 @@ class AxeSplittingSimulation {
         });
       });
 
-    // Keyboard shortcuts
-    window.addEventListener('keydown', (e) => {
+    // Keyboard shortcuts & Free-Roam Locomotion (WASD + Shift in Yard Mode, Stump Controls in Stump Mode)
+    const onKeyDown = (e) => {
+      if (e.code) {
+        this.moveKeys[e.code] = true;
+      }
+
+      if (this.interactionMode === 'yard') {
+        if (
+          ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(
+            e.code
+          )
+        ) {
+          return;
+        }
+        if (e.code === 'KeyE' || e.code === 'Escape') {
+          e.preventDefault();
+          this.enterStumpMode();
+          return;
+        }
+        if (e.code === 'Space' || e.code === 'KeyF') {
+          e.preventDefault();
+          if (this._pickedTreeHit && this._pickedTreeHit.tree) {
+            this._swingAtTreeOnce(this._pickedTreeHit.tree);
+          }
+          return;
+        }
+      }
+
+      if (e.code === 'Escape' && this.interactionMode === 'stump') {
+        e.preventDefault();
+        this.enterYardMode();
+        return;
+      }
+
       if (e.code === 'Space') {
         e.preventDefault();
         if (this.humanoid.state === 'WEDGED_PRY') {
@@ -1066,7 +1267,16 @@ class AxeSplittingSimulation {
       } else if (e.code === 'KeyO') {
         this.bundleFirewoodContract();
       }
-    });
+    };
+
+    const onKeyUp = (e) => {
+      if (e.code) {
+        this.moveKeys[e.code] = false;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
   }
 
   toggleMusicMuteUI() {
@@ -1469,6 +1679,12 @@ class AxeSplittingSimulation {
 
     // Trigger Impact Juice: Hit-Stop freeze, Camera Shake trauma, Critter Scatter, and Perfect/Boss Slow-Mo pulse!
     if (result) {
+      if (this.woodchipsBurst && bladeWorldPos) {
+        this.woodchipsBurst.spawn(bladeWorldPos, null, result.split ? 14 : 8);
+      }
+      if ((result.isBoss && result.split) || result.leveledUp) {
+        this.humanoid.playVictoryCheer(2.2);
+      }
       if (result.isBoss && result.split) {
         this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.78);
         this.hitStopTimer = 0.048;
@@ -1628,6 +1844,487 @@ class AxeSplittingSimulation {
     return res;
   }
 
+  _syncSettingAndCostumeUI() {
+    const setting = this.environment ? this.environment.getSetting() : this.gameState.setting || 'nj';
+    const costume = this.humanoid ? this.humanoid.costume : this.gameState.costume || 'tee';
+    if (this.settingSelect && this.settingSelect.value !== setting) {
+      this.settingSelect.value = setting;
+    }
+    if (this.costumeSelect && this.costumeSelect.value !== costume) {
+      this.costumeSelect.value = costume;
+    }
+    const subEl = document.getElementById('setting-subtitle');
+    if (subEl) {
+      subEl.textContent =
+        setting === 'tiraspol'
+          ? 'Sergey \u2022 Tiraspol Backyard (Transnistria) \u2022 RPG'
+          : 'Sergey \u2022 Suburban NJ Backyard \u2022 RPG';
+    }
+    const treesPill = document.getElementById('trees-count-pill');
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    if (treesPill && tf) {
+      const st = tf.stats();
+      treesPill.textContent = `Trees: ${st.standing}`;
+    }
+  }
+
+  async switchBackyardSetting(settingName = 'nj') {
+    const target = settingName === 'tiraspol' ? 'tiraspol' : 'nj';
+    this.gameState.setSettingState(target);
+    await this.environment.loadSetting(
+      target,
+      this.qualityPreset,
+      this.choppingStation,
+      this.atmosphere.timeOfDay
+    );
+    this._pickedTreeHit = null;
+    this._targetedTree = null;
+    if (this.interactionMode === 'stump') {
+      this.setCameraPreset('default');
+    } else {
+      this.humanoid.root.position.set(0, 0, 1.35);
+      this.playerYaw = 0;
+      this.humanoid.root.rotation.y = 0;
+      this._updateFollowCamera(1.0);
+    }
+    this.environment.updateTreesAndWind(
+      this.camera,
+      0.016,
+      this._elapsedClock,
+      this.atmosphere.windStrength
+    );
+    this._syncSettingAndCostumeUI();
+    this._refreshAllHUD();
+    this._stepFrame(true);
+    return target;
+  }
+
+  async switchSergeyCostume(costumeName = 'tee') {
+    const target = costumeName === 'jacket' ? 'jacket' : 'tee';
+    this.gameState.setCostumeState(target);
+    await this.humanoid.setCostume(target);
+    if (this.interactionMode === 'yard') {
+      await this.enterStumpMode();
+    }
+    this._syncSettingAndCostumeUI();
+    this._refreshAllHUD();
+    this._stepFrame(true);
+    return target;
+  }
+
+  async setEquippedAxeById(axeId = 'sergey') {
+    const normId = normalizeAxeId(axeId);
+    this.gameState.forceEquipAxe(normId);
+    const axeDef = this.gameState.getEquippedAxe();
+    if (axeDef) {
+      this.humanoid.hickoryMat.color.setHex(axeDef.handleColor);
+      this.humanoid.forgedSteelMat.color.setHex(axeDef.headColor);
+      this.humanoid.polishedBitMat.color.setHex(axeDef.bitColor);
+      if (axeDef.headScale) {
+        this.humanoid.axeHeadGroup.scale.set(
+          axeDef.headScale[0],
+          axeDef.headScale[1],
+          axeDef.headScale[2]
+        );
+      }
+    }
+    await this.humanoid.setAxeModel(normId);
+    this._refreshAllHUD();
+    this._refreshShopUI();
+    this._stepFrame(true);
+    return normId;
+  }
+
+  getPlayerForward() {
+    return new THREE.Vector3(Math.sin(this.playerYaw), 0, Math.cos(this.playerYaw)).normalize();
+  }
+
+  async enterYardMode() {
+    this.interactionMode = 'yard';
+    this.humanoid.setInteractionMode('yard');
+    this.controls.enabled = false;
+
+    // Place Sergey on the clear central yard corridor just in front of the chopping stump
+    // so holding W walks him smoothly across the open yard without hitting the stump.
+    if (
+      Math.hypot(this.humanoid.root.position.x, this.humanoid.root.position.z - -0.8) < 1.1 ||
+      Math.hypot(this.humanoid.root.position.x, this.humanoid.root.position.z - 0.28) < 1.1
+    ) {
+      this.humanoid.root.position.set(0, 0, 1.35);
+      this.playerYaw = 0;
+      this.humanoid.root.rotation.y = 0;
+    }
+
+    if (this.toggleRoamBtn) {
+      this.toggleRoamBtn.classList.add('active');
+      this.toggleRoamBtn.innerHTML = 'At Stump <kbd>E</kbd>';
+    }
+    const banner = document.getElementById('yard-prompt-banner');
+    if (banner) {
+      banner.classList.remove('hidden');
+    }
+
+    this._updateFollowCamera(1.0);
+    this._updateYardTargetPrompt();
+    this._stepFrame(true);
+    return true;
+  }
+
+  async enterStumpMode() {
+    this.interactionMode = 'stump';
+    this.moveKeys = {};
+    this._pickedTreeHit = null;
+    this._targetedTree = null;
+    this.humanoid.setInteractionMode('stump');
+    this.controls.enabled = true;
+    this.setCameraPreset('default');
+
+    if (this.toggleRoamBtn) {
+      this.toggleRoamBtn.classList.remove('active');
+      this.toggleRoamBtn.innerHTML = 'Roam Yard <kbd>E</kbd>';
+    }
+    const banner = document.getElementById('yard-prompt-banner');
+    if (banner) {
+      banner.classList.add('hidden');
+    }
+
+    this._stepFrame(true);
+    return true;
+  }
+
+  _updateFollowCamera(lerpAlpha = 0.18) {
+    const pos = this.humanoid.root.position;
+    const fwd = this.getPlayerForward();
+    const camDist = 3.15;
+    const camHeight = 1.75 + this.playerPitch * 1.35;
+
+    const idealPos = new THREE.Vector3(
+      pos.x - fwd.x * camDist,
+      Math.max(0.75, camHeight),
+      pos.z - fwd.z * camDist
+    );
+    if (this.environment && typeof this.environment.collidePlayer === 'function') {
+      this.environment.collidePlayer(idealPos, 0.25);
+    }
+
+    const lookTarget = new THREE.Vector3(
+      pos.x + fwd.x * 1.25,
+      1.25,
+      pos.z + fwd.z * 1.25
+    );
+
+    if (lerpAlpha >= 0.99) {
+      this.camera.position.copy(idealPos);
+      this.controls.target.copy(lookTarget);
+    } else {
+      this.camera.position.lerp(idealPos, lerpAlpha);
+      this.controls.target.lerp(lookTarget, lerpAlpha);
+    }
+    this.camera.lookAt(this.controls.target);
+  }
+
+  _stepYardLocomotion(dt) {
+    if (this.interactionMode !== 'yard') return;
+
+    const fwd = this.getPlayerForward();
+    // Right-hand side vector for strafing (KeyD = right, KeyA = left)
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const moveVec = new THREE.Vector3();
+
+    if (this.moveKeys.KeyW || this.moveKeys.ArrowUp) moveVec.add(fwd);
+    if (this.moveKeys.KeyS || this.moveKeys.ArrowDown) moveVec.sub(fwd);
+    if (this.moveKeys.KeyD || this.moveKeys.ArrowRight) moveVec.add(right);
+    if (this.moveKeys.KeyA || this.moveKeys.ArrowLeft) moveVec.sub(right);
+
+    const isMoving = moveVec.lengthSq() > 1e-4;
+    const isRunning = Boolean(this.moveKeys.ShiftLeft || this.moveKeys.ShiftRight);
+    const speed = isRunning ? 6.8 : 3.9;
+
+    if (isMoving) {
+      moveVec.normalize();
+      this.humanoid.root.position.addScaledVector(moveVec, speed * dt);
+      this.environment.collidePlayer(this.humanoid.root.position, 0.38);
+      this.humanoid.root.rotation.y = this.playerYaw;
+    }
+
+    const surf = this.environment.getSurfaceAt(
+      this.humanoid.root.position.x,
+      this.humanoid.root.position.z
+    );
+    this.humanoid.setLocomotionState(isMoving, isRunning, dt, surf);
+    this._updateFollowCamera(Math.min(1.0, dt * 10.0));
+    this._updateYardTargetPrompt();
+  }
+
+  _updateYardTargetPrompt() {
+    const banner = document.getElementById('yard-prompt-banner');
+    const txt = document.getElementById('yard-prompt-text');
+    if (!banner || !txt) return;
+    if (this.interactionMode !== 'yard') {
+      banner.classList.add('hidden');
+      return;
+    }
+    banner.classList.remove('hidden');
+
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    const hit = tf ? tf.pick(this.humanoid.root.position, this.getPlayerForward(), 2.1, 0.45) : null;
+    this._pickedTreeHit = hit;
+
+    const dStump = Math.hypot(
+      this.humanoid.root.position.x - this.choppingStation.blockPosition.x,
+      this.humanoid.root.position.z - this.choppingStation.blockPosition.z
+    );
+
+    if (hit && hit.tree) {
+      const spName = hit.tree.species.charAt(0).toUpperCase() + hit.tree.species.slice(1);
+      const hitsDone = Math.min(hit.tree.hits, hit.tree.meta.hitsToFell);
+      banner.classList.add('target-active');
+      txt.textContent = `\uD83E\uDE93 Target: ${spName} Tree (${hitsDone} / ${hit.tree.meta.hitsToFell} Hits) \u2022 Press Space / F / Click to Chop \u2022 E for Stump`;
+    } else if (dStump < 2.2) {
+      banner.classList.add('target-active');
+      txt.textContent =
+        '\uD83E\uDEB5 Near Chopping Stump \u2022 Press E or Click Stump to Enter Log-Splitting Mode';
+    } else {
+      banner.classList.remove('target-active');
+      txt.textContent =
+        'Free-Roam Yard Mode \u2022 Walk with WASD (Shift = Run) \u2022 Face a Tree to Chop \u2022 Press E for Stump';
+    }
+  }
+
+  teleportNearTree() {
+    if (this.interactionMode !== 'yard') {
+      this.enterYardMode();
+    }
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    if (!tf || !tf.trees || tf.trees.length === 0) return null;
+
+    // Prefer standing trees inside the fenced yard with clear approach space
+    const px = this.humanoid.root.position.x;
+    const pz = this.humanoid.root.position.z;
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const t of tf.trees) {
+      if (t.state !== 'standing') continue;
+      const inFence = Math.abs(t.position.x) < 17.5 && Math.abs(t.position.z) < 17.5;
+      const d = Math.hypot(t.position.x - px, t.position.z - pz) + (inFence ? 0 : 50);
+      if (d < bestScore) {
+        bestScore = d;
+        best = t;
+      }
+    }
+
+    if (!best) return null;
+
+    // Place Sergey at the tree's approachPoint on the yard-center side, facing directly toward the trunk
+    const awayDir = new THREE.Vector3(-best.position.x, 0, -best.position.z);
+    if (awayDir.lengthSq() < 1e-4) {
+      awayDir.set(0, 0, 1);
+    }
+    awayDir.normalize();
+
+    const approachDist = Math.max(
+      (best.meta?.approachDistance || 0.95) * best.scale,
+      best.radius + 0.68
+    );
+    const ax = best.position.x + awayDir.x * approachDist;
+    const az = best.position.z + awayDir.z * approachDist;
+
+    this.humanoid.root.position.set(ax, 0, az);
+    const toTreeX = best.position.x - ax;
+    const toTreeZ = best.position.z - az;
+    this.playerYaw = Math.atan2(toTreeX, toTreeZ);
+    this.humanoid.root.rotation.y = this.playerYaw;
+    this._targetedTree = best;
+
+    this._updateFollowCamera(1.0);
+    this._updateYardTargetPrompt();
+    this._stepFrame(true);
+    return best.id;
+  }
+
+  async _swingAtTreeOnce(targetTree = null) {
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    if (!tf) return { felled: false, hits: 0 };
+
+    const pickHit = tf.pick(this.humanoid.root.position, this.getPlayerForward(), 2.4, 0.3);
+    const tree = targetTree || (pickHit ? pickHit.tree : this._targetedTree);
+    if (!tree || (tree.state !== 'standing' && tree.state !== 'chopping')) {
+      return { felled: false, hits: tree ? tree.hits : 0 };
+    }
+
+    this._lastActionTime = performance.now();
+    this.humanoid.triggerSwing(1.15, false, true);
+
+    await new Promise((r) => setTimeout(r, 145));
+
+    const fromDir = new THREE.Vector3(
+      tree.position.x - this.humanoid.root.position.x,
+      0,
+      tree.position.z - this.humanoid.root.position.z
+    );
+    if (fromDir.lengthSq() < 1e-5) {
+      fromDir.copy(this.getPlayerForward());
+    } else {
+      fromDir.normalize();
+    }
+
+    const hitPoint = tree.position
+      .clone()
+      .addScaledVector(fromDir, -tree.radius)
+      .setY(tree.position.y + (tree.meta?.chopHeight || 0.45) * tree.scale);
+
+    // Angle the fall direction ~72 deg to the right of the camera sightline so the felled trunk
+    // tips sideways across the grass in full profile (keeping the stump & Sergey unobstructed)
+    const fallDir = fromDir
+      .clone()
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), -1.25)
+      .normalize();
+
+    const res = tf.hit(tree, fallDir, 1);
+    if (this.woodchipsBurst) {
+      this.woodchipsBurst.spawn(hitPoint, fromDir, 14);
+    }
+
+    const ratio = res.hitsToFell ? res.hits / res.hitsToFell : 0.5;
+    if (this.sound && typeof this.sound.playTreeHitThunk === 'function') {
+      this.sound.playTreeHitThunk(1.15, ratio);
+    }
+    this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.24);
+
+    if (res.felled) {
+      if (this.sound && typeof this.sound.playTreeFallCreak === 'function') {
+        this.sound.playTreeFallCreak();
+      }
+      if (tree.anim) {
+        tree.anim.onLand = () => {
+          if (this.sound && typeof this.sound.playTreeFallCrash === 'function') {
+            this.sound.playTreeFallCrash();
+          }
+          this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.65);
+          if (this.woodchipsBurst) {
+            this.woodchipsBurst.spawn(hitPoint, fromDir, 18);
+          }
+        };
+      }
+      this.humanoid.playVictoryCheer(2.4);
+      const award = this.gameState.awardTreeFelled(tree.species, res.hitsToFell);
+      this._syncSettingAndCostumeUI();
+      this._refreshAllHUD();
+      this._showHitBanner(award);
+    }
+
+    this._updateYardTargetPrompt();
+    return res;
+  }
+
+  async chopTreeUntilFelled() {
+    if (this.interactionMode !== 'yard') {
+      await this.enterYardMode();
+    }
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    if (!tf) return { felled: false, hits: 0 };
+
+    let pickHit = tf.pick(this.humanoid.root.position, this.getPlayerForward(), 2.4, 0.25);
+    let tree = pickHit ? pickHit.tree : this._targetedTree;
+
+    if (!tree || (tree.state !== 'standing' && tree.state !== 'chopping')) {
+      const id = this.teleportNearTree();
+      if (id != null) {
+        tree = tf.trees[id];
+      }
+    }
+    if (!tree) return { felled: false, hits: 0 };
+
+    let swings = 0;
+    let felled = false;
+    while (
+      swings < 30 &&
+      (tree.state === 'standing' || tree.state === 'chopping')
+    ) {
+      swings++;
+      const res = await this._swingAtTreeOnce(tree);
+      if (res.felled || tree.state === 'falling' || tree.state === 'fallen' || tree.state === 'stump') {
+        felled = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 140));
+    }
+
+    // Wait for the falling tree animation to land and transition to 'fallen' / 'stump'
+    // so TreeField.stats().felled is incremented before resolving.
+    if (felled || tree.state === 'falling') {
+      const tStart = performance.now();
+      while (
+        tree.state === 'falling' &&
+        performance.now() - tStart < 3800
+      ) {
+        tf.update(this.camera, 0.032);
+        this._stepFrame(true);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      if (tree.state === 'falling') {
+        for (let i = 0; i < 60 && tree.state === 'falling'; i++) {
+          tf.update(this.camera, 0.033);
+        }
+      }
+      felled = tree.state === 'fallen' || tree.state === 'stump';
+      if (felled) {
+        this.humanoid.playVictoryCheer(5.5);
+        this.humanoid.root.rotation.y = this.playerYaw + 2.35;
+      }
+    }
+
+    this._syncSettingAndCostumeUI();
+    this._refreshAllHUD();
+    this._stepFrame(true);
+    return { felled, hits: tree.hits || swings };
+  }
+
+  _getChopperTestState() {
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    const px = this.humanoid.root.position.x;
+    const py = this.humanoid.root.position.y;
+    const pz = this.humanoid.root.position.z;
+
+    let nearest = null;
+    if (tf && tf.trees) {
+      let bestDist = Infinity;
+      for (const t of tf.trees) {
+        if (t.state === 'gone') continue;
+        const d = Math.hypot(px - t.position.x, pz - t.position.z);
+        if (d < bestDist) {
+          bestDist = d;
+          nearest = {
+            id: t.id,
+            x: +t.position.x.toFixed(3),
+            z: +t.position.z.toFixed(3),
+            radius: +t.radius.toFixed(3),
+            distance: +d.toFixed(3)
+          };
+        }
+      }
+    }
+
+    return {
+      setting: this.environment ? this.environment.getSetting() : 'nj',
+      costume: this.humanoid ? this.humanoid.costume : 'tee',
+      axe: this.humanoid ? this.humanoid.equippedAxeId : 'sergey',
+      quality: this.qualityPreset === 'ultra' ? 'high' : this.qualityPreset,
+      mode: this.interactionMode,
+      player: {
+        x: +px.toFixed(3),
+        y: +py.toFixed(3),
+        z: +pz.toFixed(3)
+      },
+      anim: this.humanoid ? this.humanoid.currentAnimName : 'Idle',
+      characterLoaded: Boolean(this.humanoid && this.humanoid.characterLoaded),
+      axeAttachedTo: this.humanoid ? this.humanoid.axeAttachedTo : 'RightHand',
+      trees: tf ? tf.stats() : { standing: 0, chopping: 0, falling: 0, felled: 0 },
+      nearestTree: nearest
+    };
+  }
+
   _exposeGlobalAPI() {
     window.swing = (power) => this.swing(power);
     window.plantWedge = () => this.plantSplittingWedge();
@@ -1642,6 +2339,34 @@ class AxeSplittingSimulation {
     window.getAudioState = () => this.getAudioState();
     window.audioDemo = (seconds) => this.audioDemo(seconds);
     window.sim = this;
+
+    window.chopperTest = {
+      ready: () => {
+        const tf = this.environment ? this.environment.getTreeField() : null;
+        return Boolean(
+          this._assetsReady &&
+            this.humanoid &&
+            this.humanoid.characterLoaded &&
+            tf &&
+            tf.trees &&
+            tf.trees.length > 0
+        );
+      },
+      setSetting: (setting) => this.switchBackyardSetting(setting),
+      setCostume: (costume) => this.switchSergeyCostume(costume),
+      setAxe: (axe) => this.setEquippedAxeById(axe),
+      setQuality: (q) => {
+        const normQ = ['low', 'medium', 'high', 'ultra'].includes(q) ? q : 'low';
+        this.setQualityPreset(normQ);
+        this._stepFrame(true);
+        return normQ;
+      },
+      enterYard: () => this.enterYardMode(),
+      enterStump: () => this.enterStumpMode(),
+      teleportNearTree: () => this.teleportNearTree(),
+      chopTree: () => this.chopTreeUntilFelled(),
+      state: () => this._getChopperTestState()
+    };
   }
 
   _updateWeatherBadge(weather) {
@@ -2144,6 +2869,20 @@ class AxeSplittingSimulation {
       this.choppingStation.update(subDt, this.atmosphere.windVector);
     }
 
+    this._elapsedClock += dt;
+    this._stepYardLocomotion(rawDt);
+    if (this.woodchipsBurst) {
+      this.woodchipsBurst.update(dt);
+    }
+    if (this.environment && typeof this.environment.updateTreesAndWind === 'function') {
+      this.environment.updateTreesAndWind(
+        this.camera,
+        dt,
+        this._elapsedClock,
+        this.atmosphere.windStrength
+      );
+    }
+
     this.atmosphere.update(dt, this.gameState.logsSplitCount);
     if (this.sound) {
       if (typeof this.sound.updateMusicState === 'function') {
@@ -2175,7 +2914,9 @@ class AxeSplittingSimulation {
     }
     this.debugWireframe.update();
 
-    this.controls.update();
+    if (this.interactionMode === 'stump') {
+      this.controls.update();
+    }
     this._updateTelemetry();
 
     // Apply decaying trauma camera shake around OrbitControls camera position
