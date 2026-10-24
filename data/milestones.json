@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-24 02:16 EDT",
+ "generated": "2026-10-24 02:37 EDT",
  "rows": [
   {
    "key": "v1",
@@ -58,7 +58,7 @@
       "runs": 1
      },
      "cost_short": "$0.76 cum.",
-     "cost_long": "Cost to here: $0.76 over 1 game-build runs = $0.76 token-priced.",
+     "cost_long": "Cost to here: $0.76 over 1 game-build run = $0.76 token-priced.",
      "img": "assets/milestones/codex/v1",
      "hud_min_px": 7,
      "hud_small": true,
@@ -288,7 +288,7 @@
       "runs": 1
      },
      "cost_short": "$6.35 cum.",
-     "cost_long": "Cost to here: $6.35 over 1 game-build runs = $6.35 token-priced.",
+     "cost_long": "Cost to here: $6.35 over 1 game-build run = $6.35 token-priced.",
      "img": "assets/milestones/claude/v1",
      "hud_min_px": 10,
      "hud_small": true,
@@ -436,7 +436,7 @@
       "runs": 1
      },
      "cost_short": "$0.14 cum.",
-     "cost_long": "Cost to here: $0.14 over 1 game-build runs = $0.14 token-priced.",
+     "cost_long": "Cost to here: $0.14 over 1 game-build run = $0.14 token-priced.",
      "img": "assets/milestones/deepseek/v1",
      "hud_min_px": 7,
      "hud_small": true,
@@ -801,7 +801,7 @@
       ]
      },
      "cost_short": "est. $1.24 cum.",
-     "cost_long": "Cost to here: est. $1.24 over 1 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_long": "Cost to here: est. $1.24 over 1 run (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
      "img": "assets/milestones/gemini/v1",
      "hud_min_px": 10.56,
      "hud_small": true,

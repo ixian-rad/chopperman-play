@@ -95,6 +95,7 @@ GT = dict(runs=len(grows), wall=sum(r['wall_s'] or 0 for r in grows), inp=sum(r[
 GT['per_h'] = GT['cost'] / (GT['wall'] / 3600) if GT['wall'] else None
 g_phase = gstate.get('phase') or '?'
 g_updated = gstate.get('updated') or 'unknown'
+g_updated_et = g_updated if re.search(r'\b(EDT|EST|ET)$', g_updated) else g_updated + ' ET'   # avoid 'EDT ET'
 g_done = gstate.get('done') or []
 g_assets = bool(g_live and 'assets-v2' in g_live['tag'])
 g_title = 'Backyard Wood Splitter'
@@ -119,7 +120,7 @@ def gem_blog():
     A_ = o.append
     A_('<h3 class="h-mid" id="gemini-runs">A fourth harness: Gemini 4 Argon <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>')
     A_(f'<p class="fine"><strong>In progress, updated as the build continues.</strong> Gemini 4 Argon (high reasoning, through the Antigravity CLI) is building the same game from the same prompts in the same order. '
-       f'It is <strong>not included in any total above</strong>. {E(G_BASIS)} Driver state as of {E(g_updated)} ET: phase <span class="mono">{E(g_phase)}</span>. {E(gstat_line())}</p>')
+       f'It is <strong>not included in any total above</strong>. {E(G_BASIS)} Driver state as of {E(g_updated_et)}: phase <span class="mono">{E(g_phase)}</span>. {E(gstat_line())}</p>')
     A_('<div class="tablewrap" role="region" aria-label="Gemini totals, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Gemini totals so far (est.)</caption><thead><tr>'
        '<th scope="col">Harness</th><th scope="col">Runs</th><th scope="col">Agent time</th><th scope="col">Input, uncached</th><th scope="col">Input, cached</th><th scope="col">Output</th><th scope="col">Est. total (USD)</th></tr></thead><tbody>')
     A_('<tr>' + f'<th scope="row">{GEM_NAME}</th>' + cell(str(GT['runs'])) + cell(hrs(GT['wall'])) + cell(n(GT['inp'])) + cell(n(GT['cached'])) + cell(n(GT['out'])) + cell(f'<strong>{usd(GT["cost"], True)}</strong>') + '</tr>')
@@ -307,7 +308,7 @@ gem_html = f"""<article class="pcard pcard--wip" id="gemini" style="--hc:var(--h
 put_block(PAGE['home'], 'GEMINI', gem_html)
 
 status_html = (f'<p class="flag flag--wide ms-gemini"><strong>Gemini 4 Argon is in progress.</strong> Finished rounds: {E(", ".join(x for x in g_done if x != "repo")) or "none yet"}. '
-               f'Running now: <span class="mono">{E(g_phase)}</span>. Playable build: <span class="mono">{cur}</span>. Driver state as of {E(g_updated)} ET. '
+               f'Running now: <span class="mono">{E(g_phase)}</span>. Playable build: <span class="mono">{cur}</span>. Driver state as of {E(g_updated_et)}. '
                f'Its column shows its newest tag as “in progress” until the next milestone is tagged. Its dollars are <strong>est.</strong> (login-based, not billed).</p>')
 put_block(PAGE['milestones'], 'GEMINI-STATUS', status_html)
 
@@ -317,7 +318,7 @@ put_block(PAGE['results'], 'GEMINI-SCORES-NOTE', sc_note)
 
 co_html = f"""<section class="gemcost" id="gemini-cost" aria-labelledby="gemcost-title">
 <h3 class="h-mid" id="gemcost-title">Gemini 4 Argon so far <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>
-<p class="fine">Gemini 4 Argon is <strong>not</strong> in the table or totals above: it is still being built, and its dollars are <strong>est.</strong> (login-based, not billed). Driver state as of {E(g_updated)} ET.</p>
+<p class="fine">Gemini 4 Argon is <strong>not</strong> in the table or totals above: it is still being built, and its dollars are <strong>est.</strong> (login-based, not billed). Driver state as of {E(g_updated_et)}.</p>
 <div class="tablewrap"><table class="scoreboard" id="sb-gemini">
 <caption class="sr-only">Gemini 4 Argon: estimated cost so far</caption>
 <colgroup><col class="col-metric"><col></colgroup>

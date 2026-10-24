@@ -97,13 +97,13 @@ def cost_short(h, c):
 
 def cost_long(h, c):
     if h == 'gemini':
-        return (f'Cost to here: est. {usd(c["total"])} over {c["runs"]} runs (measured tokens × Gemini 4 Argon list price; login-based, not billed).')
+        return (f'Cost to here: est. {usd(c["total"])} over {c["runs"]} run{"" if c["runs"] == 1 else "s"} (measured tokens × Gemini 4 Argon list price; login-based, not billed).')
     parts = []
     if c['reported']: parts.append(f'{usd(c["reported"])} reported')
     if c['token_priced']: parts.append(f'{usd(c["token_priced"])} token-priced')
     if c['est']: parts.append(f'est. {usd(c["est"])}')
     if c['balance']: parts.append(f'{usd(c["balance"])} measured by balance')
-    return f'Cost to here: {usd(c["total"])} over {c["runs"]} game-build runs = ' + ' + '.join(parts) + '.'
+    return f'Cost to here: {usd(c["total"])} over {c["runs"]} game-build run{"" if c["runs"] == 1 else "s"} = ' + ' + '.join(parts) + '.'
 
 
 # ---------------- capture + derive ----------------
