@@ -73,7 +73,7 @@ python3 tools/build_milestones.py --capture --only=gemini > /tmp/gemini-mileston
 say "milestones: $(grep '^gemini ' /tmp/gemini-milestones.txt)"
 python3 tools/build_blog.py >/dev/null || { fail "build_blog.py"; exit 1; }
 say "blog/card rebuilt: $(python3 -c "import json;d=json.load(open('data/gemini.json'));print('est. \$%s, %s runs, phase %s, playable %s'%(d['cost_usd_est'],d['runs'],d['driver_phase'],(d['playable'] or {}).get('commit')))")"
-VIEWS=desktop,mobile flock $CH/reports/.verify.lock node tools/check_pages.mjs http://localhost:$PORT/ /tmp/gemini-pages-check > /tmp/gemini-pages-check.json 2>&1 \
+VIEWS=desktop,mobile flock $CH/reports/.verify.lock node tools/check_pages.mjs http://127.0.0.1:$PORT/ /tmp/gemini-pages-check > /tmp/gemini-pages-check.json 2>&1 \
   && say "page check (all pages, desktop + mobile) PASS" || { fail "page check (see /tmp/gemini-pages-check.json)"; sed -n '/^FAIL/,$p' /tmp/gemini-pages-check.json | head -8; }
 
 # 5. commit + push

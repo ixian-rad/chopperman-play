@@ -112,7 +112,7 @@ for (const [u, hashes] of linkTargets) {
     const html = await r.text();
     for (const h of hashes) {
       const inHtml = html.includes(`id="${h}"`);
-      if (!inHtml) { await lp.goto(u + '#' + h, { waitUntil: 'networkidle' }); const ok = await lp.evaluate(id => !!document.getElementById(id), h); check(ok, `anchor #${h} missing on ${u}`); }
+      if (!inHtml) { await lp.goto(u + '#' + h, { waitUntil: 'load' }); const ok = await lp.evaluate(id => !!document.getElementById(id), h); check(ok, `anchor #${h} missing on ${u}`); }
     }
   }
 }
@@ -123,17 +123,17 @@ const I = report.interactions;
 { // old anchors redirect
   const { ctx, page } = await newPage(VIEWS[0]);
   for (const [from, to] of [['#reviews', 'results/#reviews'], ['#behind-the-build', 'cost/#log'], ['#scores', 'results/#scores'], ['#cost', 'cost/'], ['#round1', 'results/#round1'], ['#sb-gemini', 'cost/#gemini-cost']]) {
-    await page.goto(base + from, { waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+    await page.goto(base + from, { waitUntil: 'domcontentloaded' }).catch(() => {}); await page.waitForLoadState('load').catch(() => {}); await page.waitForTimeout(1200);
     const got = page.url().replace(base, '');
     I['redirect ' + from] = got; check(got === to, `old anchor ${from} -> ${got}, expected ${to}`);
     if (from === '#round1') { I.round1Open = await page.evaluate(() => !!(document.getElementById('round1') || {}).open); check(I.round1Open, '#round1 details not opened'); }
   }
   for (const same of ['#v2', '#games', '#classic', '#gemini', '#coop', '#intro', '#about']) {
-    await page.goto(base + same, { waitUntil: 'networkidle' });
+    await page.goto(base + same, { waitUntil: 'load' });
     const ok = page.url() === base + same && await page.evaluate(id => !!document.getElementById(id), same.slice(1)); check(ok, `home anchor ${same} broken`);
   }
   // scroll-spy
-  await page.goto(base, { waitUntil: 'networkidle' });
+  await page.goto(base, { waitUntil: 'load' });
   await page.evaluate(() => document.getElementById('glance').scrollIntoView({ block: 'center', behavior: 'instant' })); await page.waitForTimeout(500);
   I.spyResults = await page.evaluate(() => (document.querySelector('.nav a[data-nav="results"]') || {}).getAttribute?.('aria-current'));
   check(I.spyResults === 'location', 'scroll-spy did not mark Results');
@@ -141,14 +141,14 @@ const I = report.interactions;
   I.spyPlay = await page.evaluate(() => document.querySelector('.nav a[data-nav="play"]').getAttribute('aria-current'));
   check(I.spyPlay === 'location', 'scroll-spy did not mark Play');
   // ribbon dismiss persists
-  await page.click('.ribbon__x'); await page.reload({ waitUntil: 'networkidle' });
+  await page.click('.ribbon__x'); await page.reload({ waitUntil: 'load' });
   I.ribbonHiddenAfterDismiss = await page.evaluate(() => getComputedStyle(document.querySelector('.ribbon')).display === 'none');
   check(I.ribbonHiddenAfterDismiss, 'ribbon dismissal did not persist');
   await ctx.close();
 }
 { // mobile menu + auto-hide bar
   const { ctx, page } = await newPage(VIEWS[1]);
-  await page.goto(base, { waitUntil: 'networkidle' });
+  await page.goto(base, { waitUntil: 'load' });
   I.barHeight = await page.evaluate(() => document.getElementById('topbar').getBoundingClientRect().height);
   check(I.barHeight <= 57, `mobile bar is ${I.barHeight}px tall`);
   await page.click('.menubtn');
@@ -167,7 +167,7 @@ const I = report.interactions;
   I.barReturnsOnScrollUp = await page.evaluate(() => !document.getElementById('topbar').classList.contains('is-hidden'));
   check(I.barHidesOnScrollDown && I.barReturnsOnScrollUp, 'mobile bar auto-hide');
   // milestones on mobile: tabs + one timeline
-  await page.goto(base + 'milestones/', { waitUntil: 'networkidle' });
+  await page.goto(base + 'milestones/', { waitUntil: 'load' });
   await page.click('#tab-claude');
   I.mobileTab = await page.evaluate(() => ({ claude: getComputedStyle(document.getElementById('tl-claude')).display, codex: getComputedStyle(document.getElementById('tl-codex')).display, grid: getComputedStyle(document.getElementById('ms-grid')).display, url: location.search }));
   check(I.mobileTab.claude === 'block' && I.mobileTab.codex === 'none' && I.mobileTab.grid === 'none', 'mobile milestone tabs');
@@ -175,7 +175,7 @@ const I = report.interactions;
 }
 { // milestones desktop: view toggle, URL state, lightbox, compare
   const { ctx, page } = await newPage(VIEWS[0]);
-  await page.goto(base + 'milestones/', { waitUntil: 'networkidle' });
+  await page.goto(base + 'milestones/', { waitUntil: 'load' });
   await page.click('.ms-grid figure[data-row="assets"] .shot__open');
   await page.waitForTimeout(400);
   I.lightbox = await page.evaluate(() => ({ open: document.getElementById('lightbox').open, count: document.querySelector('.lightbox__count').textContent, src: document.querySelector('.lightbox__img').getAttribute('src') }));
@@ -196,7 +196,7 @@ const I = report.interactions;
   await page.click('#tab-gemini'); await page.goBack(); await page.waitForTimeout(200);
   I.backButton = await page.evaluate(() => location.search + ' ' + getComputedStyle(document.getElementById('tl-codex')).display);
   check(/h=codex/.test(I.backButton) || / block$/.test(I.backButton), 'Back button did not restore the previous harness');
-  await page.goto(base + 'milestones/?view=harness&h=deepseek', { waitUntil: 'networkidle' });
+  await page.goto(base + 'milestones/?view=harness&h=deepseek', { waitUntil: 'load' });
   I.deepLink = await page.evaluate(() => getComputedStyle(document.getElementById('tl-deepseek')).display);
   check(I.deepLink === 'block', 'deep link ?view=harness&h=deepseek');
   await page.evaluate(() => { const d = document.querySelector('#tl-deepseek details.film'); d.open = true; d.scrollIntoView(); }); await page.waitForTimeout(1500);
