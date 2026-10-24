@@ -334,11 +334,12 @@
     each('[data-glance] [data-k="total"]', function (c) { c.textContent = 'Cost: see the cost page'; });
     each('[data-v2cost]', function (c) { c.innerHTML = ''; c.appendChild(el('p', 'v2fine', 'Cost data could not be loaded (data/costs.json).')); });
   });
-  var gg = $('#glance-gemini');
-  if (gg) getJSON('data/gemini.json').then(function (d) {
+  var gt = $('[data-glance-gemini]');
+  if (gt) getJSON('data/gemini.json').then(function (d) {
     if (d.cost_usd_est == null) return;
-    gg.appendChild(document.createTextNode(' Running figure so far: est. ' + fmtUSD(d.cost_usd_est) + ' over ' + d.wall_h.toFixed(1) + ' agent hours.'));
-  }).catch(function () {});
+    text($('[data-k="total"]', gt), 'est. ' + fmtUSD(d.cost_usd_est));
+    text($('[data-k="sub"]', gt), 'So far: ' + d.runs + ' runs, ' + d.wall_h.toFixed(1) + ' agent h. Login-based, not billed: est. = measured tokens × list price, kept out of the other totals.');
+  }).catch(function () { text($('[data-k="total"]', gt), 'est.: see the cost page'); });
 
   // 6. Milestones gallery: Compare-harnesses grid <-> one-harness timeline (state in the URL), harness tabs, lightbox
   var ms = $('.ms');

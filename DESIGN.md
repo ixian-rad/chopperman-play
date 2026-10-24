@@ -2,7 +2,7 @@
 
 ## Concept: "The chopping block at golden hour"
 
-The site is a backyard woodpile at sunset. You arrive at a chopping block with an axe already bitten into the round, chips in the air, and three Play buttons. Everything after that is laid out like a well-kept workshop: plank-dark panels, bark edges and saw-tooth dividers between sections, and growth rings in the background.
+The site is a backyard woodpile at sunset. You arrive at a chopping block with an axe already bitten into the round, chips in the air, and the Play buttons (three at launch, four since Gemini 4 Argon joined). Everything after that is laid out like a well-kept workshop: plank-dark panels, bark edges and saw-tooth dividers between sections, and growth rings in the background.
 
 The visual language comes from the earlier **Grain & Gravity** channel kit (same palette and fonts), so the reviews and the site read as one family. Chopperman gets its own mark, though. Grain & Gravity is a face-on split round inside a blueprint protractor. Chopperman is a **3/4-view chopping block** with the axe stuck in the top, set against a golden-hour treeline inside a cedar-rimmed badge.
 
@@ -49,11 +49,11 @@ All SVGs are hand-built geometry written by the Python script. Text is converted
 
 | File | Size | What / how |
 |---|---|---|
-| `logo.svg` | 52 KB | Horizontal logo, 1200×340. Emblem plus the "CHOPPERMAN" wordmark in Alfa Slab One outlines with a three-step heartwood extrusion. "CHOP" is in chalk and "PERMAN" in sapwood. A V-shaped axe bite is masked out of the top of the **O**, with two chips and ember streaks leaving it. Tagline "THREE AIs · ONE AXE" in Barlow Condensed outlines between cedar rules (the tagline is the Round 1 video title). |
+| `logo.svg` | 52 KB | Horizontal logo, 1200×340. Emblem plus the "CHOPPERMAN" wordmark in Alfa Slab One outlines with a three-step heartwood extrusion. "CHOP" is in chalk and "PERMAN" in sapwood. A V-shaped axe bite is masked out of the top of the **O**, with two chips and ember streaks leaving it. Tagline "FOUR AIs · ONE AXE" (was "THREE AIs" until Gemini 4 Argon joined; set in `tools/build_brand.py`) in Barlow Condensed outlines between cedar rules (the tagline is the Round 1 video title). |
 | `logo-mark.svg` | 33 KB | Square emblem, 512×512. Cedar-rimmed badge with a golden-hour glow and pine treeline. A 3/4-view chopping block with a bark side, wobbly growth rings, an off-centre pith, radial checks and a split running toward the viewer. A steel axe head is clipped along an entry line so the bit looks buried. The hickory handle breaks out of the badge, and three chips fly off with motion streaks. |
 | `favicon.svg` | 1 KB | Simplified 64×64 version: block, two rings, axe and one ember chip. |
 | `logo.png` | 130 KB | 1200×340 transparent render of `logo.svg` (made with `tools/render.mjs`). |
-| `og-image.png` | 461 KB | 1200×630 social card: hero art, scrim, logo, one-line pitch and three ember tags. Built from `tools/og.html` in headless Chrome. |
+| `og-image.png` | 461 KB | 1200×630 social card: hero art, scrim, logo (FOUR AIs tagline), one-line pitch and a strip of each of the four harnesses’ newest milestone frames. Built from `tools/og.html` in headless Chrome. |
 | `poster-review-v2.jpg` | 65 KB | 960×540 video poster. A frame at 1:31 of the v2 review is darkened under a gradient, with the emblem and the title "Chopperman: Round Two" on top (`tools/poster.html`). |
 | `hero.svg` | 188 KB | 1920×1080 golden-hour backyard. Gradient sky, sun with glow and 11 light rays, a hazy far ridge with about 60 procedural pines, a mid treeline, a haze band and a split-rail fence. A woodpile of end-grain discs, dark framing pines, the chopping block with the axe (reusing the emblem geometry), two split halves, scattered chips and dust motes, plus a vignette. |
 | `divider-logedge.svg` | 7 KB | Bark-edge band (heartwood, cedar sapwood line, furrows) under the hero. |
@@ -124,7 +124,7 @@ Screenshots: `/workspace/recordings/site/site-desktop-full.png` and `site-mobile
 
 ## Assets v2 update (Oct 22–23, 2026)
 
-All three games got the "Assets v2" upgrade. The main folders (`claude/`, `codex/`, `deepseek/`) now serve the v2 builds, tagged `assets-v2-release`. `classic/<g>/` still serves the pre-assets builds. I kept the design, palette, fonts and structure the same. Changes:
+Codex, Claude Code and DeepSeek got the "Assets v2" upgrade (Gemini 4 Argon joined later; its version is not finished yet). The main folders (`claude/`, `codex/`, `deepseek/`) now serve the v2 builds, tagged `assets-v2-release`. `classic/<g>/` still serves the pre-assets builds. I kept the design, palette, fonts and structure the same. Changes:
 
 - **Hero.** The SVG backyard is replaced with GPT key art of Sergey (`hero_wide`). On desktop (above 1100px) the image fills the hero and the copy sits on a charcoal scrim: 92–95% opacity under the text, fading out at 54–64% so Sergey stays clear. Below 1100px the image sits above the copy at 16:9, fades into charcoal at the bottom, and the copy is on solid charcoal. The Play buttons read "Play v2" and open the v2 builds. The note under them links to the v2 and Classic sections.
 - **Quick intro** (`#intro`) is directly under the hero: `<video controls preload="metadata" playsinline>` with `assets/video/chopperman-intro-web.mp4` and its poster, plus a one-line caption.
@@ -183,3 +183,10 @@ Implements `reports/site-design/PROPOSAL.md` (P0–P2). The one long page became
 - **New tokens:** `--dim #B8A894` (7.87:1), harness colours `--h-codex #9CC3FF`, `--h-claude #F0A27A`, `--h-deepseek #7FD6C2`, `--h-gemini #C9A7FF` (all ≥ 8.8:1 on Bark), always next to the harness name. 8-pt spacing scale `--s1…--s9`.
 - **Fonts:** WOFF2 first (≈20% smaller), WOFF fallback.
 - **Checks:** `tools/check_pages.mjs` (every page × 1280/390/768/1920: errors, failed requests, text ≥16px, contrast ≥4.5:1, 44px targets, overflow, links + anchors, menu, ribbon, router, gallery, lightbox).
+
+### Four AIs (2026-10-24)
+The competition is four harnesses: Codex, Claude Code, DeepSeek and Gemini 4 Argon. Gemini joined later and is still building, so copy names
+the three when only they did something (a dated brief, the co-op release, the reviews) and says Gemini’s version is not finished yet.
+The generators decide this from Gemini’s tags (`data/milestones.json`): `build_blog.py` (headline, story, Assets v2/co-op sentences, and the
+`<span data-who>` spans in the hand-written pages) and `build_coop.py` (co-op lede) switch to “all four” once Gemini tags `assets-v2-release` /
+`coop-voice-release`. Totals rows say what they sum: “Codex, Claude Code, DeepSeek”, then Gemini (est.), then “All four, incl. Gemini est.”.

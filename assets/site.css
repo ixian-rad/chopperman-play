@@ -567,13 +567,14 @@ summary .kicker { margin: 0; }
 .strip a { display: block; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
 .strip img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
 .strip span { display: block; font-family: var(--f-label); font-weight: 600; font-size: 1rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
-.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s4); }
+@media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stat { background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--hc); border-radius: 12px; padding: var(--s4); }
 .stat p { margin: 0; }
 .stat__who { font-family: var(--f-label); font-weight: 700; font-size: 1.375rem; letter-spacing: .06em; text-transform: uppercase; color: var(--hc); }
 .stat__score { font-size: 1.0625rem; color: var(--muted); }
 .stat__score b { font-family: var(--f-mono); font-weight: 500; color: var(--chalk); }
-.stat__cost { font-family: var(--f-display); font-size: 2rem; color: var(--ember); margin: 6px 0 4px !important; line-height: 1.2; }
+.stat__cost { font-family: var(--f-display); font-size: 1.75rem; color: var(--ember); margin: 6px 0 4px !important; line-height: 1.2; }
 .stat__sub { font-size: 1rem; color: var(--muted); line-height: 1.5; }
 #glance-gemini { margin-top: var(--s4); }
 .introcard { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: var(--s6); align-items: center; }

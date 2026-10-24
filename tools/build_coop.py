@@ -26,11 +26,18 @@ def chk(x): return 'passed' if x else ('failed' if x is False else 'n/a')
 trs = ''.join(f'<tr><th scope="row">{NAME[h]}</th><td class="txt">{E(TITLE[h])}</td><td class="mono">{E(d["build"]["commit"])}</td><td>{chk(d["verify_ok"])}</td><td>{fps(d["fps"])}</td>'
               f'<td class="txt">{d["runs"]} runs, {d["wall_h"]:.2f} h, ${d["cost_usd"]:.2f}</td></tr>' for h, d in data.items())
 cards = ''.join(f'<li><a class="btn btn--play" href="{h}/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play co-op </em><b>{NAME[h].split()[0]} </b><small>{E(TITLE[h])}</small></span></a></li>' for h in H)
+# Gemini 4 Argon joined later: once it tags coop-voice-release (data/milestones.json, from tools/build_milestones.py) the lede says "all four".
+def _gem_coop():
+    try: return json.load(open(f'{SITE}/data/milestones.json'))['harness']['gemini']['cells']['coop']['state'] == 'ok'
+    except Exception: return False
+LEDE = ('All four games, Codex, Claude Code, DeepSeek and Gemini 4 Argon, now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. All four got the same co-op brief, then the same voice chat brief.'
+        if _gem_coop() else
+        'The Codex, Claude Code and DeepSeek games now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. Those three got the same co-op brief, then the same voice chat brief. Gemini 4 Argon joined later; its co-op version is not finished yet.')
 block = f"""<section class="section" id="coop" aria-labelledby="coop-title">
   <div class="wrap">
     <p class="kicker">Play together</p>
     <h2 id="coop-title">Online co-op and proximity voice chat</h2>
-    <p class="lede">The Codex, Claude and DeepSeek games now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. All three got the same co-op brief, then the same voice chat brief. Gemini’s co-op round has not run yet.</p>
+    <p class="lede">{LEDE}</p>
     <ul class="v2facts">
       <li><strong>Two players, one yard.</strong> Fell trees together. Damage adds up on the same tree, and it falls on both screens.</li>
       <li><strong>Shared rewards.</strong> Whoever chops the tree or splits the log gets the full XP and coins, and the partner gets half. Each player keeps their own save.</li>

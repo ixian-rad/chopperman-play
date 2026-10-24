@@ -268,7 +268,7 @@ def wordmark(x, baseline, size, tagline=True, tag_size=None):
     frag = "".join(layers)
     if tagline:
         ts = tag_size or size * 0.26
-        tag = "THREE AIs · ONE AXE"
+        tag = "FOUR AIs · ONE AXE"   # Codex, Claude Code, DeepSeek and Gemini 4 Argon
         tw = text_width(BARLOW, tag, ts, tracking=ts * 0.22)
         ty = baseline + size * 0.52
         cxm = x + total / 2
