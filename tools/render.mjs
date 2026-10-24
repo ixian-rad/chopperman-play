@@ -3,7 +3,7 @@
 import { createRequire } from 'module';
 import path from 'path';
 const require = createRequire(import.meta.url);
-const PW = process.env.PW_CORE || '/var/tmp/sand-playwright-runtime/45fa28ccf0c8b5450c0176ea24d08476/node_modules/playwright-core';
+const PW = process.env.PW_CORE || '/workspace/chopperman/driver/node_modules/playwright-core';
 const { chromium } = require(PW);
 const [src, out, w, h, scale = '1'] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
