@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Milestones gallery: data/milestones.json, the gallery block in milestones/index.html and the teaser strip on the home page.
+"""Milestones gallery: data/milestones.json, the gallery block in milestones/index.html and the teaser strip on the main page (home/index.html).
 Run: python3 tools/build_milestones.py [--capture] [--only=gemini]   (idempotent; tools/refresh_gemini.sh runs it with --capture --only=gemini)
 
 Rows (milestones) x columns (harnesses). A cell is a tagged build:
@@ -20,6 +20,7 @@ import html, json, os, re, subprocess, sys, tempfile, shutil, socket, datetime a
 from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from runlog import load_rows, load_gemini_rows, NONGAME, COUNTED
+from sitepaths import rebase, HOME, HOME_ROOT
 
 CH = '/workspace/chopperman'
 SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -341,7 +342,7 @@ if __name__ == '__main__':
     data = build(capture_for)
     json.dump(data, open(f'{SITE}/data/milestones.json', 'w'), indent=1, default=str)
     put(f'{SITE}/milestones/index.html', 'MILESTONES', render_page(data))
-    put(f'{SITE}/index.html', 'MILESTONES-TEASER', render_teaser(data))
+    put(HOME, 'MILESTONES-TEASER', rebase(render_teaser(data), HOME_ROOT))
     for h in HS:
         cs = data['harness'][h]['cells']
         print(h, ' | '.join(f'{k}:{c["state"]}' + (f' {c["tag"]} {c["commit"]} {c["cost_short"]}' + ('' if c['img'] else ' NO-IMG') if c['state'] in ('ok', 'live') else '') for k, c in cs.items()))

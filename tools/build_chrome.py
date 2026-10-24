@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Shared page chrome for the four site pages (/, /milestones/, /results/, /cost/): the head init script, the top bar with its
+"""Shared page chrome for the four main site pages (/home/, /milestones/, /results/, /cost/; the root URL is the splash page from
+tools/build_splash.py, which has no top bar): the head init script, the top bar with its
 mobile Menu sheet, the What's-new ribbon (from data/news.json) and the footer. Writes between the CHROME-INIT / CHROME-HEAD / CHROME-FOOT
 markers in each page, so a nav or footer change is made once here. Run: python3 tools/build_chrome.py (idempotent)."""
 import html, json, os, re
 SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 E = html.escape
-PAGES = {'home': ('index.html', ''), 'milestones': ('milestones/index.html', '../'), 'results': ('results/index.html', '../'), 'cost': ('cost/index.html', '../')}
+PAGES = {'home': ('home/index.html', '../'), 'milestones': ('milestones/index.html', '../'), 'results': ('results/index.html', '../'), 'cost': ('cost/index.html', '../')}
 NAV = [  # key, label, href (from the site root), sheet sub-label
-    ('play', 'Play', '#play', '4 games · v2, co-op, classic'),
+    ('play', 'Play', 'home/#play', '4 games · v2, co-op, classic'),
     ('milestones', 'Milestones', 'milestones/', 'v1 → co-op, per harness'),
     ('results', 'Results', 'results/', 'scores · reviews'),
     ('cost', 'Cost &amp; log', 'cost/', 'what it cost, every run'),
@@ -15,6 +16,12 @@ NAV = [  # key, label, href (from the site root), sheet sub-label
 ]
 QUICK = [('codex', 'Codex', 'btn--play'), ('claude', 'Claude', 'btn--play'), ('deepseek', 'DeepSeek', 'btn--play'), ('gemini', 'Gemini · WIP', 'btn--ghost')]
 news = json.load(open(f'{SITE}/data/news.json'))
+
+
+def link(page, root, href):
+    # href is relative to the site root; on the main page itself, its own anchors stay in-page
+    if page == 'home' and href.startswith('home/'): return href[5:] or './'
+    return root + href
 
 
 def init(root):
@@ -26,17 +33,17 @@ def init(root):
 def head(page, root):
     items = ''
     for k, label, href, _ in NAV:
-        url = '#about' if href is None else root + href
+        url = '#about' if href is None else link(page, root, href)
         cur = ' aria-current="page"' if k == page else ''
         dot = '<span class="dot" hidden><span class="sr-only"> (new milestone)</span></span>' if k == 'milestones' else ''
         items += f'<li><a href="{url}" data-nav="{k}"{cur}>{label}{dot}</a></li>'
-    sheet = ''.join(f'<li><a href="{"#about" if href is None else root + href}"{" aria-current=\"page\"" if k == page else ""}>{label} <small>{E(sub)}</small></a></li>' for k, label, href, sub in NAV)
+    sheet = ''.join(f'<li><a href="{"#about" if href is None else link(page, root, href)}"{" aria-current=\"page\"" if k == page else ""}>{label} <small>{E(sub)}</small></a></li>' for k, label, href, sub in NAV)
     quick = ''.join(f'<a class="btn {cls}" href="{root}{h}/">{E(n)}</a>' for h, n, cls in QUICK)
-    nhref = root + news['href'] if news['href'].startswith('#') else root + news['href']
+    nhref = link(page, root, 'home/' + news['href'] if news['href'].startswith('#') else news['href'])  # '#coop' = an anchor on the main page
     return f'''<a class="skip" href="#main">Skip to content</a>
 <header class="topbar" id="topbar">
   <div class="wrap topbar__inner">
-    <a class="brandlink" href="{root or './'}"><img src="{root}assets/brand/logo-mark.svg" alt="" width="40" height="40"><span>Chopperman</span><span class="sr-only">, home</span></a>
+    <a class="brandlink" href="{link(page, root, 'home/')}"><img src="{root}assets/brand/logo-mark.svg" alt="" width="40" height="40"><span>Chopperman</span><span class="sr-only">, home</span></a>
     <nav aria-label="Main"><ul class="nav">{items}</ul></nav>
     <button class="btn btn--ghost menubtn" type="button" aria-expanded="false" aria-controls="sheet"><span aria-hidden="true" class="menubtn__i">☰</span> <span class="menubtn__t">Menu</span></button>
   </div>

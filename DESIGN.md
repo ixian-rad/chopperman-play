@@ -190,3 +190,9 @@ the three when only they did something (a dated brief, the co-op release, the re
 The generators decide this from Gemini’s tags (`data/milestones.json`): `build_blog.py` (headline, story, Assets v2/co-op sentences, and the
 `<span data-who>` spans in the hand-written pages) and `build_coop.py` (co-op lede) switch to “all four” once Gemini tags `assets-v2-release` /
 `coop-voice-release`. Totals rows say what they sum: “Codex, Claude Code, DeepSeek”, then Gemini (est.), then “All four, incl. Gemini est.”.
+
+## Splash page (2026-10-24)
+
+The root URL is now a splash page, made by `tools/build_splash.py`. It shows the hero art and logo with a big **Enter the yard** button, the quick-intro video (`preload="none"`, no autoplay, sound only after you press play; the caption says it was made before Gemini 4 Argon joined), and the Round Two review in short. That part has one card per reviewed harness with its score ring, the three category bars, the verdict and the reviewed build, all read from `results/index.html`, so the two pages always match. Gemini 4 Argon gets a dashed "Not reviewed yet · In progress" card filled from `data/gemini.json`. The page ends with a second **Go to the site** button and quick-play links.
+
+The main page moved to `/home/`. The top-bar logo and the "Play" item go there on every page. Generators write their fragments with links relative to the site root, and `tools/sitepaths.py` (`rebase()`) fixes them up for `home/`. A head script on the splash forwards any old one-page hash (`/#play`, `/#coop` …) to `home/#…`. On `home/`, `site.js` then forwards the anchors that moved to other pages (`#reviews` → `results/#reviews`). `build_blog.py` rebuilds the splash at its end, so `refresh_gemini.sh` keeps Gemini's card current.

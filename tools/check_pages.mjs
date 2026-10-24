@@ -1,4 +1,4 @@
-// Check every site page (/, milestones/, results/, cost/) at desktop + mobile (+ tablet, wide) widths, plus the interactive parts.
+// Check every site page (/ = splash, home/ = main page, milestones/, results/, cost/) at desktop + mobile (+ tablet, wide) widths, plus the interactive parts.
 // usage: flock /workspace/chopperman/reports/.verify.lock node tools/check_pages.mjs <baseURL> [outDir]     env VIEWS=desktop,mobile,tablet,wide
 // Fails on: console/page errors, failed requests, text under 16 px, text contrast under 4.5:1 (solid backgrounds), tap targets under 44 px,
 // horizontal overflow, broken/alt-less images, dead internal links or #anchors, and broken interactions (menu, ribbon, router, gallery, lightbox).
@@ -10,7 +10,8 @@ const { chromium } = require(PW);
 const base = (process.argv[2] || 'http://localhost:8140/').replace(/\/?$/, '/');
 const outDir = process.argv[3] || '/workspace/chopperman/reports/site-redesign/check';
 mkdirSync(outDir, { recursive: true });
-const PAGES = ['', 'milestones/', 'results/', 'cost/'];
+const PAGES = ['', 'home/', 'milestones/', 'results/', 'cost/'];
+const label = pg => pg || 'splash/';
 const VIEWS = [{ name: 'desktop', width: 1280, height: 800 }, { name: 'mobile', width: 390, height: 844, mobile: true },
   { name: 'tablet', width: 768, height: 1024 }, { name: 'wide', width: 1920, height: 1080 }];
 const only = (process.env.VIEWS || 'desktop,mobile,tablet,wide').split(',');
@@ -32,7 +33,7 @@ async function newPage(v) {
 
 for (const v of VIEWS.filter(v => only.includes(v.name))) {
   for (const pg of PAGES) {
-    const key = `${pg || 'home/'}${v.name}`;
+    const key = `${label(pg)}${v.name}`;
     const { ctx, page } = await newPage(v);
     await page.goto(base + pg, { waitUntil: 'networkidle', timeout: 120000 });
     await page.evaluate(() => document.querySelectorAll('details').forEach(d => d.open = true));
@@ -76,7 +77,7 @@ for (const v of VIEWS.filter(v => only.includes(v.name))) {
     await page.evaluate(() => document.querySelectorAll('img[loading="lazy"]').forEach(i => { i.loading = 'eager'; }));
     await page.waitForFunction(() => [...document.images].filter(i => i.getAttribute('src')).every(i => i.complete), null, { timeout: 30000 }).catch(() => {});
     await page.evaluate(async () => { await Promise.all([...document.images].filter(i => i.getAttribute('src')).map(i => i.decode().catch(() => {}))); });
-    await page.screenshot({ path: `${outDir}/${(pg || 'home/').replace('/', '')}-${v.name}-full.png`, fullPage: true });
+    await page.screenshot({ path: `${outDir}/${label(pg).replace('/', '')}-${v.name}-full.png`, fullPage: true });
     const here = new URL(base + pg).href;
     for (const l of a.links) {
       const u = new URL(l); if (!u.href.startsWith(new URL(base).origin)) continue;
@@ -96,7 +97,7 @@ for (const v of VIEWS.filter(v => only.includes(v.name))) {
     check(!a.noAlt.length, `${key}: images without alt`);
     check(!a.dupIds.length, `${key}: duplicate ids ${a.dupIds.join(',')}`);
     check(!a.builds.some(t => /^loading|^see /.test(t)), `${key}: a BUILD.txt did not load`);
-    if (pg) check(a.current.length === 1 && /=page$/.test(a.current[0]), `${key}: nav aria-current=page missing (${a.current})`);
+    if (pg && pg !== 'home/') check(a.current.length === 1 && /=page$/.test(a.current[0]), `${key}: nav aria-current=page missing (${a.current})`);
     await ctx.close();
   }
 }
@@ -120,6 +121,28 @@ await lctx.close();
 
 // interactions
 const I = report.interactions;
+for (const v of [VIEWS[0], VIEWS[1]]) { // splash: the Enter button is in the first screen, the intro video never autoplays, and the click lands on the main page
+  const { ctx, page } = await newPage(v);
+  await page.goto(base, { waitUntil: 'load' }); await page.waitForTimeout(1500);
+  const sp = await page.evaluate(() => {
+    const b = document.querySelector('.splash__enter'), r = b && b.getBoundingClientRect(), vids = [...document.querySelectorAll('video')];
+    return { enterInFirstScreen: !!r && r.bottom <= innerHeight && r.top >= 0, enterHref: b && b.getAttribute('href'),
+      videos: vids.map(x => ({ autoplay: x.autoplay, paused: x.paused, muted: x.muted, t: x.currentTime, intro: /intro/.test(x.querySelector('source')?.src || x.src) })),
+      scores: [...document.querySelectorAll('.scard .bigscore__num')].map(e => e.textContent), gemini: (document.querySelector('.scard--wip') || {}).innerText || '' };
+  });
+  I['splash ' + v.name] = sp;
+  check(sp.enterInFirstScreen && sp.enterHref === 'home/', `splash ${v.name}: Enter button not in the first screen (${JSON.stringify(sp.enterHref)})`);
+  check(sp.videos.length && sp.videos.some(x => x.intro) && sp.videos.every(x => !x.autoplay && x.paused && x.t === 0), `splash ${v.name}: video autoplays or intro missing ${JSON.stringify(sp.videos)}`);
+  check(sp.scores.join() === '8,7,6' && /not reviewed yet/i.test(sp.gemini) && /in progress/i.test(sp.gemini), `splash ${v.name}: review cards ${sp.scores} / Gemini "${sp.gemini.slice(0, 60)}"`);
+  await Promise.all([page.waitForURL(base + 'home/', { timeout: 15000 }).catch(() => {}), page.click('.splash__enter')]);
+  I['splash click ' + v.name] = page.url().replace(base, '');
+  check(page.url() === base + 'home/' && await page.evaluate(() => !!document.getElementById('play')), `splash ${v.name}: Enter -> ${page.url()}`);
+  // the top-bar logo and the "Play" item on every other page go to the main page, not back to the splash
+  await page.goto(base + 'results/', { waitUntil: 'load' });
+  I['logo href ' + v.name] = await page.evaluate(() => new URL(document.querySelector('.brandlink').href).pathname);
+  check(I['logo href ' + v.name].endsWith('/home/'), `results ${v.name}: logo goes to ${I['logo href ' + v.name]}`);
+  await ctx.close();
+}
 { // old anchors redirect
   const { ctx, page } = await newPage(VIEWS[0]);
   for (const [from, to] of [['#reviews', 'results/#reviews'], ['#behind-the-build', 'cost/#log'], ['#scores', 'results/#scores'], ['#cost', 'cost/'], ['#round1', 'results/#round1'], ['#sb-gemini', 'cost/#gemini-cost']]) {
@@ -128,12 +151,16 @@ const I = report.interactions;
     I['redirect ' + from] = got; check(got === to, `old anchor ${from} -> ${got}, expected ${to}`);
     if (from === '#round1') { I.round1Open = await page.evaluate(() => !!(document.getElementById('round1') || {}).open); check(I.round1Open, '#round1 details not opened'); }
   }
-  for (const same of ['#v2', '#games', '#classic', '#gemini', '#coop', '#intro', '#about']) {
-    await page.goto(base + same, { waitUntil: 'load' });
-    const ok = page.url() === base + same && await page.evaluate(id => !!document.getElementById(id), same.slice(1)); check(ok, `home anchor ${same} broken`);
+  for (const same of ['#play', '#v2', '#games', '#classic', '#gemini', '#coop', '#intro', '#about', '#glance']) {
+    // an old one-page link (/#coop) is forwarded by the splash to the main page (home/#coop); the main page's own link must work too
+    for (const from of [same, 'home/' + same]) {
+      await page.goto(base + from, { waitUntil: 'domcontentloaded' }).catch(() => {}); await page.waitForLoadState('load').catch(() => {}); await page.waitForTimeout(300);
+      const got = page.url().replace(base, ''); I['anchor ' + from] = got;
+      const ok = got === 'home/' + same && await page.evaluate(id => !!document.getElementById(id), same.slice(1)); check(ok, `old home anchor ${from} -> ${got}, expected home/${same}`);
+    }
   }
   // scroll-spy
-  await page.goto(base, { waitUntil: 'load' });
+  await page.goto(base + 'home/', { waitUntil: 'load' });
   await page.evaluate(() => document.getElementById('glance').scrollIntoView({ block: 'center', behavior: 'instant' })); await page.waitForTimeout(500);
   I.spyResults = await page.evaluate(() => (document.querySelector('.nav a[data-nav="results"]') || {}).getAttribute?.('aria-current'));
   check(I.spyResults === 'location', 'scroll-spy did not mark Results');
@@ -148,7 +175,7 @@ const I = report.interactions;
 }
 { // mobile menu + auto-hide bar
   const { ctx, page } = await newPage(VIEWS[1]);
-  await page.goto(base, { waitUntil: 'load' });
+  await page.goto(base + 'home/', { waitUntil: 'load' });
   I.barHeight = await page.evaluate(() => document.getElementById('topbar').getBoundingClientRect().height);
   check(I.barHeight <= 57, `mobile bar is ${I.barHeight}px tall`);
   await page.click('.menubtn');

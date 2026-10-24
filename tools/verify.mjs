@@ -1,6 +1,6 @@
 // Verify the landing page: console errors, failed requests, screenshots,
 // font-size + contrast audit, horizontal overflow, tap targets, Play links.
-// usage: node tools/verify.mjs [baseURL] [outDir]
+// usage: node tools/verify.mjs [baseURL] [outDir]   (baseURL = the splash at the site root; add home/ for the main page)
 import { createRequire } from 'module';
 import { existsSync } from 'fs';
 const require = createRequire(import.meta.url);

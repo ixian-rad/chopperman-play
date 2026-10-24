@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the 'Behind the build' blog post from the real logs and inject it into cost/index.html, plus the Gemini blocks on the other pages
-(Play-picker card on index.html, scoreboard note on results/index.html, est. cost block on cost/index.html, progress line on milestones/index.html).
+(Play-picker card on home/index.html, scoreboard note on results/index.html, est. cost block on cost/index.html, progress line on milestones/index.html).
 Sources: reports/usage.csv, reports/v2-state-*.json, reports/assets-v2-*.log, assets/logs/spend.jsonl,
 plus (Gemini 4 Argon, in progress, kept OUT of the reported totals) reports/usage-gemini.csv, reports/gemini-state.json, data/gemini-refs.json, <site>/gemini/BUILD.txt.
 Run: python3 tools/build_blog.py  (idempotent: replaces everything between the BLOG markers)."""
@@ -13,6 +13,7 @@ NAME = {'claude': 'Claude Code', 'codex': 'Codex CLI', 'deepseek': 'DeepSeek Har
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from runlog import num, load_rows, load_gemini_rows, NONGAME   # shared with tools/build_milestones.py
+from sitepaths import rebase, HOME, HOME_ROOT
 rows, byh = load_rows()
 
 def s(rs, k): return sum((r[k] or 0) for r in rs if not r.get('est') or k == 'cost_usd')
@@ -274,8 +275,9 @@ A('<!-- BLOG END -->')
 frag = '\n'.join(out)
 
 # The site is split into pages (tools/build_chrome.py): the blog and Gemini's est. cost block go to cost/index.html, the scoreboard note to
-# results/index.html, Gemini's progress line to milestones/index.html and its Play-picker card to index.html. Every block sits between markers.
-PAGE = {'home': f'{SITE}/index.html', 'results': f'{SITE}/results/index.html', 'cost': f'{SITE}/cost/index.html', 'milestones': f'{SITE}/milestones/index.html'}
+# results/index.html, Gemini's progress line to milestones/index.html and its Play-picker card to home/index.html (the main page; the root index.html is
+# the splash from tools/build_splash.py, rebuilt at the end of this script). Every block sits between markers.
+PAGE = {'home': HOME, 'results': f'{SITE}/results/index.html', 'cost': f'{SITE}/cost/index.html', 'milestones': f'{SITE}/milestones/index.html'}
 
 
 def put_block(path, name, frag_html):
@@ -330,14 +332,14 @@ gem_html = f"""<article class="pcard pcard--wip" id="gemini" style="--hc:var(--h
     <p class="pcard__alt">{'<a href="classic/gemini/">Classic<span class="sr-only"> Gemini</span></a>' if g_classic else ''}<a href="milestones/?view=harness&amp;h=gemini">Progress<span class="sr-only"> of Gemini</span></a></p>
   </div>
 </article>"""
-put_block(PAGE['home'], 'GEMINI', gem_html)
+put_block(PAGE['home'], 'GEMINI', rebase(gem_html, HOME_ROOT))
 
 status_html = (f'<p class="flag flag--wide ms-gemini"><strong>Gemini 4 Argon is in progress.</strong> Finished rounds: {E(", ".join(x for x in g_done if x != "repo")) or "none yet"}. '
                f'Running now: <span class="mono">{E(g_phase)}</span>. Playable build: <span class="mono">{cur}</span>. Driver state as of {E(g_updated_et)}. '
                f'Its column shows its newest tag as “in progress” until the next milestone is tagged. Its dollars are <strong>est.</strong> (login-based, not billed).</p>')
 put_block(PAGE['milestones'], 'GEMINI-STATUS', status_html)
 
-sc_note = ('<p class="fine">A fourth harness, <a href="../#gemini">Gemini 4 Argon</a>, is still being built and is not reviewed or scored. '
+sc_note = ('<p class="fine">A fourth harness, <a href="../home/#gemini">Gemini 4 Argon</a>, is still being built and is not reviewed or scored. '
            'Its progress is in the <a href="../milestones/?view=harness&amp;h=gemini">milestones gallery</a> and its est. cost on the <a href="../cost/#gemini-cost">cost page</a>, kept apart from this table.</p>')
 put_block(PAGE['results'], 'GEMINI-SCORES-NOTE', sc_note)
 
@@ -402,3 +404,7 @@ summary = dict(T=T, claude_site=claude_site, claude_art=claude_art, meshy_cr=mes
                grand_harness=grand_harness, grand_assets=grand_assets, grand=grand, vo_chars=vo_chars, rv_chars=rv_chars,
                codex_iter7=[r for r in rows if r['harness']=='codex' and r['phase']=='iter-7'][0]['cost_usd'])
 print(json.dumps(summary, indent=1))
+
+# the splash page at the site root shows Gemini's newest build next to the review scores: rebuild it from the data just written
+import subprocess as _sp
+_sp.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_splash.py')], check=True, stdout=sys.stderr)
