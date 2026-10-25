@@ -35,7 +35,8 @@ for (const v of VIEWS.filter(v => only.includes(v.name))) {
   for (const pg of PAGES) {
     const key = `${label(pg)}${v.name}`;
     const { ctx, page } = await newPage(v);
-    await page.goto(base + pg, { waitUntil: 'networkidle', timeout: 120000 });
+    await page.goto(base + pg, { waitUntil: 'load', timeout: 120000 });
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});   // the review video can keep the network busy: don't hang on it
     await page.evaluate(() => document.querySelectorAll('details').forEach(d => d.open = true));
     await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 500) { window.scrollTo(0, y); await new Promise(r => setTimeout(r, 80)); } window.scrollTo(0, 0); });
     await page.waitForTimeout(600);
