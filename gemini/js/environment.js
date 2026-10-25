@@ -202,6 +202,7 @@ export function buildBackyardEnvironment(scene, world, materials) {
   let currentSetting = 'nj';
   let currentQuality = 'low';
   let currentTimePhase = 'dusk'; // 'day' | 'dusk' | 'night'
+  let currentWorldSeed = 133701;
   let treeField = null;
   let propColliders = [];
   let cordwoodMeshes = [];
@@ -256,11 +257,12 @@ export function buildBackyardEnvironment(scene, world, materials) {
   }
 
   /**
-   * Populates 28-38 trees in `treeField` using `trees_v2` species for the active setting.
-   * Ensures a clear central walking lane (x in [-1.8, 1.8], z in [-2, 14]) and a clear
+   * Populates 28 trees in `treeField` using `trees_v2` species for the active setting and `worldSeed`.
+   * Uses a fixed tree count (28) across all quality presets so host and guest worlds are 100% identical.
+   * Ensures a clear central walking lane (x in [-2.6, 2.6], z in [-5.5, 14.5]) and a clear
    * sightline corridor to the Tiraspol Cathedral so screenshots & locomotion checks always succeed.
    */
-  function populateTreesForSetting(setting, lib, quality) {
+  function populateTreesForSetting(setting, lib, quality, worldSeed = currentWorldSeed) {
     if (treeField && treeField.group) {
       scene.remove(treeField.group);
     }
@@ -274,9 +276,18 @@ export function buildBackyardEnvironment(scene, world, materials) {
 
     treeField = new TreeField(scene, lib, lodOpts);
     const speciesList = SETTING_SPECIES[setting] || SETTING_SPECIES.nj;
-    const rnd = makeSeededRandom(setting === 'tiraspol' ? 20261024 : 133701);
+    const baseSeed =
+      worldSeed != null && Number.isFinite(Number(worldSeed))
+        ? Number(worldSeed) >>> 0
+        : setting === 'tiraspol'
+        ? 20261024
+        : 133701;
+    currentWorldSeed = baseSeed;
+    const mixedSeed =
+      (baseSeed ^ (setting === 'tiraspol' ? 0x6c8e9cf5 : 0x00000000)) >>> 0;
+    const rnd = makeSeededRandom(mixedSeed || 133701);
 
-    const targetCount = quality === 'low' ? 28 : 34;
+    const targetCount = 28;
     const placed = [];
 
     // 1. Place 6 guaranteed accessible standing trees inside the yard near the chopping zone
@@ -389,11 +400,19 @@ export function buildBackyardEnvironment(scene, world, materials) {
     settingName = 'nj',
     quality = currentQuality,
     choppingStation = null,
-    timeOfDay = 17.15
+    timeOfDay = 17.15,
+    worldSeed = null
   ) {
     const targetSetting = settingName === 'tiraspol' ? 'tiraspol' : 'nj';
     currentSetting = targetSetting;
     currentQuality = quality || 'low';
+    const effectiveSeed =
+      worldSeed != null && Number.isFinite(Number(worldSeed))
+        ? Number(worldSeed) >>> 0
+        : targetSetting === 'tiraspol'
+        ? 20261024
+        : 133701;
+    currentWorldSeed = effectiveSeed;
 
     // Clear previous setting props
     while (settingPropsGroup.children.length > 0) {
@@ -620,7 +639,7 @@ export function buildBackyardEnvironment(scene, world, materials) {
       }
 
       // 8. Populate NJ trees_v2 (pine, oak, maple, birch)
-      populateTreesForSetting('nj', treeLib, currentQuality);
+      populateTreesForSetting('nj', treeLib, currentQuality, effectiveSeed);
     } else {
       // Load Tiraspol Backyard (Transnistria) GLB models + Tiraspol tree species in parallel
       const [
@@ -825,10 +844,18 @@ export function buildBackyardEnvironment(scene, world, materials) {
       addContinuousPerimeterFence(settingPropsGroup, 1.55, 0x9c8c78);
 
       // 8. Populate Tiraspol trees_v2 (walnut, apricot, poplar, birch)
-      populateTreesForSetting('tiraspol', treeLib, currentQuality);
+      populateTreesForSetting('tiraspol', treeLib, currentQuality, effectiveSeed);
     }
 
     return true;
+  }
+
+  async function rebuildTreesForSeed(seed, settingName = currentSetting) {
+    const targetSetting = settingName === 'tiraspol' ? 'tiraspol' : 'nj';
+    const speciesList = SETTING_SPECIES[targetSetting] || SETTING_SPECIES.nj;
+    const treeLib = await loadTreeLibForSpecies(speciesList);
+    populateTreesForSetting(targetSetting, treeLib, currentQuality, seed);
+    return treeField;
   }
 
   /**
@@ -907,11 +934,21 @@ export function buildBackyardEnvironment(scene, world, materials) {
     critterGroup,
     critters,
     loadSetting,
+    rebuildTreesForSeed,
     updateBackdropForTime,
     applyQualityToEnvironment,
     collidePlayer,
     getSetting() {
       return currentSetting;
+    },
+    getWorldSeed() {
+      return currentWorldSeed;
+    },
+    setWorldSeed(seed) {
+      if (seed != null && Number.isFinite(Number(seed))) {
+        currentWorldSeed = Number(seed) >>> 0;
+      }
+      return currentWorldSeed;
     },
     getTreeField() {
       return treeField;

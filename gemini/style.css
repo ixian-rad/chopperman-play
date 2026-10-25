@@ -71,10 +71,10 @@ body {
 .rpg-hud-bar {
   position: fixed;
   top: 10px;
-  left: 358px;
+  left: 356px;
   right: 10px;
-  min-height: 72px;
-  padding: 8px 12px;
+  min-height: 70px;
+  padding: 7px 10px;
   border-radius: 14px;
   background: var(--bg-panel);
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -82,27 +82,27 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   z-index: 12;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .hud-stat-group {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
 }
 
 .hud-card {
-  padding: 5px 8px;
+  padding: 4px 7px;
   border-radius: 10px;
   background: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.14);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-width: 66px;
+  min-width: 58px;
 }
 
 .hud-label {
@@ -110,7 +110,8 @@ body {
   line-height: var(--lh-tight);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   color: var(--text-secondary);
 }
 
@@ -140,10 +141,10 @@ body {
 
 .hud-bars-group {
   display: grid;
-  grid-template-columns: repeat(2, minmax(175px, 1fr));
-  gap: 8px 14px;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 6px 12px;
   flex: 1;
-  min-width: 360px;
+  min-width: 290px;
 }
 
 .hud-bar-item {
@@ -275,8 +276,9 @@ body {
    ========================================================================== */
 .hit-banner {
   position: fixed;
-  top: 132px;
-  left: calc(50% + 184px);
+  top: 208px;
+  left: calc(50% + 84px);
+  max-width: calc(100vw - 565px);
   transform: translateX(-50%);
   padding: 12px 24px;
   border-radius: 14px;
@@ -322,16 +324,17 @@ body {
    ========================================================================== */
 .yard-prompt-banner {
   position: fixed;
-  top: 94px;
-  left: calc(50% + 174px);
+  top: 104px;
+  left: calc(50% + 72px);
+  max-width: calc(100vw - 585px);
   transform: translateX(-50%);
-  padding: 10px 20px;
+  padding: 8px 16px;
   border-radius: 12px;
   background: rgba(10, 15, 25, 0.94);
   border: 1px solid rgba(56, 189, 248, 0.65);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.6);
   color: var(--text-primary);
-  font-size: var(--fs-subhead);
+  font-size: var(--fs-body);
   line-height: var(--lh-base);
   font-weight: 700;
   text-shadow: var(--text-shadow-strong);
@@ -1105,6 +1108,137 @@ kbd {
 }
 
 /* ==========================================================================
+   Character Picker, Player Name Input & Co-op UI / Toast Non-Overlapping Layout
+   ========================================================================== */
+.character-picker-card {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(8, 12, 20, 0.72);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  gap: 8px;
+}
+
+.char-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.char-preview-thumb {
+  width: 72px;
+  height: 92px;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: 9px;
+  border: 2px solid rgba(125, 211, 252, 0.65);
+  background: #0b1019;
+  flex-shrink: 0;
+}
+
+.char-picker-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.chip-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ui-input {
+  width: 155px;
+  min-height: 36px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--bg-control);
+  color: var(--text-primary);
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  font-size: var(--fs-body);
+  line-height: var(--lh-base);
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+}
+
+.ui-input:focus {
+  border-color: #7dd3fc;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
+.coop-toast {
+  position: fixed;
+  top: 162px;
+  left: calc(50% + 72px);
+  max-width: calc(100vw - 585px);
+  transform: translateX(-50%);
+  padding: 10px 22px;
+  border-radius: 12px;
+  background: rgba(10, 15, 25, 0.96);
+  border: 2px solid #7fd8ff;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 700;
+  text-shadow: var(--text-shadow-strong);
+  text-align: center;
+  z-index: 2147482000;
+  pointer-events: none;
+}
+
+/* Position Co-op button, panel, and voice HUD cleanly so they never overlap .rpg-hud-bar, .ui-panel, or .timing-hud */
+body .coop-btn {
+  top: 104px !important;
+  right: 12px !important;
+}
+
+body .coop-panel {
+  top: 156px !important;
+  right: 12px !important;
+  max-height: calc(100vh - 168px) !important;
+}
+
+body .coop-voice-hud {
+  left: 356px !important;
+  bottom: 206px !important;
+}
+
+body:has(#coop-panel:not([hidden])) .yard-prompt-banner,
+body:has(#coop-panel:not([hidden])) .coop-toast {
+  left: 356px;
+  transform: none;
+  width: calc(100vw - 756px);
+  max-width: calc(100vw - 756px);
+}
+
+body:has(#coop-panel:not([hidden])) .timing-hud {
+  left: 356px;
+  transform: none;
+  width: calc(100vw - 756px);
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+body:has(#coop-panel:not([hidden])) .timing-hud .meter-status {
+  display: none;
+}
+
+body:has(#coop-panel:not([hidden])) .timing-hud .btn-meter,
+body:has(#coop-panel:not([hidden])) .timing-hud .btn-primary {
+  flex: 0 1 auto;
+  padding: 6px 10px;
+}
+
+body:has(#coop-panel:not([hidden])) .coop-voice-hud {
+  bottom: 282px !important;
+  max-width: calc(100vw - 756px) !important;
+}
+
+/* ==========================================================================
    Responsive Tablet & Mobile Viewport (e.g. 390x844 Phone)
    ========================================================================== */
 @media (max-width: 1024px) {
@@ -1116,6 +1250,7 @@ kbd {
     gap: 8px;
     max-height: 27vh;
     overflow-y: auto;
+    flex-wrap: wrap;
   }
 
   .hud-stat-group {
@@ -1192,6 +1327,53 @@ kbd {
     width: auto;
     max-height: 29vh;
     padding: 10px 12px;
+  }
+
+  .yard-prompt-banner,
+  body:has(#coop-panel:not([hidden])) .yard-prompt-banner {
+    top: calc(27vh + 14px);
+    left: 8px;
+    right: 152px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  .coop-toast,
+  body:has(#coop-panel:not([hidden])) .coop-toast {
+    top: calc(33vh + 16px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  body .coop-btn {
+    top: calc(27vh + 14px) !important;
+    right: 8px !important;
+  }
+
+  body .coop-panel {
+    top: calc(27vh + 64px) !important;
+    right: 8px !important;
+    left: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-height: calc(73vh - 72px) !important;
+  }
+
+  body .coop-voice-hud,
+  body:has(#coop-panel:not([hidden])) .coop-voice-hud {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: calc(57vh + 20px) !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  body:has(#coop-panel:not([hidden])) .timing-hud {
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100vw - 16px);
   }
 
   .shop-columns {

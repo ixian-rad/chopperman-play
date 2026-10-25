@@ -3,7 +3,7 @@
 # Re-snapshots the Gemini 4 Argon build (in progress) from its PRIVATE GitHub remote, republishes it on the site, refreshes the numbers, and (unless told not to) pushes + live-checks.
 # It never touches /workspace/chopperman/axe-gemini (the live driver's repo). Safe to rerun any time; with nothing new it just refreshes the est. cost numbers.
 #   1. clone/fetch ixian-rad/chopperman-axe-gemini into /workspace/gemini-snap
-#   2. pick refs: /gemini/ = tag assets-v2-release if it exists, else origin/main (latest published build);
+#   2. pick refs: /gemini/ = tag coop-voice-release, else assets-v2-release, else origin/main (latest published build);
 #                 /classic/gemini/ = tag pre-assets (else origin/classic) once the classic freeze exists
 #   3. copy game files only (driver/sync_play.sh), smoke-test locally (landing page + game loads, no console errors, text >= 16px); on failure the previous /gemini/ is restored
 #   4. screenshot -> assets/shots/gemini/latest.webp (fallback card image);
@@ -35,7 +35,8 @@ git -C "$SNAP" fetch -q --tags --prune --force origin || { fail "fetch $REPO"; e
 has_ref() { git -C "$SNAP" rev-parse -q --verify "$1^{commit}" >/dev/null 2>&1; }
 
 # 2. refs
-if has_ref refs/tags/assets-v2-release; then LIVE_REF=refs/tags/assets-v2-release; else LIVE_REF=origin/main; fi
+if has_ref refs/tags/coop-voice-release; then LIVE_REF=refs/tags/coop-voice-release
+elif has_ref refs/tags/assets-v2-release; then LIVE_REF=refs/tags/assets-v2-release; else LIVE_REF=origin/main; fi
 CLASSIC_REF=""; if has_ref refs/tags/pre-assets; then CLASSIC_REF=refs/tags/pre-assets; elif has_ref origin/classic; then CLASSIC_REF=origin/classic; fi
 COOP=false; has_ref origin/coop-v1 && COOP=true
 say "live ref: $LIVE_REF ($(git -C $SNAP rev-parse --short $LIVE_REF)); classic ref: ${CLASSIC_REF:-none yet}; coop branch on remote: $COOP"
@@ -72,6 +73,7 @@ rm -f "$SHOT"
 python3 tools/build_milestones.py --capture --only=gemini > /tmp/gemini-milestones.txt 2>&1 || { fail "build_milestones.py (see /tmp/gemini-milestones.txt)"; tail -5 /tmp/gemini-milestones.txt; exit 1; }
 say "milestones: $(grep '^gemini ' /tmp/gemini-milestones.txt)"
 python3 tools/build_blog.py >/dev/null || { fail "build_blog.py"; exit 1; }
+python3 tools/build_coop.py >/dev/null || { fail "build_coop.py"; exit 1; }   # co-op section: adds Gemini's card/row once it tags coop-voice-release
 say "blog/card rebuilt: $(python3 -c "import json;d=json.load(open('data/gemini.json'));print('est. \$%s, %s runs, phase %s, playable %s'%(d['cost_usd_est'],d['runs'],d['driver_phase'],(d['playable'] or {}).get('commit')))")"
 VIEWS=desktop,mobile flock $CH/reports/.verify.lock node tools/check_pages.mjs http://127.0.0.1:$PORT/ /tmp/gemini-pages-check > /tmp/gemini-pages-check.json 2>&1 \
   && say "page check (all pages, desktop + mobile) PASS" || { fail "page check (see /tmp/gemini-pages-check.json)"; sed -n '/^FAIL/,$p' /tmp/gemini-pages-check.json | head -8; }
@@ -79,7 +81,8 @@ VIEWS=desktop,mobile flock $CH/reports/.verify.lock node tools/check_pages.mjs h
 # 5. commit + push
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
-  MSG="Gemini 4 Argon (in progress): live $(cat gemini/BUILD.txt | cut -d' ' -f2-), classic $( [ -f classic/gemini/BUILD.txt ] && cut -d' ' -f2- classic/gemini/BUILD.txt || echo none ); est. cost refreshed"
+  GSTAT=$(python3 -c "import json;print(json.load(open('data/gemini.json')).get('status','in progress'))" 2>/dev/null || echo 'in progress')
+  MSG="Gemini 4 Argon ($GSTAT): live $(cat gemini/BUILD.txt | cut -d' ' -f2-), classic $( [ -f classic/gemini/BUILD.txt ] && cut -d' ' -f2- classic/gemini/BUILD.txt || echo none ); est. cost refreshed"
   git commit -q -m "$MSG" && say "committed: $MSG"
 else say "nothing changed"; fi
 if [ $PUSH -eq 1 ]; then

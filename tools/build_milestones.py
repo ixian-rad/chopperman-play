@@ -15,7 +15,7 @@ Derived: assets/milestones/<h>/<row>-{480,960,1280}.webp + <row>-{480,960}.avif;
 (reports/<h>-iter-N.png) -> assets/milestones/<h>/iter-N-{480,960}.webp. final-*.png, *-latest.png and attempt/WIP shots are never used.
 
 Cost per cell = cumulative cost of that harness's game-build runs that started before the tag (same run log and est. rules as the blog,
-tools/runlog.py); play-site design runs and the channel-art kit are excluded. Gemini figures are always est. (login-based, not billed)."""
+tools/runlog.py); play-site design runs and the channel-art kit are excluded. Gemini figures are always est. (first runs on a Google login, the rest on a paid Gemini API key)."""
 import html, json, os, re, subprocess, sys, tempfile, shutil, socket, datetime as dt
 from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -81,11 +81,17 @@ def cost_to(h, at):
     if h == 'gemini':
         rs = [r for r in GROWS if r['cost_usd'] is not None and _start(r) and _start(r) <= at]
         tot = sum(r['cost_usd'] for r in rs)
-        return dict(total=round(tot, 2), est=round(tot, 2), basis='est.', runs=len(rs), phases=[r['phase'] for r in rs])
+        api = round(sum(r['cost_usd'] for r in rs if (r.get('billing') or '') == 'api'), 2)
+        return dict(total=round(tot, 2), est=round(tot, 2), basis='est.', runs=len(rs), phases=[r['phase'] for r in rs], api=api, login=round(tot - api, 2))
     rs = [r for r in BYH[h] if not NONGAME(r) and COUNTED(r) and _start(r) and _start(r) <= at]
     part = lambda b: round(sum(r['cost_usd'] for r in rs if r['basis'] == b), 2)
     return dict(total=round(sum(r['cost_usd'] for r in rs), 2), reported=part('reported'), token_priced=part('token-priced'),
                 est=part('est.'), balance=part('measured via balance'), runs=len(rs))
+
+
+def gem_where(c):
+    if not c.get('api'): return 'on a Google login, not billed'
+    return f'est. {usd(c["api"])} on a paid Gemini API key, est. {usd(c["login"])} on a Google login'
 
 
 def cost_short(h, c):
@@ -98,7 +104,7 @@ def cost_short(h, c):
 
 def cost_long(h, c):
     if h == 'gemini':
-        return (f'Cost to here: est. {usd(c["total"])} over {c["runs"]} run{"" if c["runs"] == 1 else "s"} (measured tokens × Gemini 4 Argon list price; login-based, not billed).')
+        return (f'Cost to here: est. {usd(c["total"])} over {c["runs"]} run{"" if c["runs"] == 1 else "s"} (measured tokens × Gemini 4 Argon list price; ' + gem_where(c) + ').')
     parts = []
     if c['reported']: parts.append(f'{usd(c["reported"])} reported')
     if c['token_priced']: parts.append(f'{usd(c["token_priced"])} token-priced')
@@ -162,7 +168,7 @@ def grey_sig(p):
 def build(capture_for):
     data = dict(generated=dt.datetime.now(ET).strftime('%Y-%m-%d %H:%M %Z'), rows=[dict(key=k, label=l, tag=t, desc=d) for k, l, t, d, _ in ROWS],
                 harness={}, note='Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). '
-                'Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (login-based, not billed).')
+                'Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (Google login, then a paid Gemini API key).')
     newest = None
     for h in HS:
         iters = iter_tags(h)
@@ -271,8 +277,9 @@ def render_page(data, pre='../'):
          '<p class="ms-legend">Cost = cumulative game-build runs to that tag; list-price equivalent, <strong>est.</strong> where estimated. Click a shot to enlarge it.</p></div>']
     # grid
     o.append('<div class="ms-grid" id="ms-grid"><div class="ms-grid__corner" aria-hidden="true"></div>')
+    gem_wip = H['gemini']['cells'].get('coop', {}).get('state') != 'ok'   # Gemini is "in progress" until it tags coop-voice-release
     for h in HS:
-        wip = ' <span class="chip chip--live">In progress</span>' if h == 'gemini' else ''
+        wip = ' <span class="chip chip--live">In progress</span>' if h == 'gemini' and gem_wip else ''
         o.append(f'<div class="ms-grid__h" style="--hc:var(--h-{h})" aria-hidden="true">{NAME[h]}{wip}</div>')
     for key, label, tag, short, _ in ROWS:
         o.append(f'<div class="ms-grid__m"><h3>{E(label)}</h3><p>{E(short)}</p></div>')
@@ -280,12 +287,13 @@ def render_page(data, pre='../'):
     o.append('</div>')
     # harness tabs + timelines
     o.append('<div class="ms-tabs" role="tablist" aria-label="Harness">' + ''.join(
-        f'<button type="button" role="tab" id="tab-{h}" aria-controls="tl-{h}" aria-selected="{"true" if h == "codex" else "false"}" style="--hc:var(--h-{h})">{NAME[h]}{" · WIP" if h == "gemini" else ""}</button>' for h in HS) + '</div>')
+        f'<button type="button" role="tab" id="tab-{h}" aria-controls="tl-{h}" aria-selected="{"true" if h == "codex" else "false"}" style="--hc:var(--h-{h})">{NAME[h]}{" · WIP" if h == "gemini" and gem_wip else ""}</button>' for h in HS) + '</div>')
     for h in HS:
         hd = H[h]
         o.append(f'<section class="ms-tl" id="tl-{h}" role="tabpanel" aria-labelledby="tab-{h}" style="--hc:var(--h-{h})"><h2 class="ms-tl__title">{NAME[h]}</h2><ol class="tl">')
         for key, label, tag, short, long_ in ROWS:
             c = hd['cells'][key]
+            if h == 'gemini' and key == 'coop': long_ = long_.replace('on Oct 23', 'on Oct 25')   # Gemini joined later
             if c['state'] == 'na': continue
             if c['state'] == 'todo':
                 o.append(f'<li class="tl__todo"><div class="tl__when">{E(label)}</div><p class="tl__none">Not started yet.</p></li>'); continue

@@ -33,8 +33,12 @@
         <span id="hud-combo" class="hud-combo-val">0&times;</span>
       </div>
       <div class="hud-card credits-card">
-        <span class="hud-label">Shop Credits</span>
+        <span class="hud-label">Credits</span>
         <span id="hud-credits" class="hud-credits-val">&#9733; 0</span>
+      </div>
+      <div class="hud-card team-card" title="Shared logs split by the team in single-player or online co-op">
+        <span class="hud-label">Team Split</span>
+        <span id="hud-team-splits" class="hud-big-val">0</span>
       </div>
     </div>
 
@@ -97,6 +101,9 @@
     <div id="hit-banner-title" class="hit-banner-title">PERFECT GRAIN CLEAVE!</div>
     <div id="hit-banner-sub" class="hit-banner-sub">+180 PTS &bull; +45 XP</div>
   </div>
+
+  <!-- Co-op Session & Shared Event Toast (>= 20px) -->
+  <div id="coop-toast" class="coop-toast hidden" role="status" aria-live="polite"></div>
 
   <!-- On-Screen Tree Target & Free-Roam Mode Prompt -->
   <div id="yard-prompt-banner" class="yard-prompt-banner hidden" aria-live="polite">
@@ -175,7 +182,7 @@
       <p id="setting-subtitle" class="subtitle">Sergey &bull; Suburban NJ Backyard &bull; RPG</p>
     </header>
 
-    <!-- Setting, Sergey Costume & Yard/Stump Mode Controls -->
+    <!-- Setting, Character Picker, Costume & Player Name Controls -->
     <div class="control-group">
       <div class="label-row">
         <label for="setting-select">Backyard Setting</label>
@@ -187,17 +194,50 @@
       </select>
     </div>
 
-    <div class="control-group">
+    <div class="control-group character-picker-card" aria-label="Character, Costume and Player Name Picker">
       <div class="label-row">
-        <label for="costume-select">Sergey Costume</label>
+        <label for="character-select">Lumberjack &amp; Costume</label>
         <button id="toggle-roam-btn" type="button" class="btn btn-chip" title="Toggle Free-Roam Yard Mode (WASD) and Stump Mode (E / Esc)">
           Roam Yard <kbd>E</kbd>
         </button>
       </div>
-      <select id="costume-select" class="ui-select">
-        <option value="tee" selected>Black Tee (Default)</option>
-        <option value="jacket">Blue Zip Jacket</option>
-      </select>
+      <div class="char-picker-row">
+        <img
+          id="character-preview-img"
+          src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+          alt="Selected character preview"
+          class="char-preview-thumb"
+        />
+        <div class="char-picker-fields">
+          <div class="chip-grid-2">
+            <button type="button" class="btn btn-chip active" data-char-pick="sergey">Sergey</button>
+            <button type="button" class="btn btn-chip" data-char-pick="alex">Alex</button>
+          </div>
+          <select id="character-select" class="ui-select" aria-label="Playable Character">
+            <option value="sergey" selected>Sergey (Default)</option>
+            <option value="alex">Alex</option>
+          </select>
+          <select id="costume-select" class="ui-select" aria-label="Character Costume">
+            <option value="tee" selected>Sergey: Black Tee (Default)</option>
+            <option value="jacket">Sergey: Blue Zip Jacket</option>
+            <option value="camo">Alex: Camo Tee (Default)</option>
+            <option value="bomber">Alex: Navy Bomber Jacket</option>
+          </select>
+        </div>
+      </div>
+      <div class="label-row">
+        <label for="player-name-input">Player Name (Co-op)</label>
+        <input
+          id="player-name-input"
+          type="text"
+          class="ui-input"
+          maxlength="16"
+          value="Sergey"
+          placeholder="Player Name"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
     </div>
 
     <!-- Game Mode / Challenge Selector -->

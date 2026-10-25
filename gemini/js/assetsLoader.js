@@ -42,15 +42,77 @@ export const AXE_MODEL_URLS = {
   golden: './assets/models/common/axe_golden.glb'
 };
 
+export const CHARACTER_COSTUMES = {
+  sergey: ['tee', 'jacket'],
+  alex: ['camo', 'bomber']
+};
+
 export const COSTUME_MODEL_URLS = {
   tee: './assets/models/common/char_sergey_animated_pbr.glb',
-  jacket: './assets/models/common/char_sergey_jacket_animated_pbr.glb'
+  jacket: './assets/models/common/char_sergey_jacket_animated_pbr.glb',
+  camo: './assets/models/common/char_alex_animated_pbr.glb',
+  bomber: './assets/models/common/char_alex_jacket_animated_pbr.glb'
 };
 
 export const EXTRA_CLIP_URLS = {
   walk: './assets/models/common/char_sergey_walking_armature.glb',
   run: './assets/models/common/char_sergey_running_armature.glb'
 };
+
+export const EXTRA_CLIP_URLS_BY_CHAR = {
+  sergey: {
+    walk: './assets/models/common/char_sergey_walking_armature.glb',
+    run: './assets/models/common/char_sergey_running_armature.glb'
+  },
+  alex: {
+    walk: './assets/models/common/char_alex_walking_armature.glb',
+    run: './assets/models/common/char_alex_running_armature.glb'
+  }
+};
+
+export const CHARACTER_PREVIEW_ART = {
+  sergey: {
+    tee: './assets/art/nj/nj_keyart.webp',
+    jacket: './assets/art/nj/nj_keyart_jacket.webp'
+  },
+  alex: {
+    camo: './assets/art/common/alex_portrait.webp',
+    bomber: './assets/art/nj/alex_nj_keyart_jacket.webp'
+  }
+};
+
+const previewBlobUrlCache = new Map();
+
+export async function preloadCharacterPreviewArt() {
+  const urls = [
+    CHARACTER_PREVIEW_ART.sergey.tee,
+    CHARACTER_PREVIEW_ART.sergey.jacket,
+    CHARACTER_PREVIEW_ART.alex.camo,
+    CHARACTER_PREVIEW_ART.alex.bomber
+  ];
+  await Promise.all(
+    urls.map(async (url) => {
+      if (previewBlobUrlCache.has(url)) return previewBlobUrlCache.get(url);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return url;
+        const blob = await res.blob();
+        const objUrl = URL.createObjectURL(blob);
+        previewBlobUrlCache.set(url, objUrl);
+        return objUrl;
+      } catch {
+        return url;
+      }
+    })
+  );
+}
+
+export function getCharacterPreviewUrl(character = 'sergey', costume = 'tee') {
+  const rawUrl =
+    CHARACTER_PREVIEW_ART[character]?.[costume] ||
+    CHARACTER_PREVIEW_ART.sergey.tee;
+  return previewBlobUrlCache.get(rawUrl) || null;
+}
 
 export function getGLTFLoader() {
   return gltfLoader;

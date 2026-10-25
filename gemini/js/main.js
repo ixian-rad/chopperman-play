@@ -21,7 +21,14 @@ import {
   normalizeAxeId
 } from './rpgState.js';
 import { AtmosphereController } from './weatherAndLight.js';
-import { WoodchipsSpriteBurst } from './assetsLoader.js';
+import {
+  WoodchipsSpriteBurst,
+  CHARACTER_COSTUMES,
+  preloadCharacterPreviewArt,
+  getCharacterPreviewUrl
+} from './assetsLoader.js';
+import { createCoop } from '../coop/index.js';
+import { WIND } from '../assets/trees_v2/runtime/wind.js';
 
 /**
  * Main Application Entry Point for the 3D Backyard Lumberjack RPG & Physics Simulation.
@@ -81,11 +88,21 @@ class AxeSplittingSimulation {
     this._targetedTree = null;
     this._treeSwingInProgress = false;
 
+    // 2-Player Online Co-op state
+    this.coop = null;
+    this.teamLogsSplitCount = 0;
+    this.activeCoopLogId = null;
+    this.coopLogs = new Map();
+    this._toastTimer = null;
+
     this._initThree();
+    this.coopLogsGroup = new THREE.Group();
+    this.coopLogsGroup.name = 'CoopSpawnedLogsGroup';
+    this.scene.add(this.coopLogsGroup);
     this._initLights();
     this._initPhysics();
 
-    // Build Backyard Environment (NJ / Tiraspol), Chopping Station, Sergey Humanoid, Atmosphere, Woodchips & Debug Wireframes
+    // Build Backyard Environment (NJ / Tiraspol), Chopping Station, Sergey/Alex Humanoid, Atmosphere, Woodchips & Debug Wireframes
     this.environment = buildBackyardEnvironment(
       this.scene,
       this.world,
@@ -143,26 +160,28 @@ class AxeSplittingSimulation {
     };
 
     this._initPostProcessingAndQuality();
+    this._initCoop();
     this._bindUI();
     this._bindMouseAimAndGestures();
     this._exposeGlobalAPI();
     this._refreshAllHUD();
 
-    // Kick off parallel GLB loading for Sergey, equipped axe, setting props, and trees_v2
+    // Kick off parallel GLB loading for active character, equipped axe, setting props, and trees_v2
     this._initAssetsV2();
 
     this._lastTickTime = performance.now();
     this._animate = this._animate.bind(this);
     requestAnimationFrame(this._animate);
 
-    // Fallback timer ensures physics & swing animation progress at 1:1 wall-clock speed
-    // only when headless browser compositors completely pause requestAnimationFrame (> 250ms)
+    // Fallback timer ensures physics, co-op interpolation & swing animation progress at 1:1 wall-clock speed
+    // even when headless browser compositors throttle background-tab requestAnimationFrame
     this._headlessTimer = setInterval(() => {
       const now = performance.now();
-      if (now - this._lastTickTime >= 250) {
+      const threshold = this.coop && this.coop.inSession() ? 55 : 250;
+      if (now - this._lastTickTime >= threshold) {
         this._stepFrame(false);
       }
-    }, 100);
+    }, 45);
   }
 
   async _initAssetsV2() {
@@ -175,15 +194,20 @@ class AxeSplittingSimulation {
     };
 
     try {
-      setProgress(25, 'Loading Sergey PBR rig, axes, and backyard trees_v2 in parallel...');
+      setProgress(25, 'Loading character PBR rig, axes, and backyard trees_v2 in parallel...');
       const initialSetting = this.gameState.setting || 'nj';
-      const initialCostume = this.gameState.costume || 'tee';
+      const initialCharacter = this.gameState.character || 'sergey';
+      const initialCostume =
+        this.gameState.costume || (initialCharacter === 'alex' ? 'camo' : 'tee');
       const initialAxe = this.gameState.equippedAxeId || 'sergey';
 
       await Promise.all([
-        this.humanoid.initAssets(initialCostume, initialAxe).then(() => {
-          setProgress(62, 'Sergey PBR character & axe loaded. Populating backyard setting...');
-        }),
+        preloadCharacterPreviewArt(),
+        this.humanoid
+          .initAssets(initialCostume, initialAxe, initialCharacter)
+          .then(() => {
+            setProgress(62, 'Character PBR rig & axe loaded. Populating backyard setting...');
+          }),
         this.environment
           .loadSetting(
             initialSetting,
@@ -815,7 +839,10 @@ class AxeSplittingSimulation {
     this.timeValueEl = document.getElementById('time-value');
     this.qualitySelect = document.getElementById('quality-select');
     this.settingSelect = document.getElementById('setting-select');
+    this.characterSelect = document.getElementById('character-select');
     this.costumeSelect = document.getElementById('costume-select');
+    this.playerNameInput = document.getElementById('player-name-input');
+    this.charPreviewImg = document.getElementById('character-preview-img');
     this.toggleRoamBtn = document.getElementById('toggle-roam-btn');
 
     this.statusBadge = document.getElementById('status-badge');
@@ -831,10 +858,46 @@ class AxeSplittingSimulation {
       });
     }
 
+    if (this.characterSelect) {
+      this.characterSelect.value = this.gameState.character || 'sergey';
+      this.characterSelect.addEventListener('change', () => {
+        this.switchPlayableCharacter(this.characterSelect.value);
+      });
+    }
+
+    document.querySelectorAll('[data-char-pick]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const picked = btn.getAttribute('data-char-pick');
+        if (picked) {
+          this.switchPlayableCharacter(picked);
+        }
+      });
+    });
+
     if (this.costumeSelect) {
       this.costumeSelect.value = this.gameState.costume || 'tee';
       this.costumeSelect.addEventListener('change', () => {
-        this.switchSergeyCostume(this.costumeSelect.value);
+        this.switchCharacterCostume(this.costumeSelect.value);
+      });
+    }
+
+    if (this.playerNameInput) {
+      this.playerNameInput.value = this.gameState.playerName || 'Sergey';
+      for (const evName of ['keydown', 'keyup', 'keypress']) {
+        this.playerNameInput.addEventListener(evName, (ev) => {
+          ev.stopPropagation();
+        });
+      }
+      const syncPlayerName = () => {
+        const cleaned = this.gameState.setPlayerNameState(this.playerNameInput.value, true);
+        if (this.coop) {
+          this.coop.setLocalProfile({ name: cleaned });
+        }
+      };
+      this.playerNameInput.addEventListener('input', syncPlayerName);
+      this.playerNameInput.addEventListener('change', () => {
+        syncPlayerName();
+        this.playerNameInput.value = this.gameState.playerName;
       });
     }
 
@@ -1168,6 +1231,11 @@ class AxeSplittingSimulation {
 
     // Keyboard shortcuts & Free-Roam Locomotion (WASD + Shift in Yard Mode, Stump Controls in Stump Mode)
     const onKeyDown = (e) => {
+      const tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        return;
+      }
+
       if (e.code) {
         this.moveKeys[e.code] = true;
       }
@@ -1272,6 +1340,9 @@ class AxeSplittingSimulation {
     const onKeyUp = (e) => {
       if (e.code) {
         this.moveKeys[e.code] = false;
+      }
+      if (this.coop && this.coop.active() && this.interactionMode === 'yard') {
+        this._orientTowardsCoopPartner();
       }
     };
 
@@ -1636,6 +1707,7 @@ class AxeSplittingSimulation {
     }
 
     const diag = this.choppingStation.getAimDiagnostics();
+    const inCoopSession = Boolean(this.coop && this.coop.inSession());
     const strikeResult = this.gameState.evaluateStrike({
       aimOffsetX: isAutomatedSwing ? 0 : diag.aimOffsetX,
       grainAngleError: isAutomatedSwing ? 0 : diag.grainAngleError,
@@ -1646,8 +1718,36 @@ class AxeSplittingSimulation {
       swingPower,
       weather: this.atmosphere.weather,
       stormCharged: this.atmosphere.isStormCharged(),
-      isAutomatedSwing
+      isAutomatedSwing,
+      deferAwardToCoop: inCoopSession
     });
+
+    if (inCoopSession && this.coop.session) {
+      if (strikeResult.split) {
+        const claimLogId = this._findNextUnsplitCoopLogId();
+        if (claimLogId) {
+          this.coop.session.splitLog(claimLogId, { species: this.gameState.logType });
+        } else {
+          const adhocId = `stump-${this.coop.session.localId || 'P1'}-${Date.now()}-${Math.floor(
+            Math.random() * 1000
+          )}`;
+          this.coop.session.spawnLog({
+            id: adhocId,
+            species: this.gameState.logType,
+            adhoc: true
+          });
+          this.coop.session.splitLog(adhocId, { species: this.gameState.logType });
+        }
+      }
+      if (strikeResult.xpGained > 0 || strikeResult.points > 0) {
+        this.coop.session.award({
+          xp: strikeResult.xpGained,
+          gold: Math.max(0, strikeResult.points),
+          loot: strikeResult.split ? 1 : 0,
+          reason: `${strikeResult.split ? 'split' : 'hit'}:${this.gameState.logType}`
+        });
+      }
+    }
 
     this._lastSwingWasAutomated = isAutomatedSwing;
     this.pendingStrikeResult = strikeResult;
@@ -1844,21 +1944,538 @@ class AxeSplittingSimulation {
     return res;
   }
 
+  _initCoop() {
+    this.coop = createCoop({
+      THREE,
+      scene: this.scene,
+      getCamera: () => this.camera,
+      getViewportHeight: () =>
+        this.renderer?.domElement?.clientHeight || window.innerHeight || 800,
+      hooks: {
+        getProfile: () => ({
+          name:
+            this.gameState.playerName ||
+            (this.gameState.character === 'alex' ? 'Alex' : 'Sergey'),
+          character:
+            this.humanoid?.character || this.gameState.character || 'sergey',
+          costume: this.humanoid?.costume || this.gameState.costume || 'tee',
+          axe:
+            this.humanoid?.equippedAxeId ||
+            this.gameState.equippedAxeId ||
+            'sergey'
+        }),
+        getWorld: () => ({
+          seed: this.environment ? this.environment.getWorldSeed() : 133701,
+          setting: this.environment
+            ? this.environment.getSetting()
+            : this.gameState.setting || 'nj'
+        }),
+        getListenerYaw: () =>
+          this.interactionMode === 'yard'
+            ? this.playerYaw
+            : this.camera.rotation.y,
+        onWorldInit: async ({ seed, setting, isHost, fresh, sync }) => {
+          await this._handleCoopWorldInit({ seed, setting, isHost, fresh, sync });
+        },
+        getTrees: async () => {
+          const tf = this.environment ? this.environment.getTreeField() : null;
+          if (!tf || !tf.trees) return [];
+          return tf.trees.map((t) => ({
+            id: t.id,
+            hp: t.meta?.hitsToFell || 6,
+            x: +t.position.x.toFixed(3),
+            z: +t.position.z.toFixed(3)
+          }));
+        },
+        getLocalState: () => {
+          const pos = this.humanoid.root.position;
+          const swinging =
+            this.humanoid.state !== 'IDLE' &&
+            this.humanoid.state !== 'WEDGED_PRY';
+          return {
+            x: pos.x,
+            y: pos.y,
+            z: pos.z,
+            yaw: this.humanoid.root.rotation.y,
+            anim: this.humanoid.currentAnimName || 'Idle',
+            swinging,
+            running: Boolean(this.humanoid.isRunning && this.humanoid.isWalking)
+          };
+        },
+        spawnAvatar: async ({ id, character, costume, axe, name, scene }) => {
+          return this.humanoid.spawnRemoteAvatar({
+            id,
+            character,
+            costume,
+            axe,
+            name,
+            scene
+          });
+        },
+        onTreeHit: (ev, mine) => {
+          this._handleCoopTreeHit(ev, mine);
+        },
+        onTreeFell: (ev, mine) => {
+          this._handleCoopTreeFell(ev, mine);
+        },
+        onLogSpawned: (ev, mine) => {
+          this._handleCoopLogSpawned(ev, mine);
+        },
+        onLogSplit: (ev, mine) => {
+          this._handleCoopLogSplit(ev, mine);
+        },
+        onDenied: (ev) => {
+          this._handleCoopDenied(ev);
+        },
+        onAward: (ev, mine) => {
+          this._handleCoopAward(ev, mine);
+        },
+        onPlayerJoined: (p) => {
+          const name = p?.name || 'Partner';
+          const charLabel = p?.character === 'alex' ? 'Alex' : 'Sergey';
+          this._showCoopToast(`${name} joined co-op (${charLabel})!`);
+          this._refreshAllHUD();
+        },
+        onPlayerLeft: (p) => {
+          const name = p?.name || 'Partner';
+          this._showCoopToast(`${name} left. Back to single player.`, 14000);
+          this._refreshAllHUD();
+        },
+        onPlayerDisconnected: (p) => {
+          const name = p?.name || 'Partner';
+          this._showCoopToast(`${name} connection interrupted\u2026`, 6000);
+        },
+        onEnded: (reason) => {
+          const partnerName = this._lastPartnerName || 'Partner';
+          if (reason === 'host-left') {
+            this._showCoopToast(`${partnerName} left. Back to single player.`, 14000);
+          } else if (reason === 'lost') {
+            this._showCoopToast('Connection lost. Back to single player.', 14000);
+          } else {
+            this._showCoopToast('Disconnected. Back to single player.', 10000);
+          }
+          this._refreshAllHUD();
+        }
+      }
+    });
+    this.coop.mountUI();
+    this.coop.on('change', () => {
+      const rem = this.coop?.session?.remote;
+      if (rem && rem.name) {
+        this._lastPartnerName = rem.name;
+      }
+    });
+  }
+
+  _showCoopToast(msg, durationMs = 5500) {
+    const el = document.getElementById('coop-toast');
+    if (!el || !msg) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      el.classList.add('hidden');
+    }, durationMs);
+  }
+
+  _findTreeById(treeId) {
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    if (!tf || !tf.trees) return null;
+    const numId = Number(treeId);
+    if (Number.isInteger(numId) && tf.trees[numId] && String(tf.trees[numId].id) === String(treeId)) {
+      return tf.trees[numId];
+    }
+    return tf.trees.find((t) => String(t.id) === String(treeId)) || null;
+  }
+
+  _findNextUnsplitCoopLogId() {
+    if (this.activeCoopLogId) {
+      const rec = this.coopLogs.get(this.activeCoopLogId);
+      if (rec && !rec.split) return this.activeCoopLogId;
+    }
+    for (const [id, rec] of this.coopLogs.entries()) {
+      if (!rec.split) {
+        this.activeCoopLogId = id;
+        return id;
+      }
+    }
+    this.activeCoopLogId = null;
+    return null;
+  }
+
+  async _handleCoopWorldInit({ seed, setting, isHost, fresh, sync }) {
+    this.coopLogs.clear();
+    this.activeCoopLogId = null;
+    while (this.coopLogsGroup.children.length > 0) {
+      this.coopLogsGroup.remove(this.coopLogsGroup.children[0]);
+    }
+    if (isHost) {
+      this.teamLogsSplitCount = 0;
+    } else if (sync && Array.isArray(sync.logs)) {
+      this.teamLogsSplitCount = sync.logs.filter((l) => Boolean(l.split)).length;
+    } else {
+      this.teamLogsSplitCount = 0;
+    }
+
+    const targetSetting = setting === 'tiraspol' ? 'tiraspol' : 'nj';
+    const currentSetting = this.environment
+      ? this.environment.getSetting()
+      : this.gameState.setting || 'nj';
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    const anyTreeTouched =
+      !tf ||
+      !tf.trees ||
+      tf.trees.length === 0 ||
+      tf.trees.some((t) => t.state !== 'standing' || t.hits > 0);
+    const seedChanged =
+      this.environment && this.environment.getWorldSeed() !== (Number(seed) >>> 0);
+
+    if (currentSetting !== targetSetting) {
+      this.gameState.setSettingState(targetSetting);
+      await this.environment.loadSetting(
+        targetSetting,
+        this.qualityPreset,
+        this.choppingStation,
+        this.atmosphere.timeOfDay,
+        seed
+      );
+    } else if (fresh || seedChanged || anyTreeTouched) {
+      await this.environment.rebuildTreesForSeed(seed, targetSetting);
+    }
+
+    this._pickedTreeHit = null;
+    this._targetedTree = null;
+    this.environment.updateTreesAndWind(
+      this.camera,
+      0.016,
+      this._elapsedClock,
+      this.atmosphere.windStrength
+    );
+    this._syncSettingAndCostumeUI();
+    this._refreshAllHUD();
+  }
+
+  _handleCoopTreeHit(ev, mine) {
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    const t = this._findTreeById(ev?.tree);
+    if (!tf || !t) return;
+    if (t.state === 'falling' || t.state === 'fallen' || t.state === 'stump') return;
+
+    tf.activate(t);
+    const maxHp = t.meta?.hitsToFell || ev.max || 6;
+    if (Number.isFinite(Number(ev.hp))) {
+      t.hits = Math.max(0, maxHp - Number(ev.hp));
+    } else {
+      t.hits = Math.min(maxHp, (t.hits || 0) + (Number(ev.dmg) || 1));
+    }
+    tf._dirty = true;
+
+    if (!ev.instant) {
+      if (t.anim) {
+        t.anim.shake = 1;
+      }
+      if (t.obj && t.obj.wind) {
+        t.obj.wind.uWindStrength.value = WIND.uWindStrength.value + 2.5;
+      }
+      if (!mine) {
+        const hitPoint = t.position
+          .clone()
+          .setY(t.position.y + (t.meta?.chopHeight || 0.45) * t.scale);
+        if (this.woodchipsBurst) {
+          this.woodchipsBurst.spawn(hitPoint, null, 12);
+        }
+        if (this.sound && typeof this.sound.playTreeHitThunk === 'function') {
+          this.sound.playTreeHitThunk(0.95, t.hits / maxHp);
+        }
+      }
+    }
+
+    tf.update(this.camera, 0.016);
+    this._syncSettingAndCostumeUI();
+    this._updateYardTargetPrompt();
+  }
+
+  _handleCoopTreeFell(ev, mine) {
+    const tf = this.environment ? this.environment.getTreeField() : null;
+    const t = this._findTreeById(ev?.tree);
+    if (!tf || !t) return;
+
+    const dirVec = new THREE.Vector3(
+      Array.isArray(ev.dir) ? Number(ev.dir[0]) || 1 : 1,
+      0,
+      Array.isArray(ev.dir) ? Number(ev.dir[1]) || 0 : 0
+    );
+    if (dirVec.lengthSq() < 1e-5) {
+      dirVec.set(1, 0, 0);
+    } else {
+      dirVec.normalize();
+    }
+
+    t.hits = t.meta?.hitsToFell || t.hits || 6;
+
+    if (ev.instant) {
+      if (t.state !== 'fallen' && t.state !== 'stump') {
+        tf.fell(t, dirVec);
+      }
+      if (t.anim && t.obj) {
+        t.anim.th = t.anim.rest;
+        t.anim.w = 0;
+        t.obj.hinge.quaternion.setFromAxisAngle(t.anim.axis, t.anim.rest);
+        t.obj.inner.rotation.set(0, t.anim.twist, 0);
+        t.obj.wind.uWindStrength.value = 0;
+      }
+      tf.active.delete(t);
+      t.state = 'stump';
+      tf._dirty = true;
+      tf.update(this.camera, 0.016);
+      this._syncSettingAndCostumeUI();
+      this._refreshAllHUD();
+      return;
+    }
+
+    if (t.state !== 'falling' && t.state !== 'fallen' && t.state !== 'stump') {
+      tf.fell(t, dirVec);
+      if (this.sound && typeof this.sound.playTreeFallCreak === 'function') {
+        this.sound.playTreeFallCreak();
+      }
+      if (t.anim) {
+        t.anim.onLand = () => {
+          if (this.sound && typeof this.sound.playTreeFallCrash === 'function') {
+            this.sound.playTreeFallCrash();
+          }
+          this.cameraShakeTrauma = Math.min(
+            1.0,
+            this.cameraShakeTrauma + (mine ? 0.65 : 0.35)
+          );
+          if (this.woodchipsBurst) {
+            const hitPoint = t.position
+              .clone()
+              .setY(t.position.y + (t.meta?.chopHeight || 0.45) * t.scale);
+            this.woodchipsBurst.spawn(hitPoint, dirVec, 18);
+          }
+          this._syncSettingAndCostumeUI();
+          this._refreshAllHUD();
+        };
+      }
+    }
+
+    // Ensure the falling animation progresses smoothly to 'fallen' even if this tab is in the background
+    const fallTicker = setInterval(() => {
+      if (!tf || (t.state !== 'falling' && t.state !== 'fallen')) {
+        clearInterval(fallTicker);
+        this._syncSettingAndCostumeUI();
+        this._refreshAllHUD();
+        return;
+      }
+      tf.update(this.camera, 0.035);
+      if (t.state === 'fallen' || t.state === 'stump') {
+        clearInterval(fallTicker);
+        if (!mine && !ev.instant) {
+          this._orientTowardsCoopPartner(t.position);
+        }
+        this._syncSettingAndCostumeUI();
+        this._refreshAllHUD();
+      }
+    }, 35);
+
+    if (this.coop?.session?.isHost) {
+      this.coop.session.spawnLog({
+        id: `tree-${ev.tree}-1`,
+        treeId: ev.tree,
+        species: t.species,
+        x: +(t.position.x + dirVec.x * 1.35).toFixed(2),
+        z: +(t.position.z + dirVec.z * 1.35).toFixed(2)
+      });
+    }
+
+    if (mine && this.coop?.session) {
+      this.humanoid.playVictoryCheer(2.4);
+      const reward = this.gameState.computeTreeFelledReward(t.meta?.hitsToFell || 6);
+      this.coop.session.award({
+        xp: reward.xpGained,
+        gold: reward.points,
+        loot: 1,
+        reason: `tree:${t.species}`
+      });
+    } else if (!mine && !ev.instant) {
+      this._orientTowardsCoopPartner(t.position);
+    }
+
+    this._syncSettingAndCostumeUI();
+    this._updateYardTargetPrompt();
+  }
+
+  _orientTowardsCoopPartner(fallbackPos = null) {
+    if (this.interactionMode !== 'yard' || this._treeSwingInProgress) return;
+    if (
+      this.moveKeys.KeyW ||
+      this.moveKeys.KeyA ||
+      this.moveKeys.KeyS ||
+      this.moveKeys.KeyD ||
+      this.moveKeys.ArrowUp ||
+      this.moveKeys.ArrowDown ||
+      this.moveKeys.ArrowLeft ||
+      this.moveKeys.ArrowRight
+    ) {
+      return;
+    }
+    const rem = this.coop?.session?.remote;
+    const rPos =
+      (rem && this.coop?.remotes?.get(rem.id)?.lastState) ||
+      rem?.pos ||
+      fallbackPos;
+    if (!rPos || !Number.isFinite(rPos.x) || !Number.isFinite(rPos.z)) return;
+    const dx = rPos.x - this.humanoid.root.position.x;
+    const dz = rPos.z - this.humanoid.root.position.z;
+    if (Math.hypot(dx, dz) > 0.45) {
+      this.playerYaw = Math.atan2(dx, dz) + 0.06;
+      this.humanoid.root.rotation.y = this.playerYaw;
+      this._updateFollowCamera(1.0);
+    }
+  }
+
+  _handleCoopLogSpawned(ev, _mine) {
+    const id = String(ev?.log || ev?.info?.id || '');
+    if (!id) return;
+    const info = ev.info || {};
+    const alreadySplit = Boolean(info.split);
+    let mesh = null;
+
+    if (!alreadySplit && !info.adhoc && Number.isFinite(Number(info.x)) && Number.isFinite(Number(info.z))) {
+      const geo = new THREE.CylinderGeometry(0.16, 0.17, 0.56, 12);
+      geo.rotateZ(Math.PI * 0.5);
+      const mat = new THREE.MeshLambertMaterial({ color: 0x8b623b });
+      mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(Number(info.x), 0.16, Number(info.z));
+      mesh.rotation.y = 0.4;
+      mesh.name = `CoopSpawnedLog_${id}`;
+      this.coopLogsGroup.add(mesh);
+    }
+
+    this.coopLogs.set(id, {
+      id,
+      species: info.species || 'oak',
+      treeId: info.treeId ?? null,
+      x: info.x ?? 0,
+      z: info.z ?? 0,
+      split: alreadySplit,
+      mesh
+    });
+
+    if (!alreadySplit && !this.activeCoopLogId) {
+      this.activeCoopLogId = id;
+    }
+    this._refreshAllHUD();
+  }
+
+  _handleCoopLogSplit(ev, mine) {
+    const id = String(ev?.log || '');
+    const rec = this.coopLogs.get(id);
+    if (rec) {
+      rec.split = true;
+      if (rec.mesh) {
+        this.coopLogsGroup.remove(rec.mesh);
+        rec.mesh = null;
+      }
+      if (rec.treeId != null) {
+        const t = this._findTreeById(rec.treeId);
+        const tf = this.environment ? this.environment.getTreeField() : null;
+        if (tf && t) {
+          tf.clearLog(t);
+        }
+      }
+    }
+    if (this.activeCoopLogId === id) {
+      this.activeCoopLogId = null;
+      this._findNextUnsplitCoopLogId();
+    }
+
+    this.teamLogsSplitCount = (this.teamLogsSplitCount || 0) + 1;
+    if (!mine) {
+      const partnerName =
+        this.coop?.session?.remote?.name || this._lastPartnerName || 'Partner';
+      this._showCoopToast(
+        `${partnerName} split a log! (Team Split: ${this.teamLogsSplitCount})`
+      );
+    }
+    this._refreshAllHUD();
+  }
+
+  _handleCoopDenied(ev) {
+    if (ev?.kind === 'logSplit') {
+      const id = String(ev.log || '');
+      const rec = this.coopLogs.get(id);
+      if (rec) {
+        rec.split = true;
+        if (rec.mesh) {
+          this.coopLogsGroup.remove(rec.mesh);
+          rec.mesh = null;
+        }
+      }
+      if (this.activeCoopLogId === id) {
+        this.activeCoopLogId = null;
+        this._findNextUnsplitCoopLogId();
+      }
+      this._showCoopToast('Log already taken by partner!');
+      this._refreshAllHUD();
+    }
+  }
+
+  _handleCoopAward(ev, mine) {
+    const applied = this.gameState.applyCoopAward(ev);
+    if (ev?.shared || !mine) {
+      const partnerName =
+        this.coop?.session?.remote?.name || this._lastPartnerName || 'Partner';
+      this._showCoopToast(
+        `${partnerName} +${applied.xpGained} XP \u2022 +${applied.gold} Gold shared`
+      );
+    } else if (String(ev?.reason || '').startsWith('tree:')) {
+      this._showHitBanner(this.gameState.lastHit);
+    }
+    if (this.environment && typeof this.environment.updateCordwoodStack === 'function') {
+      this.environment.updateCordwoodStack(
+        this.gameState.logsSplitCount,
+        this.gameState.ordersCompletedCount,
+        this.gameState.currentOrder ? this.gameState.currentOrder.progress : 0
+      );
+    }
+    this._refreshAllHUD();
+  }
+
   _syncSettingAndCostumeUI() {
     const setting = this.environment ? this.environment.getSetting() : this.gameState.setting || 'nj';
+    const character = this.humanoid ? this.humanoid.character : this.gameState.character || 'sergey';
     const costume = this.humanoid ? this.humanoid.costume : this.gameState.costume || 'tee';
+    const charLabel = character === 'alex' ? 'Alex' : 'Sergey';
+
     if (this.settingSelect && this.settingSelect.value !== setting) {
       this.settingSelect.value = setting;
     }
+    if (this.characterSelect && this.characterSelect.value !== character) {
+      this.characterSelect.value = character;
+    }
+    document.querySelectorAll('[data-char-pick]').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-char-pick') === character);
+    });
     if (this.costumeSelect && this.costumeSelect.value !== costume) {
       this.costumeSelect.value = costume;
     }
+    if (this.playerNameInput && document.activeElement !== this.playerNameInput) {
+      this.playerNameInput.value = this.gameState.playerName || charLabel;
+    }
+    if (this.charPreviewImg) {
+      const previewUrl = getCharacterPreviewUrl(character, costume);
+      if (previewUrl && this.charPreviewImg.getAttribute('src') !== previewUrl) {
+        this.charPreviewImg.setAttribute('src', previewUrl);
+      }
+    }
+
     const subEl = document.getElementById('setting-subtitle');
     if (subEl) {
       subEl.textContent =
         setting === 'tiraspol'
-          ? 'Sergey \u2022 Tiraspol Backyard (Transnistria) \u2022 RPG'
-          : 'Sergey \u2022 Suburban NJ Backyard \u2022 RPG';
+          ? `${charLabel} \u2022 Tiraspol Backyard (Transnistria) \u2022 RPG`
+          : `${charLabel} \u2022 Suburban NJ Backyard \u2022 RPG`;
     }
     const treesPill = document.getElementById('trees-count-pill');
     const tf = this.environment ? this.environment.getTreeField() : null;
@@ -1899,17 +2516,55 @@ class AxeSplittingSimulation {
     return target;
   }
 
-  async switchSergeyCostume(costumeName = 'tee') {
-    const target = costumeName === 'jacket' ? 'jacket' : 'tee';
-    this.gameState.setCostumeState(target);
-    await this.humanoid.setCostume(target);
-    if (this.interactionMode === 'yard') {
-      await this.enterStumpMode();
+  async switchPlayableCharacter(charName = 'sergey', costumeOverride = null) {
+    const targetChar = charName === 'alex' ? 'alex' : 'sergey';
+    const validCostumes = CHARACTER_COSTUMES[targetChar] || CHARACTER_COSTUMES.sergey;
+    const targetCostume =
+      costumeOverride && validCostumes.includes(costumeOverride)
+        ? costumeOverride
+        : validCostumes[0];
+    this.gameState.setCharacterState(targetChar, targetCostume);
+    await this.humanoid.setCharacter(targetChar, targetCostume);
+    if (this.coop) {
+      this.coop.setLocalProfile({
+        name: this.gameState.playerName,
+        character: this.humanoid.character,
+        costume: this.humanoid.costume,
+        axe: this.humanoid.equippedAxeId
+      });
     }
     this._syncSettingAndCostumeUI();
     this._refreshAllHUD();
     this._stepFrame(true);
-    return target;
+    return targetChar;
+  }
+
+  async switchCharacterCostume(costumeName = 'tee') {
+    const allValid = ['tee', 'jacket', 'camo', 'bomber'];
+    const currentChar = this.humanoid?.character || this.gameState.character || 'sergey';
+    const charCostumes = CHARACTER_COSTUMES[currentChar] || CHARACTER_COSTUMES.sergey;
+    const target = allValid.includes(costumeName) ? costumeName : charCostumes[0];
+    this.gameState.setCostumeState(target);
+    await this.humanoid.setCostume(target);
+    if (this.interactionMode === 'yard' && (!this.coop || !this.coop.inSession())) {
+      await this.enterStumpMode();
+    }
+    if (this.coop) {
+      this.coop.setLocalProfile({
+        name: this.gameState.playerName,
+        character: this.humanoid.character,
+        costume: this.humanoid.costume,
+        axe: this.humanoid.equippedAxeId
+      });
+    }
+    this._syncSettingAndCostumeUI();
+    this._refreshAllHUD();
+    this._stepFrame(true);
+    return this.humanoid.costume;
+  }
+
+  async switchSergeyCostume(costumeName = 'tee') {
+    return this.switchCharacterCostume(costumeName);
   }
 
   async setEquippedAxeById(axeId = 'sergey') {
@@ -1929,6 +2584,9 @@ class AxeSplittingSimulation {
       }
     }
     await this.humanoid.setAxeModel(normId);
+    if (this.coop) {
+      this.coop.setLocalProfile({ axe: normId });
+    }
     this._refreshAllHUD();
     this._refreshShopUI();
     this._stepFrame(true);
@@ -1944,15 +2602,23 @@ class AxeSplittingSimulation {
     this.humanoid.setInteractionMode('yard');
     this.controls.enabled = false;
 
-    // Place Sergey on the clear central yard corridor just in front of the chopping stump
-    // so holding W walks him smoothly across the open yard without hitting the stump.
-    if (
+    const nearInitialStump =
       Math.hypot(this.humanoid.root.position.x, this.humanoid.root.position.z - -0.8) < 1.1 ||
-      Math.hypot(this.humanoid.root.position.x, this.humanoid.root.position.z - 0.28) < 1.1
-    ) {
-      this.humanoid.root.position.set(0, 0, 1.35);
-      this.playerYaw = 0;
-      this.humanoid.root.rotation.y = 0;
+      Math.hypot(this.humanoid.root.position.x, this.humanoid.root.position.z - 0.28) < 1.1;
+
+    if (nearInitialStump) {
+      if (this.coop && this.coop.active()) {
+        // In an active 2-player co-op session, start down the clear central yard lane facing the stump & partner
+        // so holding W walks the player toward the partner and both avatars + nameplates frame together in both views.
+        this.humanoid.root.position.set(-0.25, 0, 6.85);
+        this.playerYaw = Math.PI - 0.1;
+        this.humanoid.root.rotation.y = this.playerYaw;
+      } else {
+        // Single-player default: place character on the clear central yard corridor just in front of the chopping stump
+        this.humanoid.root.position.set(0, 0, 1.35);
+        this.playerYaw = 0;
+        this.humanoid.root.rotation.y = 0;
+      }
     }
 
     if (this.toggleRoamBtn) {
@@ -2116,7 +2782,7 @@ class AxeSplittingSimulation {
 
     if (!best) return null;
 
-    // Place Sergey at the tree's approachPoint on the yard-center side, facing directly toward the trunk
+    // Place character at the tree's approachPoint on the yard-center side, facing directly toward the trunk
     const awayDir = new THREE.Vector3(-best.position.x, 0, -best.position.z);
     if (awayDir.lengthSq() < 1e-4) {
       awayDir.set(0, 0, 1);
@@ -2175,22 +2841,50 @@ class AxeSplittingSimulation {
       .setY(tree.position.y + (tree.meta?.chopHeight || 0.45) * tree.scale);
 
     // Angle the fall direction ~72 deg to the right of the camera sightline so the felled trunk
-    // tips sideways across the grass in full profile (keeping the stump & Sergey unobstructed)
+    // tips sideways across the grass in full profile
     const fallDir = fromDir
       .clone()
       .applyAxisAngle(new THREE.Vector3(0, 1, 0), -1.25)
       .normalize();
 
-    const res = tf.hit(tree, fallDir, 1);
     if (this.woodchipsBurst) {
       this.woodchipsBurst.spawn(hitPoint, fromDir, 14);
     }
 
-    const ratio = res.hitsToFell ? res.hits / res.hitsToFell : 0.5;
+    const maxHp = tree.meta?.hitsToFell || 6;
+    const estHits = Math.min(maxHp, (tree.hits || 0) + 1);
     if (this.sound && typeof this.sound.playTreeHitThunk === 'function') {
-      this.sound.playTreeHitThunk(1.15, ratio);
+      this.sound.playTreeHitThunk(1.15, estHits / maxHp);
     }
     this.cameraShakeTrauma = Math.min(1.0, this.cameraShakeTrauma + 0.24);
+
+    if (this.coop && this.coop.inSession() && this.coop.session) {
+      const prevHits = tree.hits || 0;
+      tf.activate(tree);
+      if (tree.anim) {
+        tree.anim.shake = 1;
+      }
+      this.coop.session.hitTree(tree.id, 1);
+
+      // If guest, wait briefly for host authority round-trip
+      if (!this.coop.session.isHost) {
+        const waitStart = performance.now();
+        while (
+          tree.hits === prevHits &&
+          (tree.state === 'standing' || tree.state === 'chopping') &&
+          performance.now() - waitStart < 120
+        ) {
+          await new Promise((r) => setTimeout(r, 15));
+        }
+      }
+
+      const felledNow =
+        tree.state === 'falling' || tree.state === 'fallen' || tree.state === 'stump';
+      this._updateYardTargetPrompt();
+      return { felled: felledNow, hits: tree.hits, hitsToFell: maxHp };
+    }
+
+    const res = tf.hit(tree, fallDir, 1);
 
     if (res.felled) {
       if (this.sound && typeof this.sound.playTreeFallCreak === 'function') {
@@ -2238,6 +2932,7 @@ class AxeSplittingSimulation {
 
     let swings = 0;
     let felled = false;
+    const neededHits = tree.meta?.hitsToFell || 6;
     while (
       swings < 30 &&
       (tree.state === 'standing' || tree.state === 'chopping')
@@ -2248,7 +2943,20 @@ class AxeSplittingSimulation {
         felled = true;
         break;
       }
-      await new Promise((r) => setTimeout(r, 140));
+      if (this.coop && this.coop.inSession() && swings >= neededHits) {
+        const waitStart = performance.now();
+        while (
+          (tree.state === 'standing' || tree.state === 'chopping') &&
+          performance.now() - waitStart < 600
+        ) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        if (tree.state === 'falling' || tree.state === 'fallen' || tree.state === 'stump') {
+          felled = true;
+          break;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 120));
     }
 
     // Wait for the falling tree animation to land and transition to 'fallen' / 'stump'
@@ -2308,6 +3016,7 @@ class AxeSplittingSimulation {
 
     return {
       setting: this.environment ? this.environment.getSetting() : 'nj',
+      character: this.humanoid ? this.humanoid.character : this.gameState.character || 'sergey',
       costume: this.humanoid ? this.humanoid.costume : 'tee',
       axe: this.humanoid ? this.humanoid.equippedAxeId : 'sergey',
       quality: this.qualityPreset === 'ultra' ? 'high' : this.qualityPreset,
@@ -2353,7 +3062,8 @@ class AxeSplittingSimulation {
         );
       },
       setSetting: (setting) => this.switchBackyardSetting(setting),
-      setCostume: (costume) => this.switchSergeyCostume(costume),
+      setCharacter: (character) => this.switchPlayableCharacter(character),
+      setCostume: (costume) => this.switchCharacterCostume(costume),
       setAxe: (axe) => this.setEquippedAxeById(axe),
       setQuality: (q) => {
         const normQ = ['low', 'medium', 'high', 'ultra'].includes(q) ? q : 'low';
@@ -2365,7 +3075,10 @@ class AxeSplittingSimulation {
       enterStump: () => this.enterStumpMode(),
       teleportNearTree: () => this.teleportNearTree(),
       chopTree: () => this.chopTreeUntilFelled(),
-      state: () => this._getChopperTestState()
+      state: () => this._getChopperTestState(),
+      coop: this.coop
+        ? this.coop.testHook({ fellTree: () => this.chopTreeUntilFelled() })
+        : null
     };
   }
 
@@ -2513,6 +3226,12 @@ class AxeSplittingSimulation {
     setTxt('hud-score', String(gs.score));
     setTxt('hud-combo', `${gs.combo}\u00D7`);
     setTxt('hud-credits', `\u2605 ${gs.credits}`);
+    setTxt(
+      'hud-team-splits',
+      this.coop && this.coop.inSession()
+        ? String(this.teamLogsSplitCount || 0)
+        : String(gs.logsSplitCount || 0)
+    );
     setTxt('hud-level', `LVL ${gs.level}`);
 
     const nextXp = gs.getXpForNextLevel();
@@ -2736,6 +3455,9 @@ class AxeSplittingSimulation {
         btn.addEventListener('click', () => {
           if (gs.buyOrEquipAxe(axe.id)) {
             this.humanoid.applyAxeVisuals(gs.getEquippedAxe());
+            if (this.coop) {
+              this.coop.setLocalProfile({ axe: gs.equippedAxeId });
+            }
             this._refreshAllHUD();
             this._refreshShopUI();
           }
@@ -2871,6 +3593,9 @@ class AxeSplittingSimulation {
 
     this._elapsedClock += dt;
     this._stepYardLocomotion(rawDt);
+    if (this.coop) {
+      this.coop.update(now);
+    }
     if (this.woodchipsBurst) {
       this.woodchipsBurst.update(dt);
     }

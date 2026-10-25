@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-25 00:08 EDT",
+ "generated": "2026-10-25 09:49 EDT",
  "rows": [
   {
    "key": "v1",
@@ -798,10 +798,12 @@
       "runs": 1,
       "phases": [
        "v1"
-      ]
+      ],
+      "api": 0,
+      "login": 1.24
      },
      "cost_short": "est. $1.24 cum.",
-     "cost_long": "Cost to here: est. $1.24 over 1 run (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_long": "Cost to here: est. $1.24 over 1 run (measured tokens \u00d7 Gemini 4 Argon list price; on a Google login, not billed).",
      "img": "assets/milestones/gemini/v1",
      "hud_min_px": 10.56,
      "hud_small": true,
@@ -822,10 +824,12 @@
       "phases": [
        "v1",
        "v2"
-      ]
+      ],
+      "api": 0,
+      "login": 3.56
      },
      "cost_short": "est. $3.56 cum.",
-     "cost_long": "Cost to here: est. $3.56 over 2 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_long": "Cost to here: est. $3.56 over 2 runs (measured tokens \u00d7 Gemini 4 Argon list price; on a Google login, not billed).",
      "img": "assets/milestones/gemini/v2",
      "hud_min_px": 9.92,
      "hud_small": true,
@@ -859,10 +863,12 @@
        "iter-8 (audio)",
        "iter-8 (audio)",
        "iter-9 (legibility)"
-      ]
+      ],
+      "api": 22.5,
+      "login": 13.91
      },
      "cost_short": "est. $36.41 logged so far",
-     "cost_long": "Cost to here: est. $36.41 over 15 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_long": "Cost to here: est. $36.41 over 15 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $22.50 on a paid Gemini API key, est. $13.91 on a Google login).",
      "img": "assets/milestones/gemini/classic",
      "hud_min_px": 14,
      "hud_small": true,
@@ -899,10 +905,12 @@
        "assets-v2 attempt-1",
        "assets-v2 attempt-2",
        "assets-v2 docs"
-      ]
+      ],
+      "api": 39.5,
+      "login": 13.91
      },
      "cost_short": "est. $53.41 logged so far",
-     "cost_long": "Cost to here: est. $53.41 over 18 runs (measured tokens \u00d7 Gemini 4 Argon list price; login-based, not billed).",
+     "cost_long": "Cost to here: est. $53.41 over 18 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $39.50 on a paid Gemini API key, est. $13.91 on a Google login).",
      "img": "assets/milestones/gemini/assets",
      "hud_min_px": 16,
      "hud_small": false,
@@ -912,7 +920,50 @@
      "state": "todo"
     },
     "coop": {
-     "state": "todo"
+     "state": "ok",
+     "tag": "coop-voice-release",
+     "iter": null,
+     "commit": "61b62ad",
+     "at": "2026-10-25T09:49:11-04:00",
+     "at_text": "Oct 25 09:49",
+     "cost": {
+      "total": 67.46,
+      "est": 67.46,
+      "basis": "est.",
+      "runs": 22,
+      "phases": [
+       "v1",
+       "v2",
+       "iter-1",
+       "iter-2",
+       "iter-3",
+       "iter-4",
+       "iter-5",
+       "iter-6 (audio) quota-blocked",
+       "iter-6",
+       "iter-7",
+       "iter-8",
+       "iter-8",
+       "iter-8 (audio)",
+       "iter-8 (audio)",
+       "iter-9 (legibility)",
+       "assets-v2 attempt-1",
+       "assets-v2 attempt-2",
+       "assets-v2 docs",
+       "coop-v1 attempt-1",
+       "coop-v1 attempt-1",
+       "coop-v1 docs",
+       "coop-v1 voice-attempt-1"
+      ],
+      "api": 53.55,
+      "login": 13.91
+     },
+     "cost_short": "est. $67.46 logged so far",
+     "cost_long": "Cost to here: est. $67.46 over 22 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $53.55 on a paid Gemini API key, est. $13.91 on a Google login).",
+     "img": "assets/milestones/gemini/coop",
+     "hud_min_px": 16,
+     "hud_small": false,
+     "live": false
     }
    },
    "iterations": [
@@ -1001,6 +1052,6 @@
    "iter_tags": 10
   }
  },
- "note": "Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (login-based, not billed).",
- "latest_at": "2026-10-24T15:50:04-04:00"
+ "note": "Cost = cumulative game-build runs that started before the tag (play-site and channel-art runs excluded). Reported and token-priced figures are list-price equivalents; est. marks estimated runs; Gemini is always est. (Google login, then a paid Gemini API key).",
+ "latest_at": "2026-10-25T09:49:11-04:00"
 }

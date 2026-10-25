@@ -12,7 +12,7 @@ H = ['claude', 'codex', 'deepseek']
 NAME = {'claude': 'Claude Code', 'codex': 'Codex CLI', 'deepseek': 'DeepSeek Harness'}
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from runlog import num, load_rows, load_gemini_rows, NONGAME   # shared with tools/build_milestones.py
+from runlog import num, load_rows, load_gemini_rows, NONGAME, gemini_billing, gemini_billing_paren, gemini_billing_sentence   # shared with tools/build_milestones.py
 from sitepaths import rebase, HOME, HOME_ROOT
 rows, byh = load_rows()
 
@@ -72,7 +72,8 @@ def short(t, k=95):
 def cell(v, cls=''): return f'<td class="{cls}">{v}</td>'
 
 # =====================================================================================================
-# Gemini 4 Argon (high) via the Antigravity CLI: IN PROGRESS. Login-based, never billed; every dollar is est. (tokens x list price).
+# Gemini 4 Argon (high) via the Antigravity CLI. First runs on a Google login, the rest on a paid Gemini API key (usage-gemini.csv 'billing');
+# every dollar is est. (tokens x list price). Wording comes from runlog.gemini_billing*().
 # Deliberately NOT part of H / T / grand totals above and not written to data/costs.json (the reported totals stay as they were).
 # Re-run this script (tools/refresh_gemini.sh does) to refresh the numbers from usage-gemini.csv + gemini-state.json.
 # =====================================================================================================
@@ -98,7 +99,12 @@ g_phase = gstate.get('phase') or '?'
 g_updated = gstate.get('updated') or 'unknown'
 g_updated_et = g_updated if re.search(r'\b(EDT|EST|ET)$', g_updated) else g_updated + ' ET'   # avoid 'EDT ET'
 g_done = gstate.get('done') or []
-g_assets = bool(g_live and 'assets-v2' in g_live['tag'])
+try:   # the voice chat round has its own state file (driver/coop/voice_driver.py)
+    _vs = json.load(open(f'{CH}/reports/voice-state-gemini.json'))
+    if 'READY FOR REVIEW' in (_vs.get('status') or ''): g_done = g_done + ['voice-chat']
+except Exception: pass
+g_coop = bool(g_live and 'coop-voice-release' in g_live['tag'])
+g_assets = bool(g_live and ('assets-v2' in g_live['tag'] or g_coop))
 g_title = 'Backyard Wood Splitter'
 _m = re.search(r'<title>(.*?)</title>', _read(f'{SITE}/gemini/index.html') or '', re.S)
 if _m: g_title = re.sub(r'\s*[·|•\-–—].*$', '', html.unescape(_m.group(1)).strip()) or g_title
@@ -115,8 +121,11 @@ def gem_pending(row, what):
     return '' if gem_has(row) else f' Gemini 4 Argon joined later; its {what} is not finished yet.'
 import datetime as _dt0
 g_start = (grows[0].get('start_local') or '')[:16] if grows else ''
-G_BASIS = ('Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI’s own result '
-           'usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).')
+GB = gemini_billing(grows); G_PAREN = gemini_billing_paren(grows)
+G_BASIS = ('Estimate. Gemini 4 Argon (high) ran through the Antigravity CLI, ' + (f'first on a Google login ({GB["runs_login"]} runs, est. ${GB["login"]:.2f}, not billed separately), then, once that login hit its usage limit, '
+           f'on a paid Gemini API key ({GB["runs_api"]} runs, est. ${GB["api"]:.2f} billed). ' if GB['runs_api'] else 'on a Google login, so nothing was billed. ') +
+           'Dollars = measured tokens from the CLI’s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).')
+G_DONE = gem_has('coop')   # every round the other three did is tagged: no longer 'in progress'
 G_DIFFS = [
  'Reviewer notes after v1: the other builds got notes from me playing them. Gemini gets automatic fallback notes unless hand notes were written within 15 minutes of v1 finishing.',
  'One-off hand-driven rounds were not replayed for Gemini: Claude’s channel-art task, DeepSeek’s parallel rounds and Codex’s hull fix.',
@@ -126,27 +135,29 @@ G_DIFFS = [
 
 def gstat_line():
     if g_live is None: return 'No playable build has been published yet.'
+    if g_coop: return f'Now playing: the co-op + voice chat build ({g_live["commit"]} · {g_live["tag"]}).'
     if g_assets: return f'Now playing: the Assets v2 build ({g_live["commit"]} · {g_live["tag"]}).'
     return (f'Now playing: the classic-phase build {g_live["commit"]} ({g_live["tag"]}), before any 3D assets. The Assets v2 round has not finished yet.')
 
 def gem_blog():
     o = []
     A_ = o.append
-    A_('<h3 class="h-mid" id="gemini-runs">A fourth harness: Gemini 4 Argon <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>')
-    A_(f'<p class="fine"><strong>In progress, updated as the build continues.</strong> Gemini 4 Argon (high reasoning, through the Antigravity CLI) is building the same game from the same prompts in the same order. '
+    A_('<h3 class="h-mid" id="gemini-runs">A fourth harness: Gemini 4 Argon <span class="tag tag--est">est.</span>' + ('' if G_DONE else ' <span class="tag tag--est">in progress</span>') + '</h3>')
+    A_(('<p class="fine"><strong>Finished every round.</strong> Gemini 4 Argon (high reasoning, through the Antigravity CLI) built the same game from the same prompts in the same order. ' if G_DONE else
+        '<p class="fine"><strong>In progress, updated as the build continues.</strong> Gemini 4 Argon (high reasoning, through the Antigravity CLI) is building the same game from the same prompts in the same order. ') +
        f'It is <strong>not included in any total above</strong>. {E(G_BASIS)} Driver state as of {E(g_updated_et)}: phase <span class="mono">{E(g_phase)}</span>. {E(gstat_line())}</p>')
     A_('<div class="tablewrap" role="region" aria-label="Gemini totals, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Gemini totals so far (est.)</caption><thead><tr>'
        '<th scope="col">Harness</th><th scope="col">Runs</th><th scope="col">Agent time</th><th scope="col">Input, uncached</th><th scope="col">Input, cached</th><th scope="col">Output</th><th scope="col">Est. total (USD)</th></tr></thead><tbody>')
     A_('<tr>' + f'<th scope="row">{GEM_NAME}</th>' + cell(str(GT['runs'])) + cell(hrs(GT['wall'])) + cell(n(GT['inp'])) + cell(n(GT['cached'])) + cell(n(GT['out'])) + cell(f'<strong>{usd(GT["cost"], True)}</strong>') + '</tr>')
     A_('</tbody></table></div>')
-    A_('<p class="fine">Output includes thinking tokens (' + n(GT['think']) + ' so far). This is a running figure and grows as each round finishes.</p>')
-    A_('<details class="blog__runs"><summary>' + f'{GEM_NAME}: {GT["runs"]} logged runs so far, {hrs(GT["wall"])}, {usd(GT["cost"], True)}</summary>')
+    A_('<p class="fine">Output includes thinking tokens (' + n(GT['think']) + (').</p>' if G_DONE else ' so far). This is a running figure and grows as each round finishes.</p>'))
+    A_('<details class="blog__runs"><summary>' + f'{GEM_NAME}: {GT["runs"]} logged runs{"" if G_DONE else " so far"}, {hrs(GT["wall"])}, {usd(GT["cost"], True)}</summary>')
     A_(f'<div class="tablewrap" role="region" aria-label="{GEM_NAME} runs, scrollable" tabindex="0"><table class="blogtable blogtable--runs"><caption class="sr-only">{GEM_NAME} run log</caption><thead><tr>'
        '<th scope="col">Run</th><th scope="col">Started (ET)</th><th scope="col">Wall</th><th scope="col">Input</th><th scope="col">Cached</th><th scope="col">Output</th><th scope="col">Cost</th><th scope="col">Basis</th><th scope="col">Result</th></tr></thead><tbody>')
     for r in grows:
         res = short((r.get('result') or '') + ((', ' + r['notes']) if r.get('notes') else ''))
         A_('<tr>' + f'<th scope="row">{E(r["phase"])}</th>' + cell(E((r.get('start_local') or '')[5:16])) + cell(mmss(r['wall_s'])) + cell(n(r['input_uncached'])) + cell(n(r['input_cached'])) + cell(n(r['output']))
-           + cell(usd(r['cost_usd'], True)) + cell('<span class="tag tag--est">est.</span>') + cell(E(res), 'txt') + '</tr>')
+           + cell(usd(r['cost_usd'], True)) + cell('<span class="tag tag--est">est.</span>' + (' API key' if (r.get('billing') or '') == 'api' else ' login')) + cell(E(res), 'txt') + '</tr>')
     A_('</tbody></table></div></details>')
     A_('<p class="fine"><strong>Where Gemini’s replay differs from the other three:</strong></p><ul class="blog__list">' + ''.join(f'<li>{E(d)}</li>' for d in G_DIFFS) + '</ul>')
     return '\n'.join(o)
@@ -164,7 +175,7 @@ A('<p class="lede">Every number below comes from the project’s own logs. Three
 A('<p class="fine"><strong>What was really billed:</strong> Claude Code and Codex ran on subscription logins, so their dollar figures are list-price equivalents, not charges. '
   f'DeepSeek was pay-as-you-go, and its balance fell by <strong>$8.92</strong> (from $49.66 to $40.74, checked 22:25 on Oct 22, before the last docs run had finished). '
   'Including the co-op and voice chat rounds, DeepSeek’s balance had fallen by <strong>$9.87</strong> in total (to $39.79, checked 14:09 on Oct 23, as its voice chat run was finishing), inside its raised $15 budget. '
-  'Gemini 4 Argon ran on a Google login and was not billed: its dollars are est. (measured tokens × list price) and are kept in their own rows. '
+  + gemini_billing_sentence(grows) + ' '
   'The image, 3D and voice services are listed separately below.</p>')
 
 # totals table
@@ -181,8 +192,8 @@ tw = sum(T[h]['wall'] for h in H)
 A('<tr class="blogtotal"><th scope="row">Codex, Claude Code, DeepSeek</th>' + cell(str(sum(T[h]['runs'] for h in H))) + cell(hrs(tw)) + cell(n(sum(T[h]['inp'] for h in H))) + cell(n(sum(T[h]['cached'] for h in H)))
   + cell(n(sum(T[h]['out'] for h in H))) + cell(usd(sum(T[h]['reported'] for h in H))) + cell(usd(sum(T[h]['token'] for h in H)))
   + cell(usd(sum(T[h]['est'] + T[h]['measured_bal'] for h in H), True)) + cell(f'<strong>{usd(grand_harness)}</strong>') + '</tr>')
-# Gemini 4 Argon: every dollar is est. (login-based, not billed), so it sits in the Est. column only
-A('<tr>' + f'<th scope="row">{GEM_NAME} <span class="tag tag--est">in progress</span></th>' + cell(str(GT['runs'])) + cell(hrs(GT['wall'])) + cell(n(GT['inp'])) + cell(n(GT['cached'])) + cell(n(GT['out']))
+# Gemini 4 Argon: every dollar is est. (Google login + paid API key, tokens x list price), so it sits in the Est. column only
+A('<tr>' + f'<th scope="row">{GEM_NAME}' + ('' if G_DONE else ' <span class="tag tag--est">in progress</span>') + '</th>' + cell(str(GT['runs'])) + cell(hrs(GT['wall'])) + cell(n(GT['inp'])) + cell(n(GT['cached'])) + cell(n(GT['out']))
   + cell('–') + cell('–') + cell(usd(GT['cost'], True)) + cell(f'<strong>{usd(GT["cost"], True)}</strong>') + '</tr>')
 A('<tr class="blogtotal"><th scope="row">All four, incl. Gemini est.</th>' + cell(str(sum(T[h]['runs'] for h in H) + GT['runs'])) + cell(hrs(tw + GT['wall']))
   + cell(n(sum(T[h]['inp'] for h in H) + GT['inp'])) + cell(n(sum(T[h]['cached'] for h in H) + GT['cached'])) + cell(n(sum(T[h]['out'] for h in H) + GT['out']))
@@ -193,7 +204,7 @@ A(f'<p class="fine">For Codex, Claude Code and DeepSeek, token columns add up on
   f'Claude also wrote {n(T["claude"]["cw"])} cache-write tokens. Claude’s total includes two play-site design runs ({usd(claude_site)}) and the channel-art kit ({usd(claude_art)}); without the site runs it is {usd(T["claude"]["total"]-claude_site)}. '
   f'DeepSeek’s total is token-priced ({usd(T["deepseek"]["token"])}) plus a $0.29 killed pass read from the balance counter; the measured balance drop was $8.92 by Oct 22 22:25 ET and $9.87 by Oct 23 14:09 ET, after the co-op and voice chat rounds. '
   f'Codex’s total includes est. {usd(T["codex"]["est"])} for iteration 7, whose token counts were not recorded. '
-  f'Gemini 4 Argon’s row is a running est. (output includes thinking tokens); it is still building, so the “All four” row grows as its rounds finish.</p>')
+  + (f'Gemini 4 Argon’s row is est. (output includes thinking tokens; {G_PAREN}).</p>' if G_DONE else f'Gemini 4 Argon’s row is a running est. (output includes thinking tokens; {G_PAREN}); it is still building, so the “All four” row grows as its rounds finish.</p>'))
 
 A('<h3 class="h-mid">Images, 3D models and voice (asset spend)</h3>')
 A('<div class="tablewrap" role="region" aria-label="Asset spend, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Asset generation spend</caption><thead><tr>'
@@ -318,40 +329,45 @@ cur = f'{g_live["commit"]} · {E(g_live["tag"])}' if g_live else 'not published 
 upd = (f' · updated <time datetime="{live_at}" data-rel>{E(live_at_text)} ET</time>' if live_at else f' · snapshot {E(grefs.get("snapshot_at", ""))}')
 chip_t = (E(g_live['tag']) if g_live else 'not playable yet')
 if g_live and not g_assets: what = 'Classic phase: the original brief, before any 3D assets.'
+elif g_coop: what = 'Co-op + voice chat build: two-player online co-op with opt-in proximity voice chat.'
 elif g_live: what = 'Assets v2 build.'
 else: what = 'Nothing is playable yet.'
-gem_html = f"""<article class="pcard pcard--wip" id="gemini" style="--hc:var(--h-gemini)" aria-labelledby="pc-gemini">
+gem_html = f"""<article class="pcard{'' if G_DONE else ' pcard--wip'}" id="gemini" style="--hc:var(--h-gemini)" aria-labelledby="pc-gemini">
   {('<a class="pcard__shot" href="gemini/" tabindex="-1" aria-hidden="true">' + pic + '</a>') if pic else ''}
   <div class="pcard__b">
     <h3 class="pcard__who" id="pc-gemini">Gemini</h3>
     <p class="pcard__title">{E(g_title)}</p>
     <p class="pcard__meta">Gemini 4 Argon · Antigravity CLI<br>Live build <span class="mono">{cur}</span>{upd}</p>
-    <ul class="chips" aria-label="About this build"><li class="chip chip--live">In progress · {chip_t}</li><li class="chip">Not reviewed</li></ul>
-    <p class="pcard__note">{what} Same prompts, same order as the other three. Cost so far: <strong>{est_u(GT['cost'])}</strong> (login-based, not billed).</p>
-    {('<a class="btn btn--ghost pcard__play" href="gemini/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg>Play ' + ('v2' if g_assets else 'latest') + '<span class="sr-only"> Gemini</span></a>') if g_live else ''}
+    <ul class="chips" aria-label="About this build"><li class="chip chip--live">{'Finished' if G_DONE else 'In progress'} · {chip_t}</li><li class="chip">Not reviewed</li></ul>
+    <p class="pcard__note">{what} Same prompts, same order as the other three. Cost{'' if G_DONE else ' so far'}: <strong>{est_u(GT['cost'])}</strong> ({E(G_PAREN)}).</p>
+    {('<a class="btn btn--ghost pcard__play" href="gemini/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg>Play ' + ('co-op' if g_coop else 'v2' if g_assets else 'latest') + '<span class="sr-only"> Gemini</span></a>') if g_live else ''}
     <p class="pcard__alt">{'<a href="classic/gemini/">Classic<span class="sr-only"> Gemini</span></a>' if g_classic else ''}<a href="milestones/?view=harness&amp;h=gemini">Progress<span class="sr-only"> of Gemini</span></a></p>
   </div>
 </article>"""
 put_block(PAGE['home'], 'GEMINI', rebase(gem_html, HOME_ROOT))
 
-status_html = (f'<p class="flag flag--wide ms-gemini"><strong>Gemini 4 Argon is in progress.</strong> Finished rounds: {E(", ".join(x for x in g_done if x != "repo")) or "none yet"}. '
+status_html = ((f'<p class="flag flag--wide ms-gemini"><strong>Gemini 4 Argon has finished every round.</strong> Its co-op + voice chat build is merged and published (<span class="mono">{cur}</span>). '
+                f'It joined later and is not reviewed or scored. Its dollars are <strong>est.</strong> ({E(G_PAREN)}).</p>') if G_DONE else
+               (f'<p class="flag flag--wide ms-gemini"><strong>Gemini 4 Argon is in progress.</strong> Finished rounds: {E(", ".join(x for x in g_done if x != "repo")) or "none yet"}. '
                f'Running now: <span class="mono">{E(g_phase)}</span>. Playable build: <span class="mono">{cur}</span>. Driver state as of {E(g_updated_et)}. '
-               f'Its column shows its newest tag as “in progress” until the next milestone is tagged. Its dollars are <strong>est.</strong> (login-based, not billed).</p>')
+               f'Its column shows its newest tag as “in progress” until the next milestone is tagged. Its dollars are <strong>est.</strong> ({E(G_PAREN)}).</p>'))
 put_block(PAGE['milestones'], 'GEMINI-STATUS', status_html)
 
-sc_note = ('<p class="fine">A fourth harness, <a href="../home/#gemini">Gemini 4 Argon</a>, is still being built and is not reviewed or scored. '
+sc_note = ('<p class="fine">A fourth harness, <a href="../home/#gemini">Gemini 4 Argon</a>, ' + ('joined later, finished every round, and is not reviewed or scored. ' if G_DONE else 'is still being built and is not reviewed or scored. ') +
            'Its progress is in the <a href="../milestones/?view=harness&amp;h=gemini">milestones gallery</a> and its est. cost on the <a href="../cost/#gemini-cost">cost page</a>, kept apart from this table.</p>')
 put_block(PAGE['results'], 'GEMINI-SCORES-NOTE', sc_note)
 
 co_html = f"""<section class="gemcost" id="gemini-cost" aria-labelledby="gemcost-title">
-<h3 class="h-mid" id="gemcost-title">Gemini 4 Argon so far <span class="tag tag--est">est.</span> <span class="tag tag--est">in progress</span></h3>
-<p class="fine">Gemini 4 Argon is <strong>not</strong> in the table or totals above: it is still being built, and its dollars are <strong>est.</strong> (login-based, not billed). Driver state as of {E(g_updated_et)}.</p>
+<h3 class="h-mid" id="gemcost-title">Gemini 4 Argon{'' if G_DONE else ' so far'} <span class="tag tag--est">est.</span>{'' if G_DONE else ' <span class="tag tag--est">in progress</span>'}</h3>
+<p class="fine">Gemini 4 Argon is <strong>not</strong> in the table or totals above: {'it joined later and is kept apart' if G_DONE else 'it is still being built'}, and its dollars are <strong>est.</strong> ({E(G_PAREN)}). Driver state as of {E(g_updated_et)}.</p>
 <div class="tablewrap"><table class="scoreboard" id="sb-gemini">
-<caption class="sr-only">Gemini 4 Argon: estimated cost so far</caption>
+<caption class="sr-only">Gemini 4 Argon: estimated cost{'' if G_DONE else ' so far'}</caption>
 <colgroup><col class="col-metric"><col></colgroup>
 <thead><tr><th scope="col"><span class="sr-only">Metric</span></th><th scope="col"><span class="sb-game">Gemini</span><span class="sb-sub">4 Argon · high</span></th></tr></thead>
 <tbody id="sb-gemini-cost">
 {sbrow('Cost (USD, est.)', est_u(GT['cost']))}
+{sbrow('Paid Gemini API key (est.)', est_u(GB['api']))}
+{sbrow('Google login (est.)', est_u(GB['login']))}
 {sbrow('Agent hours', f"{GT['wall'] / 3600:.1f} h")}
 {sbrow('Cost per agent hour (est.)', (est_u(GT['per_h']) + '/h') if GT['per_h'] else 'n/a')}
 {sbrow('Tokens in (uncached + cached)', f"{fmtk(GT['inp'])} + {fmtk(GT['cached'])}", 'small')}
@@ -370,11 +386,12 @@ for _p in PAGE.values():
 
 # data/gemini.json: machine-readable snapshot of what the site shows (kept apart from data/costs.json)
 import datetime as _dt2
-json.dump(dict(generated=_dt2.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M %Z'), status='in progress', basis=G_BASIS, note='est., login-based, not billed; NOT included in data/costs.json totals',
+json.dump(dict(generated=_dt2.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M %Z'), status=('finished (not reviewed)' if G_DONE else 'in progress'), basis=G_BASIS, note=f'{G_PAREN}; NOT included in data/costs.json totals',
+               billing=dict(cost_usd_est_total=GB['total'], cost_usd_est_api_key=GB['api'], cost_usd_est_google_login=GB['login'], runs_api_key=GB['runs_api'], runs_google_login=GB['runs_login'], note='all figures est. (measured tokens x list price)'),
                driver_phase=g_phase, driver_updated_et=g_updated, finished_rounds=[x for x in g_done if x != 'repo'], playable=g_live, classic=g_classic,
                runs=GT['runs'], wall_h=round(GT['wall'] / 3600, 2), input_uncached=int(GT['inp']), input_cached=int(GT['cached']), output=int(GT['out']), reasoning=int(GT['think']),
                cost_usd_est=round(GT['cost'], 2), per_agent_hour_est=round(GT['per_h'], 2) if GT['per_h'] else None,
-               runs_detail=[dict(phase=r['phase'], wall_s=r['wall_s'], cost_usd_est=r['cost_usd'], result=r.get('result')) for r in grows]),
+               runs_detail=[dict(phase=r['phase'], wall_s=r['wall_s'], cost_usd_est=r['cost_usd'], billing=('api key' if (r.get('billing') or '') == 'api' else 'google login'), result=r.get('result')) for r in grows]),
           open(f'{SITE}/data/gemini.json', 'w'), indent=1)
 
 # ---- data/costs.json: the landing page's "The bill" table and scoreboard cost row read this file, so they always match the blog totals ----

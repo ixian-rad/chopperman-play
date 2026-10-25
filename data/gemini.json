@@ -1,8 +1,16 @@
 {
- "generated": "2026-10-25 00:08 EDT",
- "status": "in progress",
- "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
- "note": "est., login-based, not billed; NOT included in data/costs.json totals",
+ "generated": "2026-10-25 09:49 EDT",
+ "status": "finished (not reviewed)",
+ "basis": "Estimate. Gemini 4 Argon (high) ran through the Antigravity CLI, first on a Google login (8 runs, est. $13.91, not billed separately), then, once that login hit its usage limit, on a paid Gemini API key (14 runs, est. $53.55 billed). Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
+ "note": "est.: $53.55 on a paid Gemini API key, $13.91 on a Google login; NOT included in data/costs.json totals",
+ "billing": {
+  "cost_usd_est_total": 67.46,
+  "cost_usd_est_api_key": 53.55,
+  "cost_usd_est_google_login": 13.91,
+  "runs_api_key": 14,
+  "runs_google_login": 8,
+  "note": "all figures est. (measured tokens x list price)"
+ },
  "driver_phase": "coop-docs",
  "driver_updated_et": "2026-10-24 22:35:25 EDT",
  "finished_rounds": [
@@ -20,11 +28,12 @@
   "coop-setup",
   "coop-attempt-1",
   "coop-docs",
-  "coop-ready"
+  "coop-ready",
+  "voice-chat"
  ],
  "playable": {
-  "commit": "d8d75ca",
-  "tag": "assets-v2-release"
+  "commit": "76a7694",
+  "tag": "coop-voice-release"
  },
  "classic": {
   "commit": "c4d6ded",
@@ -43,132 +52,154 @@
    "phase": "v1",
    "wall_s": 1031.0,
    "cost_usd_est": 1.24,
+   "billing": "google login",
    "result": "v1 built"
   },
   {
    "phase": "v2",
    "wall_s": 1572.0,
    "cost_usd_est": 2.3197,
+   "billing": "google login",
    "result": "v2 ok"
   },
   {
    "phase": "iter-1",
    "wall_s": 1226.0,
    "cost_usd_est": 2.058,
+   "billing": "google login",
    "result": "ok"
   },
   {
    "phase": "iter-2",
    "wall_s": 1088.0,
    "cost_usd_est": 1.7818,
+   "billing": "google login",
    "result": "ok"
   },
   {
    "phase": "iter-3",
    "wall_s": 8787.0,
    "cost_usd_est": 3.2327,
+   "billing": "google login",
    "result": "ok"
   },
   {
    "phase": "iter-4",
    "wall_s": 7505.0,
    "cost_usd_est": 2.1749,
+   "billing": "google login",
    "result": "ok"
   },
   {
    "phase": "iter-5",
    "wall_s": 281.0,
    "cost_usd_est": 0.6057,
+   "billing": "google login",
    "result": "ok"
   },
   {
    "phase": "iter-6 (audio) quota-blocked",
    "wall_s": 1286.0,
    "cost_usd_est": 0.4991,
+   "billing": "google login",
    "result": "quota exhausted (Antigravity individual quota, resets ~2026-10-30 04:53 EDT); 0 files changed; driver stopped by operator; round reruns after reset"
   },
   {
    "phase": "iter-6",
    "wall_s": 1655.0,
    "cost_usd_est": 3.3815,
+   "billing": "api key",
    "result": "ok"
   },
   {
    "phase": "iter-7",
    "wall_s": 4773.0,
    "cost_usd_est": 4.7249,
+   "billing": "api key",
    "result": "ok"
   },
   {
    "phase": "iter-8",
    "wall_s": 8516.0,
    "cost_usd_est": 2.9435,
+   "billing": "api key",
    "result": "quota exhausted; reverted"
   },
   {
    "phase": "iter-8",
    "wall_s": 3481.0,
    "cost_usd_est": 1.0467,
+   "billing": "api key",
    "result": "quota exhausted; reverted"
   },
   {
    "phase": "iter-8 (audio)",
    "wall_s": 6518.0,
    "cost_usd_est": 3.489,
+   "billing": "api key",
    "result": "quota exhausted"
   },
   {
    "phase": "iter-8 (audio)",
    "wall_s": 6320.0,
    "cost_usd_est": 5.8747,
+   "billing": "api key",
    "result": "ok; tests n/a"
   },
   {
    "phase": "iter-9 (legibility)",
    "wall_s": 1156.0,
    "cost_usd_est": 1.0392,
+   "billing": "api key",
    "result": "ok; tests n/a"
   },
   {
    "phase": "assets-v2 attempt-1",
    "wall_s": 10812.0,
    "cost_usd_est": 6.3063,
+   "billing": "api key",
    "result": "verify FAIL; fps low NJ/Tir None/None; tests n/a; ready: page.waitForFunction: Timeout 150000ms exceeded.; fatal: not ready; skipping remaining steps"
   },
   {
    "phase": "assets-v2 attempt-2",
    "wall_s": 10810.0,
    "cost_usd_est": 9.0613,
+   "billing": "api key",
    "result": "verify ok; fps low NJ/Tir 9/18.2; tests n/a"
   },
   {
    "phase": "assets-v2 docs",
    "wall_s": 1785.0,
    "cost_usd_est": 1.6289,
+   "billing": "api key",
    "result": "docs; verify ok"
   },
   {
    "phase": "coop-v1 attempt-1",
    "wall_s": 15819.0,
    "cost_usd_est": 9.04,
+   "billing": "api key",
    "result": "quota exhausted"
   },
   {
    "phase": "coop-v1 attempt-1",
    "wall_s": 2086.0,
    "cost_usd_est": 1.4788,
+   "billing": "api key",
    "result": "verify ok (v2 True, coop True); fps NJ/Tir 19.2/23.7; tests n/a"
   },
   {
    "phase": "coop-v1 docs",
    "wall_s": 2190.0,
    "cost_usd_est": 1.4969,
+   "billing": "api key",
    "result": "docs; final verify FAIL; [coop] voice_distance_gain: timed out waiting for A gain node ~ curve(1 m) = 1.000 (last: false)"
   },
   {
    "phase": "coop-v1 voice-attempt-1",
    "wall_s": 2310.0,
    "cost_usd_est": 2.0354,
+   "billing": "api key",
    "result": "verify ok (v2 True, coop --voice True); fps NJ/Tir 14.8/21.9; tests n/a; module pass 360 checks"
   }
  ]

@@ -66,6 +66,28 @@
    "cost_basis": [
     "estimate (tokens measured from session store)"
    ]
+  },
+  "gemini": {
+   "build": {
+    "commit": "76a7694",
+    "tag": "coop-voice-release"
+   },
+   "verify_ok": true,
+   "v2_ok": true,
+   "coop_voice_ok": true,
+   "fps": {
+    "nj_low": 20.3,
+    "tiraspol_low": 20.5,
+    "tiraspol_high": 23.6
+   },
+   "module_tests": "pass 360 checks",
+   "game_tests": "n/a",
+   "runs": 4,
+   "wall_h": 6.22,
+   "cost_usd": 14.05,
+   "cost_basis": [
+    "est. (paid Gemini API key, measured tokens x list price)"
+   ]
   }
  }
 }

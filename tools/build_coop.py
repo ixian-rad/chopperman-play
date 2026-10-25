@@ -6,10 +6,20 @@ import csv, json, os, re, html, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sitepaths import rebase, HOME, HOME_ROOT
 CH = '/workspace/chopperman'; SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); E = html.escape
-H = ['codex', 'claude', 'deepseek']
-NAME = {'claude': 'Claude Code', 'codex': 'Codex CLI', 'deepseek': 'DeepSeek Harness'}
-TITLE = {'claude': 'Backyard Log Splitter', 'codex': 'Backyard: Find the grain', 'deepseek': 'American Split'}
+# Gemini 4 Argon joined later: once it tags coop-voice-release (data/milestones.json, from tools/build_milestones.py) it gets a card/row and the lede says "all four".
+def _gem_coop():
+    try: return json.load(open(f'{SITE}/data/milestones.json'))['harness']['gemini']['cells']['coop']['state'] == 'ok'
+    except Exception: return False
+GEM = _gem_coop()
+H = ['codex', 'claude', 'deepseek'] + (['gemini'] if GEM else [])
+NAME = {'claude': 'Claude Code', 'codex': 'Codex CLI', 'deepseek': 'DeepSeek Harness', 'gemini': 'Gemini 4 Argon'}
+TITLE = {'claude': 'Backyard Log Splitter', 'codex': 'Backyard: Find the grain', 'deepseek': 'American Split', 'gemini': 'Backyard Wood Splitter'}
+_m = re.search(r'<title>(.*?)</title>', open(f'{SITE}/gemini/index.html').read(), re.S) if os.path.exists(f'{SITE}/gemini/index.html') else None
+if _m: TITLE['gemini'] = re.sub(r'\s*[·|•\-–—].*$', '', html.unescape(_m.group(1)).strip()) or TITLE['gemini']
 rows = [r for r in csv.DictReader(open(f'{CH}/reports/usage.csv')) if r['phase'].startswith('coop-v1')]
+try: rows += [dict(r, harness='gemini', cost_basis='est. (' + ('paid Gemini API key' if r.get('billing') == 'api' else 'Google login') + ', measured tokens x list price)')
+              for r in csv.DictReader(open(f'{CH}/reports/usage-gemini.csv')) if r['phase'].startswith('coop-v1')]
+except FileNotFoundError: pass
 data = {}
 for h in H:
     rr = [r for r in rows if r['harness'] == h]
@@ -26,14 +36,10 @@ json.dump(dict(note='Release verify on the merged main: driver/v2/check_v2.mjs +
 def fps(f): return 'n/a' if not f else f"{f.get('nj_low')} / {f.get('tiraspol_low')} / {f.get('tiraspol_high')}"
 def chk(x): return 'passed' if x else ('failed' if x is False else 'n/a')
 trs = ''.join(f'<tr><th scope="row">{NAME[h]}</th><td class="txt">{E(TITLE[h])}</td><td class="mono">{E(d["build"]["commit"])}</td><td>{chk(d["verify_ok"])}</td><td>{fps(d["fps"])}</td>'
-              f'<td class="txt">{d["runs"]} runs, {d["wall_h"]:.2f} h, ${d["cost_usd"]:.2f}</td></tr>' for h, d in data.items())
+              f'<td class="txt">{d["runs"]} runs, {d["wall_h"]:.2f} h, {"est. " if h == "gemini" else ""}${d["cost_usd"]:.2f}</td></tr>' for h, d in data.items())
 cards = ''.join(f'<li><a class="btn btn--play" href="{h}/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play co-op </em><b>{NAME[h].split()[0]} </b><small>{E(TITLE[h])}</small></span></a></li>' for h in H)
-# Gemini 4 Argon joined later: once it tags coop-voice-release (data/milestones.json, from tools/build_milestones.py) the lede says "all four".
-def _gem_coop():
-    try: return json.load(open(f'{SITE}/data/milestones.json'))['harness']['gemini']['cells']['coop']['state'] == 'ok'
-    except Exception: return False
 LEDE = ('All four games, Codex, Claude Code, DeepSeek and Gemini 4 Argon, now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. All four got the same co-op brief, then the same voice chat brief.'
-        if _gem_coop() else
+        if GEM else
         'The Codex, Claude Code and DeepSeek games now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. Those three got the same co-op brief, then the same voice chat brief. Gemini 4 Argon joined later; its co-op version is not finished yet.')
 block = f"""<section class="section" id="coop" aria-labelledby="coop-title">
   <div class="wrap">
@@ -54,11 +60,11 @@ block = f"""<section class="section" id="coop" aria-labelledby="coop-title">
       <li><strong>Voice (optional).</strong> Turn on <strong>Proximity voice chat</strong> in the Co-op menu, before you host or join or at any time later. Each player has to opt in and allow microphone access when the browser asks. With it off, the game never touches your microphone.</li>
     </ol>
     <p class="v2note"><strong>Connection notes.</strong> Co-op is peer-to-peer (WebRTC). It uses the free PeerJS cloud server only to introduce the two browsers, and STUN to find a route between them. There is no relay (TURN) server, so players behind a strict NAT, such as some office, school or mobile networks, may not be able to connect. It works best in two different browsers or on two devices. Two tabs of the same browser on one machine also work for a quick try.</p>
-    <ul class="playrow playrow--3" aria-label="Play the co-op builds">{cards}</ul>
+    <ul class="playrow playrow--{len(H)}" aria-label="Play the co-op builds">{cards}</ul>
     <details class="coop-check"><summary>Release check: automated test results on the merged builds</summary>
     <div class="tablewrap" role="region" aria-label="Co-op release check, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Co-op and voice chat: release check on the merged build</caption><thead><tr>
       <th scope="col">Harness</th><th scope="col">Game</th><th scope="col">Build</th><th scope="col">Automated check</th><th scope="col">FPS NJ low / Tiraspol low / Tiraspol high</th><th scope="col">Co-op + voice rounds</th></tr></thead><tbody>{trs}</tbody></table></div>
-    <p class="fine">The check ran on each merged build after release. It replays the Assets v2 check, plays a full two-player co-op session including every voice chat step, and runs the voice module’s 360 unit checks. It ran in headless Chrome with software rendering and no GPU, so FPS are far below what a real graphics card gives. Voice was tested with a simulated microphone, and the two players were linked by an in-page loopback, not a real network. Round costs are in the totals under <a href="cost/">The bill</a>. Claude’s are reported by the tool, and Codex’s and DeepSeek’s are token-priced (list-price equivalents).</p></details>
+    <p class="fine">The check ran on each merged build after release. It replays the Assets v2 check, plays a full two-player co-op session including every voice chat step, and runs the voice module’s 360 unit checks. It ran in headless Chrome with software rendering and no GPU, so FPS are far below what a real graphics card gives. Voice was tested with a simulated microphone, and the two players were linked by an in-page loopback, not a real network. Round costs are in the totals under <a href="cost/">The bill</a>. Claude’s are reported by the tool, and Codex’s and DeepSeek’s are token-priced (list-price equivalents).{" Gemini 4 Argon’s are est. (measured tokens × list price, run on a paid Gemini API key) and kept apart from the totals; its release check ran on Oct 25." if GEM else ""}</p></details>
   </div>
 </section>"""
 block = rebase(block, HOME_ROOT)  # fragment links are written from the site root

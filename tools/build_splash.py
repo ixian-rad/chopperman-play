@@ -45,6 +45,8 @@ g_play = gem.get('playable') or {}
 g_rounds = ', '.join(gem.get('finished_rounds') or []) or 'none yet'
 g_build = f'<span class="mono">{E(g_play["commit"])} · {E(g_play["tag"])}</span>' if g_play.get('commit') else 'not playable yet'
 g_cost = f'est. ${gem["cost_usd_est"]:.2f}' if gem.get('cost_usd_est') is not None else None
+g_paren = (gem.get('note') or '').split('; NOT included')[0] or 'est.'   # billing split, from tools/runlog.gemini_billing_paren via data/gemini.json
+G_DONE = (gem.get('status') or '').startswith('finished')
 
 PLAY_SVG = '<svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg>'
 
@@ -74,14 +76,14 @@ gcard = f'''<article class="scard scard--wip" style="--hc:var(--h-gemini)" aria-
             <p class="scard__title">Not reviewed yet</p>
           </div>
         </header>
-        <p class="scard__wip"><span class="chip chip--live">In progress</span></p>
-        <p class="scard__verdict">Joined later and still being built, so there is no score yet. It gets the same prompts in the same order as the other three.</p>
-        <p class="scard__meta">Newest build: {g_build}. Finished rounds: {E(g_rounds)}.{(" Cost so far: <strong>" + E(g_cost) + "</strong> (login-based, not billed).") if g_cost else ""}</p>
-        <p class="scard__links"><a href="milestones/?view=harness&amp;h=gemini">See its progress</a><a href="gemini/">Play latest<span class="sr-only"> Gemini build</span></a></p>
+        <p class="scard__wip"><span class="chip chip--live">{"Finished · co-op + voice" if G_DONE else "In progress"}</span></p>
+        <p class="scard__verdict">{"Joined later and finished every round, including two-player co-op and voice chat, but it has not been reviewed, so there is no score. It got the same prompts in the same order as the other three." if G_DONE else "Joined later and still being built, so there is no score yet. It gets the same prompts in the same order as the other three."}</p>
+        <p class="scard__meta">Newest build: {g_build}. Finished rounds: {E(g_rounds)}.{((" Cost: " if G_DONE else " Cost so far: ") + "<strong>" + E(g_cost) + "</strong> (" + E(g_paren) + ").") if g_cost else ""}</p>
+        <p class="scard__links"><a href="milestones/?view=harness&amp;h=gemini">See its progress</a><a href="gemini/">{"Play co-op" if G_DONE else "Play latest"}<span class="sr-only"> Gemini build</span></a></p>
       </article>'''
 
 DESC = ('One brief, four AI coding harnesses: Codex, Claude Code, DeepSeek and Gemini 4 Argon each build the same backyard axe-chopping browser game '
-        '(Gemini’s is still in progress). Watch the intro, see how the Grain &amp; Gravity review scored them, then play the games.')
+        + ('' if G_DONE else '(Gemini’s is still in progress). ') + 'Watch the intro, see how the Grain &amp; Gravity review scored them, then play the games.')
 SPLASH_IDS = ['main', 'enter', 'watch', 'reviews-in-short']  # anchors on the splash itself; every other hash belongs to the main page
 
 page = f'''<!doctype html>
@@ -113,7 +115,7 @@ page = f'''<!doctype html>
   <div class="wrap hero__inner">
     <div class="hero__copy">
       <h1 id="splash-title" class="hero__logo"><img src="assets/brand/logo.svg" alt="Chopperman" width="1200" height="340"></h1>
-      <p class="hero__pitch">One brief, four AI coding harnesses: Codex, Claude Code, DeepSeek and Gemini 4 Argon. Each builds the same backyard axe game. Gemini’s is still being built.</p>
+      <p class="hero__pitch">One brief, four AI coding harnesses: Codex, Claude Code, DeepSeek and Gemini 4 Argon. Each builds the same backyard axe game.{"" if G_DONE else " Gemini’s is still being built."}</p>
       <p class="splash__go" id="enter"><a class="btn btn--play btn--cta splash__enter" href="home/">{PLAY_SVG}Enter the yard</a></p>
       <p class="splash__skip"><a href="#watch">Watch the intro</a><a href="#reviews-in-short">See the review scores</a></p>
     </div>
@@ -143,7 +145,7 @@ page = f'''<!doctype html>
     <p class="kicker">Grain &amp; Gravity · Round Two</p>
     <h2 id="rs-title">What the review said</h2>
     <p class="lede">An IGN-style video review: about five minutes of play per game, scored out of 10 on gameplay, graphics and physics.</p>
-    <p class="flag flag--wide"><strong>What was reviewed:</strong> these scores are for earlier <strong>classic (pre-assets)</strong> snapshots of the Codex, Claude Code and DeepSeek games. Their Assets v2, polish and co-op builds have not been reviewed or scored, and Gemini 4 Argon is still being built.</p>
+    <p class="flag flag--wide"><strong>What was reviewed:</strong> these scores are for earlier <strong>classic (pre-assets)</strong> snapshots of the Codex, Claude Code and DeepSeek games. Their Assets v2, polish and co-op builds have not been reviewed or scored, and Gemini 4 Argon {"joined later and has not been reviewed" if G_DONE else "is still being built"}.</p>
     <div class="scards">
       {card("codex")}
       {card("claude")}
@@ -159,7 +161,7 @@ page = f'''<!doctype html>
     <h2 id="end-title">Pick up the axe</h2>
     <p class="lede">The main site has all four games (solo or two-player co-op with voice chat), every milestone side by side, the reviews and what each build cost.</p>
     <p class="splash__go"><a class="btn btn--play btn--cta splash__enter" href="home/">{PLAY_SVG}Go to the site</a></p>
-    <p class="splash__quick">Or play one right now: <a href="codex/">Codex</a><a href="claude/">Claude</a><a href="deepseek/">DeepSeek</a><a href="gemini/">Gemini (in progress)</a></p>
+    <p class="splash__quick">Or play one right now: <a href="codex/">Codex</a><a href="claude/">Claude</a><a href="deepseek/">DeepSeek</a><a href="gemini/">{"Gemini" if G_DONE else "Gemini (in progress)"}</a></p>
   </div>
 </section>
 </main>

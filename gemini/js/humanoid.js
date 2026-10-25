@@ -1,19 +1,21 @@
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import * as CANNON from 'cannon-es';
 import { createFlannelTexture, createDenimTexture } from './textures.js';
 import {
   loadGLB,
   toFastPropMaterial,
+  CHARACTER_COSTUMES,
   COSTUME_MODEL_URLS,
   AXE_MODEL_URLS,
-  EXTRA_CLIP_URLS
+  EXTRA_CLIP_URLS_BY_CHAR
 } from './assetsLoader.js';
 import { normalizeAxeId } from './rpgState.js';
 
 /**
- * Playable Character Controller for SERGEY (with two switchable costumes: 'tee' and 'jacket',
- * 24-bone Meshy PBR rig, AnimationMixer with crossfades, and 4 attachable 3D GLB axes on RightHand),
- * plus the articulated procedural fallback rig & kinematic physics collider for log-splitting.
+ * Playable Character Controller for SERGEY ('tee' | 'jacket') and ALEX ('camo' | 'bomber'),
+ * sharing the 24-bone Meshy PBR rig, AnimationMixer with crossfades, and 4 attachable 3D GLB axes on RightHand,
+ * plus independent remote avatar spawning (`spawnRemoteAvatar`) for 2-player online co-op.
  */
 export class HumanoidChopper {
   constructor(scene, world, physMaterials, choppingStation, soundEffects) {
@@ -40,7 +42,8 @@ export class HumanoidChopper {
     this.isRunning = false;
     this.footstepTimer = 0;
 
-    // Sergey assets-v2 state
+    // Character ('sergey' | 'alex') & Costume ('tee' | 'jacket' | 'camo' | 'bomber') state
+    this.character = 'sergey';
     this.costume = 'tee';
     this.equippedAxeId = 'sergey';
     this.characterLoaded = false;
@@ -49,9 +52,11 @@ export class HumanoidChopper {
     this._cheerTimer = 0;
 
     this._costumeRecords = {}; // costume -> { root, mixer, actions, rightHandBone, armScale }
-    this._extraClips = {}; // 'Walk' | 'Run' -> THREE.AnimationClip
+    this._extraClipsByChar = { sergey: {}, alex: {} };
+    this._extraClipsLoadedByChar = { sergey: false, alex: false };
     this._axeTemplates = {}; // axeId -> THREE.Group
     this._activeCostumeRecord = null;
+    this.remoteAvatars = new Set();
 
     this.prevBladePos = new THREE.Vector3();
     this.currentBladeVelocity = new THREE.Vector3();
@@ -62,17 +67,17 @@ export class HumanoidChopper {
     this.root.rotation.set(0, 0, 0);
     this.scene.add(this.root);
 
-    // Fallback procedural rig group (hidden once Sergey GLB is loaded, still drives kinematic axe collider)
+    // Fallback procedural rig group (hidden once character GLB is loaded, still drives kinematic axe collider)
     this.fallbackRigGroup = new THREE.Group();
     this.fallbackRigGroup.name = 'FallbackProceduralRig';
     this.root.add(this.fallbackRigGroup);
 
-    // Container for Sergey GLB character
+    // Container for active playable GLB character
     this.sergeyContainer = new THREE.Group();
     this.sergeyContainer.name = 'SergeyGLBContainer';
     this.root.add(this.sergeyContainer);
 
-    // Socket attached to Sergey's RightHand bone
+    // Socket attached to character's RightHand bone
     this.rightHandSocket = new THREE.Group();
     this.rightHandSocket.name = 'RightHandAxeSocket';
 
@@ -84,17 +89,22 @@ export class HumanoidChopper {
   }
 
   /**
-   * Loads Sergey's GLB character (both costumes share the 24-bone Meshy skeleton),
-   * extra walking/running armature clips, and all 4 axe GLBs in parallel so swapping is instant.
+   * Loads only the selected character's active costume GLB, extra walking/running armature clips,
+   * and the 4 axe GLBs in parallel so startup is fast and the other character is lazy-loaded on demand.
    */
-  async initAssets(initialCostume = 'tee', initialAxeId = 'sergey') {
-    this.costume = initialCostume === 'jacket' ? 'jacket' : 'tee';
+  async initAssets(
+    initialCostume = 'tee',
+    initialAxeId = 'sergey',
+    initialCharacter = 'sergey'
+  ) {
+    this.character = initialCharacter === 'alex' ? 'alex' : 'sergey';
+    const validCostumes = CHARACTER_COSTUMES[this.character] || CHARACTER_COSTUMES.sergey;
+    this.costume = validCostumes.includes(initialCostume) ? initialCostume : validCostumes[0];
     this.equippedAxeId = normalizeAxeId(initialAxeId);
 
-    await this._loadExtraLocomotionClips();
+    await this._loadExtraLocomotionClips(this.character);
     await Promise.all([
-      this._ensureCostumeLoaded('tee'),
-      this._ensureCostumeLoaded('jacket'),
+      this._ensureCostumeLoaded(this.costume),
       this._ensureAxeTemplateLoaded('sergey'),
       this._ensureAxeTemplateLoaded('double_bit'),
       this._ensureAxeTemplateLoaded('maul'),
@@ -108,20 +118,28 @@ export class HumanoidChopper {
     return this.characterLoaded;
   }
 
-  async _loadExtraLocomotionClips() {
-    if (this._extraClipsLoaded) return;
+  async _loadExtraLocomotionClips(charKey = 'sergey') {
+    const key = charKey === 'alex' ? 'alex' : 'sergey';
+    if (this._extraClipsLoadedByChar[key]) return;
+    const urls = EXTRA_CLIP_URLS_BY_CHAR[key] || EXTRA_CLIP_URLS_BY_CHAR.sergey;
     try {
       const [walkGltf, runGltf] = await Promise.all([
-        loadGLB(EXTRA_CLIP_URLS.walk),
-        loadGLB(EXTRA_CLIP_URLS.run)
+        loadGLB(urls.walk),
+        loadGLB(urls.run)
       ]);
       if (walkGltf?.animations?.length) {
-        this._extraClips.Walk = this._sanitizeClip(walkGltf.animations[0], 'Walk');
+        this._extraClipsByChar[key].Walk = this._sanitizeClip(
+          walkGltf.animations[0],
+          'Walk'
+        );
       }
       if (runGltf?.animations?.length) {
-        this._extraClips.Run = this._sanitizeClip(runGltf.animations[0], 'Run');
+        this._extraClipsByChar[key].Run = this._sanitizeClip(
+          runGltf.animations[0],
+          'Run'
+        );
       }
-      this._extraClipsLoaded = true;
+      this._extraClipsLoadedByChar[key] = true;
     } catch {
       // Optional extra clips; built-in Casual_Walk is always present on character GLB
     }
@@ -129,7 +147,7 @@ export class HumanoidChopper {
 
   /**
    * Removes horizontal root-motion drift on Hips.position and locks Armature.scale
-   * so Sergey stays centered on `this.root.position` during locomotion and swings.
+   * so the character stays centered on `this.root.position` during locomotion and swings.
    */
   _sanitizeClip(clip, overrideName = null) {
     const cloned = clip.clone();
@@ -154,8 +172,8 @@ export class HumanoidChopper {
       }
     }
 
-    // Trim Axe_Stance to its clean ready-stance segment (0.0s .. 1.05s) where Sergey holds the axe
-    // in front of him at waist/chest level, avoiding the mid-clip overhead arm wave during idle
+    // Trim Axe_Stance to its clean ready-stance segment (0.0s .. 1.05s) where the character holds the axe
+    // in front of them at waist/chest level, avoiding the mid-clip overhead arm wave during idle
     if (cloned.name === 'Axe_Stance') {
       const maxTime = 1.05;
       for (const track of cloned.tracks) {
@@ -179,84 +197,119 @@ export class HumanoidChopper {
     return cloned;
   }
 
+  _characterForCostume(costumeName) {
+    return costumeName === 'camo' || costumeName === 'bomber' ? 'alex' : 'sergey';
+  }
+
+  async _buildSkinnedCharacterRig(costumeName = 'tee', labelPrefix = 'Player') {
+    const charKey = this._characterForCostume(costumeName);
+    await this._loadExtraLocomotionClips(charKey);
+    const url = COSTUME_MODEL_URLS[costumeName] || COSTUME_MODEL_URLS.tee;
+    const gltf = await loadGLB(url);
+    const modelRoot = SkeletonUtils.clone(gltf.scene);
+    modelRoot.name = `${labelPrefix}_${charKey}_${costumeName}`;
+
+    let rightHandBone = null;
+    let armatureNode = null;
+    modelRoot.traverse((node) => {
+      if (node.isMesh || node.isSkinnedMesh) {
+        node.castShadow = false;
+        node.receiveShadow = true;
+        node.frustumCulled = false;
+        if (Array.isArray(node.material)) {
+          node.material = node.material.map((m) => toFastPropMaterial(m, true, 0.04));
+        } else if (node.material) {
+          node.material = toFastPropMaterial(node.material, true, 0.04);
+        }
+      }
+      if (node.name === 'RightHand') {
+        rightHandBone = node;
+      } else if (node.name === 'Armature') {
+        armatureNode = node;
+      }
+    });
+
+    // Normalize height to ~1.78m and ensure feet sit at y = 0
+    modelRoot.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(modelRoot);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    if (size.y > 0.1 && (size.y < 1.4 || size.y > 2.1)) {
+      const s = 1.78 / size.y;
+      modelRoot.scale.multiplyScalar(s);
+      modelRoot.updateMatrixWorld(true);
+    }
+
+    const mixer = new THREE.AnimationMixer(modelRoot);
+    const actions = {};
+
+    for (const rawClip of gltf.animations || []) {
+      const clean = this._sanitizeClip(rawClip, rawClip.name);
+      const action = mixer.clipAction(clean);
+      actions[clean.name] = action;
+    }
+    const extraClips = this._extraClipsByChar[charKey] || {};
+    for (const [extraName, extraClip] of Object.entries(extraClips)) {
+      if (!actions[extraName]) {
+        actions[extraName] = mixer.clipAction(extraClip);
+      }
+    }
+
+    const armScale = armatureNode && armatureNode.scale.x > 0 ? armatureNode.scale.x : 0.01;
+
+    return {
+      character: charKey,
+      costume: costumeName,
+      root: modelRoot,
+      mixer,
+      actions,
+      activeAction: null,
+      rightHandBone,
+      armScale
+    };
+  }
+
   async _ensureCostumeLoaded(target) {
     if (this._costumeRecords[target]) return true;
-    const url = COSTUME_MODEL_URLS[target] || COSTUME_MODEL_URLS.tee;
     try {
-      const gltf = await loadGLB(url);
-      const modelRoot = gltf.scene;
-      modelRoot.name = `Sergey_${target}`;
-
-      let rightHandBone = null;
-      let armatureNode = null;
-      modelRoot.traverse((node) => {
-        if (node.isMesh || node.isSkinnedMesh) {
-          node.castShadow = false;
-          node.receiveShadow = true;
-          node.frustumCulled = false;
-          if (node.material) {
-            node.material = toFastPropMaterial(node.material, true, 0.04);
-          }
-        }
-        if (node.name === 'RightHand') {
-          rightHandBone = node;
-        } else if (node.name === 'Armature') {
-          armatureNode = node;
-        }
-      });
-
-      // Normalize Sergey height to ~1.78m and ensure feet sit at y = 0
-      modelRoot.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(modelRoot);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      if (size.y > 0.1 && (size.y < 1.4 || size.y > 2.1)) {
-        const s = 1.78 / size.y;
-        modelRoot.scale.multiplyScalar(s);
-        modelRoot.updateMatrixWorld(true);
-      }
-
-      const mixer = new THREE.AnimationMixer(modelRoot);
-      const actions = {};
-
-      for (const rawClip of gltf.animations || []) {
-        const clean = this._sanitizeClip(rawClip, rawClip.name);
-        const action = mixer.clipAction(clean);
-        actions[clean.name] = action;
-      }
-      for (const [extraName, extraClip] of Object.entries(this._extraClips)) {
-        if (!actions[extraName]) {
-          actions[extraName] = mixer.clipAction(extraClip);
-        }
-      }
-
-      const armScale = armatureNode && armatureNode.scale.x > 0 ? armatureNode.scale.x : 0.01;
-
-      this._costumeRecords[target] = {
-        costume: target,
-        root: modelRoot,
-        mixer,
-        actions,
-        activeAction: null,
-        rightHandBone,
-        armScale
-      };
+      const rec = await this._buildSkinnedCharacterRig(target, 'Playable');
+      this._costumeRecords[target] = rec;
       return true;
     } catch (err) {
-      console.warn('Failed to load Sergey costume GLB, using fallback rig:', err);
+      console.warn('Failed to load character costume GLB, using fallback rig:', err);
       this.fallbackRigGroup.visible = true;
       return false;
     }
   }
 
   /**
-   * Switches Sergey's costume ('tee' | 'jacket') and resolves when the GLB model is active.
+   * Switches playable character ('sergey' | 'alex') and activates its default costume ('tee' | 'camo').
+   */
+  async setCharacter(charName = 'sergey', costumeOverride = null) {
+    const targetChar = charName === 'alex' ? 'alex' : 'sergey';
+    this.character = targetChar;
+    const validCostumes = CHARACTER_COSTUMES[targetChar] || CHARACTER_COSTUMES.sergey;
+    const targetCostume =
+      costumeOverride && validCostumes.includes(costumeOverride)
+        ? costumeOverride
+        : validCostumes[0];
+    return this.setCostume(targetCostume);
+  }
+
+  /**
+   * Switches costume ('tee'|'jacket' for Sergey, 'camo'|'bomber' for Alex) and resolves when active.
    */
   async setCostume(costumeName = 'tee') {
-    const target = costumeName === 'jacket' ? 'jacket' : 'tee';
+    const allValid = ['tee', 'jacket', 'camo', 'bomber'];
+    const currentCharCostumes = CHARACTER_COSTUMES[this.character] || CHARACTER_COSTUMES.sergey;
+    let target = costumeName;
+    if (!allValid.includes(target)) {
+      target = currentCharCostumes[0];
+    } else if (!currentCharCostumes.includes(target)) {
+      this.character = this._characterForCostume(target);
+    }
     this.costume = target;
 
-    await this._loadExtraLocomotionClips();
     const ok = await this._ensureCostumeLoaded(target);
     if (!ok) return false;
 
@@ -281,7 +334,7 @@ export class HumanoidChopper {
         // Compensate for Armature 0.01 cm-to-m scale so socket children are in metres
         const invScale = 1.0 / (activeRec.armScale || 0.01);
         this.rightHandSocket.scale.setScalar(invScale);
-        // Place socket in Sergey's right palm (in bone cm coordinates)
+        // Place socket in right palm (in bone cm coordinates)
         this.rightHandSocket.position.set(-1.0, 9.5, 1.5);
         this.rightHandSocket.rotation.set(Math.PI * 0.5, -0.15, Math.PI * 0.5);
       }
@@ -300,6 +353,109 @@ export class HumanoidChopper {
     }
 
     return true;
+  }
+
+  /**
+   * Spawns a fully independent remote player avatar (cloned skeleton, own AnimationMixer, own axe on RightHand)
+   * for `coop/remote_player.js`.
+   */
+  async spawnRemoteAvatar({ id = 'P2', character = 'sergey', costume = 'tee', axe = 'sergey' } = {}) {
+    const charKey = character === 'alex' ? 'alex' : 'sergey';
+    const validCostumes = CHARACTER_COSTUMES[charKey] || CHARACTER_COSTUMES.sergey;
+    const costumeKey = validCostumes.includes(costume) ? costume : validCostumes[0];
+    const axeKey = normalizeAxeId(axe || 'sergey');
+
+    await this._ensureAxeTemplateLoaded(axeKey);
+    const rig = await this._buildSkinnedCharacterRig(costumeKey, `Remote_${id}`);
+
+    const outerRoot = new THREE.Group();
+    outerRoot.name = `CoopRemoteAvatarRoot_${id}`;
+    outerRoot.add(rig.root);
+
+    const remoteHandSocket = new THREE.Group();
+    remoteHandSocket.name = 'RemoteRightHandAxeSocket';
+    if (rig.rightHandBone) {
+      rig.rightHandBone.add(remoteHandSocket);
+      const invScale = 1.0 / (rig.armScale || 0.01);
+      remoteHandSocket.scale.setScalar(invScale);
+      remoteHandSocket.position.set(-1.0, 9.5, 1.5);
+      remoteHandSocket.rotation.set(Math.PI * 0.5, -0.15, Math.PI * 0.5);
+      const axeTpl = this._axeTemplates[axeKey] || this._axeTemplates.sergey;
+      if (axeTpl) {
+        remoteHandSocket.add(axeTpl.clone(true));
+      }
+    }
+
+    const playRemoteClip = (clipName = 'Idle', { swinging = false } = {}) => {
+      const requested = swinging && clipName !== 'Charged_Axe_Chop' && clipName !== 'Heavy_Hammer_Swing'
+        ? (axeKey === 'maul' ? 'Heavy_Hammer_Swing' : 'Charged_Axe_Chop')
+        : clipName;
+      const action =
+        (requested === 'Casual_Walk' ? rig.actions.Walk || rig.actions.Casual_Walk : rig.actions[requested]) ||
+        (requested === 'Run' ? rig.actions.Walk || rig.actions.Casual_Walk : null) ||
+        rig.actions.Axe_Stance ||
+        rig.actions.Idle ||
+        Object.values(rig.actions)[0];
+      if (!action) return;
+
+      const resolvedName = action.getClip().name;
+      const isSwing = resolvedName === 'Charged_Axe_Chop' || resolvedName === 'Heavy_Hammer_Swing';
+
+      if (rig.activeAction === action && !isSwing) {
+        return;
+      }
+
+      action.enabled = true;
+      if (resolvedName === 'Axe_Stance') {
+        action.setLoop(THREE.LoopPingPong, Infinity);
+        action.timeScale = 0.45;
+      } else if (isSwing) {
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.timeScale = resolvedName === 'Charged_Axe_Chop' ? 2.4 : 1.8;
+      } else {
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.timeScale = resolvedName === 'Run' ? 1.25 : 1.05;
+      }
+
+      action.reset();
+      if (resolvedName === 'Axe_Stance') {
+        action.time = 0.35;
+      } else if (resolvedName === 'Charged_Axe_Chop') {
+        action.time = 1.5;
+      }
+
+      if (rig.activeAction && rig.activeAction !== action) {
+        rig.activeAction.crossFadeTo(action, 0.14, false);
+      }
+      action.play();
+      rig.activeAction = action;
+    };
+
+    // Start in Axe_Stance pose immediately so the remote avatar holds the axe naturally and never appears in a T-pose
+    playRemoteClip('Axe_Stance', { swinging: false });
+    rig.mixer.update(0.016);
+    outerRoot.updateMatrixWorld(true);
+
+    const avatarRecord = {
+      root: outerRoot,
+      headHeight: 1.66,
+      yawOffset: 0,
+      setAnim: (clipName, opts) => playRemoteClip(clipName, opts),
+      update: (dt) => {
+        if (rig.mixer) {
+          rig.mixer.update(dt);
+        }
+      },
+      dispose: () => {
+        this.remoteAvatars.delete(avatarRecord);
+        if (rig.mixer) {
+          rig.mixer.stopAllAction();
+        }
+      }
+    };
+
+    this.remoteAvatars.add(avatarRecord);
+    return avatarRecord;
   }
 
   async _ensureAxeTemplateLoaded(normId) {
@@ -1334,6 +1490,11 @@ export class HumanoidChopper {
 
     if (this._activeCostumeRecord && this._activeCostumeRecord.mixer) {
       this._activeCostumeRecord.mixer.update(dt);
+    }
+    if (this.remoteAvatars.size > 0) {
+      for (const av of this.remoteAvatars) {
+        av.update(dt);
+      }
     }
 
     if (this.state === 'IDLE' || this.state === 'DRAG_WINDUP') {

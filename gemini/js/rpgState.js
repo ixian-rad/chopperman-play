@@ -857,9 +857,12 @@ export class GameStateManager {
     this.weightLevel = 1;
     this.staminaLevel = 1;
 
-    // Backyard Setting ('nj' | 'tiraspol') and Sergey Costume ('tee' | 'jacket')
+    // Backyard Setting ('nj' | 'tiraspol'), Character ('sergey' | 'alex'), Costume ('tee' | 'jacket' | 'camo' | 'bomber') & Player Name
     this.setting = 'nj';
+    this.character = 'sergey';
     this.costume = 'tee';
+    this.playerName = 'Sergey';
+    this.customPlayerName = false;
     this.treesFelledCount = 0;
 
     // Axe equipment, live blade condition (0..100%), and sticky resin/sap buildup (0..100%)
@@ -1497,11 +1500,111 @@ export class GameStateManager {
     return true;
   }
 
-  setCostumeState(costume) {
-    if (costume !== 'tee' && costume !== 'jacket') return false;
-    this.costume = costume;
+  setCharacterState(character, costumeOverride = null) {
+    const targetChar = character === 'alex' ? 'alex' : 'sergey';
+    this.character = targetChar;
+    const validCostumes = targetChar === 'alex' ? ['camo', 'bomber'] : ['tee', 'jacket'];
+    this.costume =
+      costumeOverride && validCostumes.includes(costumeOverride)
+        ? costumeOverride
+        : validCostumes[0];
+    if (!this.customPlayerName) {
+      this.playerName = targetChar === 'alex' ? 'Alex' : 'Sergey';
+    }
     this.saveToStorage();
     return true;
+  }
+
+  setCostumeState(costume) {
+    const validCostumes = ['tee', 'jacket', 'camo', 'bomber'];
+    if (!validCostumes.includes(costume)) return false;
+    this.costume = costume;
+    const inferredChar = costume === 'camo' || costume === 'bomber' ? 'alex' : 'sergey';
+    if (this.character !== inferredChar) {
+      this.character = inferredChar;
+      if (!this.customPlayerName) {
+        this.playerName = inferredChar === 'alex' ? 'Alex' : 'Sergey';
+      }
+    }
+    this.saveToStorage();
+    return true;
+  }
+
+  setPlayerNameState(rawName, isCustom = true) {
+    const cleaned = String(rawName || '')
+      .replace(/[^\p{L}\p{N} _.'-]/gu, '')
+      .trim()
+      .slice(0, 16);
+    if (!cleaned) {
+      this.customPlayerName = false;
+      this.playerName = this.character === 'alex' ? 'Alex' : 'Sergey';
+    } else {
+      this.playerName = cleaned;
+      this.customPlayerName = Boolean(
+        isCustom && cleaned !== 'Sergey' && cleaned !== 'Alex'
+      );
+    }
+    this.saveToStorage();
+    return this.playerName;
+  }
+
+  computeTreeFelledReward(hitsToFell = 6) {
+    const points = Math.round(140 + (Number(hitsToFell) || 6) * 25);
+    const xpGained = Math.round(55 + (Number(hitsToFell) || 6) * 12);
+    return { points, xpGained };
+  }
+
+  applyCoopAward(ev = {}) {
+    const gold = Math.max(0, Math.floor(Number(ev.gold) || 0));
+    const xpGained = Math.max(0, Math.floor(Number(ev.xp) || 0));
+    const reason = String(ev.reason || '');
+    const shared = Boolean(ev.shared);
+
+    if (!shared && reason.startsWith('tree:')) {
+      this.treesFelledCount = (this.treesFelledCount || 0) + 1;
+      this.logsSplitCount = (this.logsSplitCount || 0) + 1;
+      this.combo = (this.combo || 0) + 1;
+      if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+      this._advanceOrderProgress(1);
+    }
+
+    this.score += gold;
+    this.credits += gold;
+    this.challengeScore += gold;
+    this.xp += xpGained;
+
+    let leveledUp = false;
+    while (this.xp >= this.getXpForNextLevel(this.level)) {
+      this.xp -= this.getXpForNextLevel(this.level);
+      this.level++;
+      leveledUp = true;
+      this.credits += 100 * this.level;
+      this.maxStamina = this.getComputedMaxStamina();
+      this.stamina = this.maxStamina;
+    }
+
+    if (leveledUp && this.sound && typeof this.sound.playLevelUp === 'function') {
+      this.sound.playLevelUp();
+    } else if (gold > 0 && this.sound && typeof this.sound.playPointsGain === 'function') {
+      this.sound.playPointsGain(gold);
+    }
+
+    if (!shared && reason.startsWith('tree:')) {
+      const sp = reason.slice(5) || 'oak';
+      const label = sp.charAt(0).toUpperCase() + sp.slice(1);
+      this.lastHit = {
+        hit: true,
+        split: true,
+        glancing: false,
+        leveledUp,
+        points: gold,
+        xpGained,
+        rating: `${label.toUpperCase()} TREE FELLED! (+${gold} CREDITS & CORDWOOD ADDED)`
+      };
+    }
+
+    this.saveToStorage();
+    return { gold, xpGained, leveledUp, shared };
   }
 
   awardTreeFelled(species = 'oak', hitsToFell = 6) {
@@ -1679,7 +1782,8 @@ export class GameStateManager {
     swingPower = 1.0,
     weather = 'sun',
     stormCharged = false,
-    isAutomatedSwing = false
+    isAutomatedSwing = false,
+    deferAwardToCoop = false
   }) {
     const logDef = this.getCurrentLogDef();
     const handleWrap = this.getHandleWrap();
@@ -2216,19 +2320,23 @@ export class GameStateManager {
       }
     }
 
-    this.score = Math.max(0, this.score + pointsAwarded);
-    if (pointsAwarded > 0) {
-      this.credits += pointsAwarded;
-      this.challengeScore += pointsAwarded;
-      if (this.sound && typeof this.sound.playPointsGain === 'function') {
-        this.sound.playPointsGain(pointsAwarded);
+    if (!deferAwardToCoop) {
+      this.score = Math.max(0, this.score + pointsAwarded);
+      if (pointsAwarded > 0) {
+        this.credits += pointsAwarded;
+        this.challengeScore += pointsAwarded;
+        if (this.sound && typeof this.sound.playPointsGain === 'function') {
+          this.sound.playPointsGain(pointsAwarded);
+        }
+        if (
+          this.gameMode === 'time_attack' &&
+          this.challengeScore > this.bestTimeAttackScore
+        ) {
+          this.bestTimeAttackScore = this.challengeScore;
+        }
       }
-      if (
-        this.gameMode === 'time_attack' &&
-        this.challengeScore > this.bestTimeAttackScore
-      ) {
-        this.bestTimeAttackScore = this.challengeScore;
-      }
+    } else if (pointsAwarded < 0) {
+      this.score = Math.max(0, this.score + pointsAwarded);
     }
 
     if (this.sound) {
@@ -2242,20 +2350,22 @@ export class GameStateManager {
       }
     }
 
-    // Add XP & check for Level Up
-    this.xp += xpAwarded;
+    // Add XP & check for Level Up (unless deferred to co-op session award)
     let leveledUp = false;
-    while (this.xp >= this.getXpForNextLevel(this.level)) {
-      this.xp -= this.getXpForNextLevel(this.level);
-      this.level++;
-      leveledUp = true;
-      this.credits += 100 * this.level;
-      this.maxStamina = this.getComputedMaxStamina();
-      this.stamina = this.maxStamina;
-    }
+    if (!deferAwardToCoop) {
+      this.xp += xpAwarded;
+      while (this.xp >= this.getXpForNextLevel(this.level)) {
+        this.xp -= this.getXpForNextLevel(this.level);
+        this.level++;
+        leveledUp = true;
+        this.credits += 100 * this.level;
+        this.maxStamina = this.getComputedMaxStamina();
+        this.stamina = this.maxStamina;
+      }
 
-    if (leveledUp && this.sound) {
-      this.sound.playLevelUp();
+      if (leveledUp && this.sound) {
+        this.sound.playLevelUp();
+      }
     }
 
     this.lastHit = {
@@ -2347,7 +2457,9 @@ export class GameStateManager {
       logsSplitCount: this.logsSplitCount,
       treesFelledCount: this.treesFelledCount || 0,
       setting: this.setting || 'nj',
+      character: this.character || 'sergey',
       costume: this.costume || 'tee',
+      playerName: this.playerName || 'Sergey',
       equippedAxeId: this.equippedAxeId || 'sergey',
       gameMode: this.gameMode,
       lastHit: this.lastHit
@@ -2366,7 +2478,10 @@ export class GameStateManager {
         logsSplitCount: this.logsSplitCount,
         treesFelledCount: this.treesFelledCount,
         setting: this.setting,
+        character: this.character,
         costume: this.costume,
+        playerName: this.playerName,
+        customPlayerName: this.customPlayerName,
         sharpnessLevel: this.sharpnessLevel,
         weightLevel: this.weightLevel,
         staminaLevel: this.staminaLevel,
@@ -2408,7 +2523,20 @@ export class GameStateManager {
       if (typeof data.logsSplitCount === 'number') this.logsSplitCount = data.logsSplitCount;
       if (typeof data.treesFelledCount === 'number') this.treesFelledCount = data.treesFelledCount;
       if (data.setting === 'nj' || data.setting === 'tiraspol') this.setting = data.setting;
-      if (data.costume === 'tee' || data.costume === 'jacket') this.costume = data.costume;
+      if (data.character === 'sergey' || data.character === 'alex') this.character = data.character;
+      if (['tee', 'jacket', 'camo', 'bomber'].includes(data.costume)) {
+        this.costume = data.costume;
+      } else {
+        this.costume = this.character === 'alex' ? 'camo' : 'tee';
+      }
+      if (typeof data.customPlayerName === 'boolean') {
+        this.customPlayerName = data.customPlayerName;
+      }
+      if (typeof data.playerName === 'string' && data.playerName.trim()) {
+        this.playerName = data.playerName.trim().slice(0, 16);
+      } else {
+        this.playerName = this.character === 'alex' ? 'Alex' : 'Sergey';
+      }
       if (typeof data.sharpnessLevel === 'number') this.sharpnessLevel = data.sharpnessLevel;
       if (typeof data.weightLevel === 'number') this.weightLevel = data.weightLevel;
       if (typeof data.staminaLevel === 'number') this.staminaLevel = data.staminaLevel;

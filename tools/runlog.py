@@ -67,3 +67,24 @@ def load_gemini_rows():
             out.append(r)
     except FileNotFoundError: pass
     return out
+
+def gemini_billing(rows=None):
+    """Gemini 4 Argon cost split by billing mode (usage-gemini.csv column 'billing': 'login' = Google login via the Antigravity CLI,
+    'api' = paid Gemini API key after the login quota ran out). Every figure is est. (measured tokens x list price)."""
+    rows = load_gemini_rows() if rows is None else rows
+    api = [r for r in rows if (r.get('billing') or '').strip() == 'api']; login = [r for r in rows if r not in api]
+    c = lambda rr: round(sum(r['cost_usd'] or 0 for r in rr), 2)
+    return dict(total=c(rows), api=c(api), login=c(login), runs_api=len(api), runs_login=len(login))
+
+def gemini_billing_paren(rows=None):
+    """Short parenthetical used wherever a Gemini dollar figure appears on the site."""
+    b = gemini_billing(rows)
+    if not b['runs_api']: return 'est.; on a Google login, not billed'
+    return f'est.: ${b["api"]:.2f} on a paid Gemini API key, ${b["login"]:.2f} on a Google login'
+
+def gemini_billing_sentence(rows=None):
+    b = gemini_billing(rows)
+    if not b['runs_api']:
+        return 'Gemini 4 Argon ran on a Google login and was not billed: its dollars are est. (measured tokens × list price).'
+    return (f'Gemini 4 Argon ran its first {b["runs_login"]} runs on a Google login (est. ${b["login"]:.2f}, not billed separately). When that login’s usage limit ran out, '
+            f'the other {b["runs_api"]} runs went through a paid Gemini API key (est. ${b["api"]:.2f}). Its est. total is ${b["total"]:.2f} (measured tokens × list price), kept in its own rows.')
