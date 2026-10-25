@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-25 09:49 EDT",
+ "generated": "2026-10-25 09:54 EDT",
  "status": "finished (not reviewed)",
  "basis": "Estimate. Gemini 4 Argon (high) ran through the Antigravity CLI, first on a Google login (8 runs, est. $13.91, not billed separately), then, once that login hit its usage limit, on a paid Gemini API key (14 runs, est. $53.55 billed). Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est.: $53.55 on a paid Gemini API key, $13.91 on a Google login; NOT included in data/costs.json totals",
@@ -32,7 +32,7 @@
   "voice-chat"
  ],
  "playable": {
-  "commit": "76a7694",
+  "commit": "61b62ad",
   "tag": "coop-voice-release"
  },
  "classic": {

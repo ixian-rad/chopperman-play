@@ -133,7 +133,7 @@ for (const v of [VIEWS[0], VIEWS[1]]) { // splash: the Enter button is in the fi
   I['splash ' + v.name] = sp;
   check(sp.enterInFirstScreen && sp.enterHref === 'home/', `splash ${v.name}: Enter button not in the first screen (${JSON.stringify(sp.enterHref)})`);
   check(sp.videos.length && sp.videos.some(x => x.intro) && sp.videos.every(x => !x.autoplay && x.paused && x.t === 0), `splash ${v.name}: video autoplays or intro missing ${JSON.stringify(sp.videos)}`);
-  check(sp.scores.join() === '8,7,6' && /not reviewed yet/i.test(sp.gemini) && /in progress/i.test(sp.gemini), `splash ${v.name}: review cards ${sp.scores} / Gemini "${sp.gemini.slice(0, 60)}"`);
+  check(sp.scores.join() === '8,7,6' && /not reviewed yet/i.test(sp.gemini) && /in progress|finished/i.test(sp.gemini), `splash ${v.name}: review cards ${sp.scores} / Gemini "${sp.gemini.slice(0, 60)}"`);
   await Promise.all([page.waitForURL(base + 'home/', { timeout: 15000 }).catch(() => {}), page.click('.splash__enter')]);
   I['splash click ' + v.name] = page.url().replace(base, '');
   check(page.url() === base + 'home/' && await page.evaluate(() => !!document.getElementById('play')), `splash ${v.name}: Enter -> ${page.url()}`);

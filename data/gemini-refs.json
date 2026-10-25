@@ -1,1 +1,1 @@
-{"live_ref": "refs/tags/coop-voice-release", "classic_ref": "refs/tags/pre-assets", "coop_branch": true, "snapshot_at": "2026-10-25 09:49 EDT", "remote": "private repo ixian-rad/chopperman-axe-gemini"}
+{"live_ref": "refs/tags/coop-voice-release^{commit}", "classic_ref": "refs/tags/pre-assets", "coop_branch": true, "snapshot_at": "2026-10-25 09:54 EDT", "remote": "private repo ixian-rad/chopperman-axe-gemini"}

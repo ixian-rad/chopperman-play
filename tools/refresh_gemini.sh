@@ -35,7 +35,7 @@ git -C "$SNAP" fetch -q --tags --prune --force origin || { fail "fetch $REPO"; e
 has_ref() { git -C "$SNAP" rev-parse -q --verify "$1^{commit}" >/dev/null 2>&1; }
 
 # 2. refs
-if has_ref refs/tags/coop-voice-release; then LIVE_REF=refs/tags/coop-voice-release
+if has_ref refs/tags/coop-voice-release; then LIVE_REF="refs/tags/coop-voice-release^{commit}"   # peel the annotated tag so BUILD.txt shows the merge commit
 elif has_ref refs/tags/assets-v2-release; then LIVE_REF=refs/tags/assets-v2-release; else LIVE_REF=origin/main; fi
 CLASSIC_REF=""; if has_ref refs/tags/pre-assets; then CLASSIC_REF=refs/tags/pre-assets; elif has_ref origin/classic; then CLASSIC_REF=origin/classic; fi
 COOP=false; has_ref origin/coop-v1 && COOP=true

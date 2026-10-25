@@ -338,7 +338,8 @@
   if (gt) getJSON('data/gemini.json').then(function (d) {
     if (d.cost_usd_est == null) return;
     text($('[data-k="total"]', gt), 'est. ' + fmtUSD(d.cost_usd_est));
-    text($('[data-k="sub"]', gt), 'So far: ' + d.runs + ' runs, ' + d.wall_h.toFixed(1) + ' agent h. Login-based, not billed: est. = measured tokens × list price, kept out of the other totals.');
+    var fin = /^finished/.test(d.status || ''), bill = (d.note || 'est.').split('; NOT included')[0];
+    text($('[data-k="sub"]', gt), (fin ? '' : 'So far: ') + d.runs + ' runs, ' + d.wall_h.toFixed(1) + ' agent h. All figures est. (measured tokens × list price; ' + bill.replace(/^est\.:?\s*/, '') + '), kept out of the other totals.');
   }).catch(function () { text($('[data-k="total"]', gt), 'est.: see the cost page'); });
 
   // 6. Milestones gallery: Compare-harnesses grid <-> one-harness timeline (state in the URL), harness tabs, lightbox
