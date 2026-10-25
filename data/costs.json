@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-25 10:35 EDT",
+ "generated": "2026-10-25 10:36 EDT",
  "source": "tools/build_blog.py from reports/usage.csv + reports/usage-gemini.csv (same numbers as the Behind the build post)",
  "harness": {
   "claude": {
