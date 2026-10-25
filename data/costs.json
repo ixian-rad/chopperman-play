@@ -1,6 +1,6 @@
 {
- "generated": "2026-10-25 09:54 EDT",
- "source": "tools/build_blog.py (same numbers as the Behind the build post)",
+ "generated": "2026-10-25 10:35 EDT",
+ "source": "tools/build_blog.py from reports/usage.csv + reports/usage-gemini.csv (same numbers as the Behind the build post)",
  "harness": {
   "claude": {
    "runs": 17,
@@ -8,13 +8,14 @@
    "input_uncached": 2086,
    "input_cached": 220166240,
    "output": 1583388,
-   "cost_usd": 116.85,
+   "cost_usd": 109.7,
+   "est": true,
    "reported_usd": 98.17,
    "token_priced_usd": 11.54,
-   "est_usd": 7.15,
-   "assets_v2_runs": 6,
-   "assets_v2_cost_usd": 49.25,
-   "assets_v2_wall_h": 2.93,
+   "unlogged_est_usd": 7.15,
+   "assets_v2_runs": 4,
+   "assets_v2_cost_usd": 38.64,
+   "assets_v2_wall_h": 2.46,
    "coop_voice_runs": 3,
    "coop_voice_cost_usd": 17.25,
    "coop_voice_wall_h": 4.36
@@ -25,10 +26,11 @@
    "input_uncached": 3243650,
    "input_cached": 98526720,
    "output": 773816,
-   "cost_usd": 24.87,
+   "cost_usd": 24.08,
+   "est": true,
    "reported_usd": 0,
    "token_priced_usd": 24.08,
-   "est_usd": 0.8,
+   "unlogged_est_usd": 0.8,
    "assets_v2_runs": 4,
    "assets_v2_cost_usd": 11.99,
    "assets_v2_wall_h": 5.37,
@@ -42,26 +44,57 @@
    "input_uncached": 7635229,
    "input_cached": 1039278206,
    "output": 4149668,
-   "cost_usd": 9.84,
+   "cost_usd": 9.55,
+   "est": true,
    "reported_usd": 0,
    "token_priced_usd": 9.55,
-   "est_usd": 0.29,
-   "assets_v2_runs": 4,
-   "assets_v2_cost_usd": 1.56,
+   "unlogged_est_usd": 0.29,
+   "assets_v2_runs": 3,
+   "assets_v2_cost_usd": 1.27,
    "assets_v2_wall_h": 2.48,
    "coop_voice_runs": 3,
    "coop_voice_cost_usd": 0.81,
    "coop_voice_wall_h": 1.19
+  },
+  "gemini": {
+   "runs": 22,
+   "wall_h": 28.06,
+   "input_uncached": 16974417,
+   "input_cached": 169111506,
+   "output": 1659919,
+   "cost_usd": 67.46,
+   "est": true,
+   "reported_usd": 0,
+   "token_priced_usd": 67.46,
+   "unlogged_est_usd": 0,
+   "api_key_usd": 53.55,
+   "google_login_usd": 13.91,
+   "runs_api_key": 14,
+   "runs_google_login": 8,
+   "assets_v2_runs": 3,
+   "assets_v2_cost_usd": 17.0,
+   "assets_v2_wall_h": 6.5,
+   "coop_voice_runs": 4,
+   "coop_voice_cost_usd": 14.05,
+   "coop_voice_wall_h": 6.22
   }
+ },
+ "total": {
+  "all_four_usd_est": 210.79,
+  "three_usd_est": 143.33,
+  "gemini_usd_est": 67.46,
+  "unlogged_est_usd": 8.24,
+  "note": "Logged runs only; mixed basis (list-price / API-equivalent / real spend), a size estimate, not an invoice."
  },
  "deepseek_balance_measured": {
   "spent_usd": 9.87,
   "checked": "2026-10-23 14:09:21 EDT"
  },
  "basis": {
-  "claude": "Claude Code ran on a subscription login. Total $116.85 = $98.17 reported by the tool + $11.54 token-priced + est. $7.15. Includes two play-site design runs ($8.38) and the channel-art kit ($6.15). List-price equivalent, not a charge.",
-  "codex": "Codex ran on a ChatGPT plan login. Total $24.87 = $24.08 token-priced (recorded tokens x gpt-6.1-sol list price) + est. $0.80 for runs with no recorded tokens. API-equivalent, not a charge.",
-  "deepseek": "DeepSeek was pay-as-you-go. Total $9.84 = $9.55 token-priced (measured tokens x list price) + est. $0.29 from the balance counter for a killed pass. The measured balance drop was $8.92 by Oct 22 22:25 ET and $9.87 by Oct 23 14:09 ET, after the co-op and voice chat rounds."
+  "claude": "Claude Code ran on a Claude subscription login, so this is a list-price equivalent, not a charge: est. $109.70 = $98.17 reported by the tool + $11.54 token-priced (logged tokens x list price). Includes two play-site design runs ($8.38) and the channel-art kit ($6.15). Not included: a killed pass with no token log (est. $7.15).",
+  "codex": "Codex ran on a ChatGPT plan login, so this is an API-equivalent, not a charge: est. $24.08 token-priced (recorded tokens x gpt-6.1-sol list price). Not included: iteration 7, whose tokens were not recorded (est. $0.80).",
+  "deepseek": "DeepSeek was pay-as-you-go, real API spend: est. $9.55 token-priced (measured tokens x list price). The account balance itself fell $8.92 by Oct 22 22:25 ET and $9.87 by Oct 23 14:09 ET, after the co-op and voice chat rounds; the gap includes a killed pass with no token log ($0.29 by the balance counter).",
+  "gemini": "Gemini 4 Argon ran through the Antigravity CLI: est. $67.46 = est. $53.55 billed to a paid Gemini API key (14 runs) + est. $13.91 on a Google login (its first 8 runs, until that login hit its usage limit). Measured tokens x Gemini 4 Argon list price."
  },
- "note": "Project total = every logged run of that harness, including play-site design runs and the co-op and voice chat rounds (coop_voice_*). The Assets v2 phase column is the part of it spent on the upgrade (build, polish and docs runs, including killed passes)."
+ "note": "cost_usd = every logged run of that harness (its usage log), including play-site design runs and the co-op and voice chat rounds (coop_voice_*); runs with no token log are listed as unlogged_est_usd and not added. The Assets v2 phase column is the logged build, polish and docs runs of the upgrade. Every figure is est.: list-price or API-equivalent for Claude and Codex, real spend for DeepSeek and for Gemini on its paid API key."
 }

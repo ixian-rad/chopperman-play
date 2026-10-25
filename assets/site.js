@@ -200,8 +200,8 @@
       box.innerHTML = '';
       box.appendChild(el('h4', 'v2h', 'What it cost'));
       var dl = el('dl', 'v2stats v2stats--cost');
-      if (h.assets_v2_cost_usd != null) stat(dl, 'Assets v2 phase', '$' + h.assets_v2_cost_usd.toFixed(2), h.assets_v2_runs + ' runs · ' + h.assets_v2_wall_h.toFixed(1) + ' agent h');
-      stat(dl, 'Project total', '$' + h.cost_usd.toFixed(2), h.runs + ' runs · ' + h.wall_h.toFixed(1) + ' agent h');
+      if (h.assets_v2_cost_usd != null) stat(dl, 'Assets v2 phase', 'est. $' + h.assets_v2_cost_usd.toFixed(2), h.assets_v2_runs + ' runs · ' + h.assets_v2_wall_h.toFixed(1) + ' agent h');
+      stat(dl, 'Project total', 'est. $' + h.cost_usd.toFixed(2), h.runs + ' runs · ' + h.wall_h.toFixed(1) + ' agent h');
       box.appendChild(dl);
       if (B[g]) box.appendChild(el('p', 'v2fine', 'Basis: ' + B[g] + '.'));
     });
@@ -222,22 +222,25 @@
     markBest(row, function (c) { return parseFloat(c.getAttribute('data-v')); }, false);
   });
 
-  // 5. Cost data from data/costs.json: scoreboard cost rows (results), the bill (cost), glance tiles (home), v2 cost blocks (results)
+  // 5. Cost data from data/costs.json (all four harnesses, logged runs only, every figure est.): scoreboard cost rows (results),
+  //    the bill (cost), glance tiles (home), v2 cost blocks (results)
   var fmtUSD = function (v) { return '$' + v.toFixed(2); };
+  var estUSD = function (v) { return 'est. $' + v.toFixed(2); };
+  var COST_GAMES = GAMES.concat(['gemini']);
   var fmtTok = function (v) { return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(v); };
   var fmtNum = function (v) { return v.toLocaleString('en-US'); };
   function basisParts(h) {
+    if (h.api_key_usd != null) return fmtUSD(h.api_key_usd) + ' billed to a paid Gemini API key + ' + fmtUSD(h.google_login_usd) + ' on a Google login';
     var p = [];
     if (h.reported_usd) p.push(fmtUSD(h.reported_usd) + ' reported');
     if (h.token_priced_usd) p.push(fmtUSD(h.token_priced_usd) + ' token-priced');
-    if (h.est_usd) p.push('est. ' + fmtUSD(h.est_usd));
     return p.join(' + ');
   }
   var needCosts = $('[data-cost]') || $('#cost-table') || $('[data-glance]') || $('.v2data');
   if (needCosts) getJSON('data/costs.json').then(function (data) {
     COSTS = data; fillV2Cost();
     var H = data.harness || {};
-    var rows = GAMES.filter(function (g) { return H[g]; }).map(function (g) {
+    var rows = COST_GAMES.filter(function (g) { return H[g]; }).map(function (g) {
       var h = H[g];
       return { g: g, h: h, perH: h.wall_h > 0 ? h.cost_usd / h.wall_h : NaN };
     });
@@ -245,13 +248,15 @@
     // home: results-at-a-glance tiles
     rows.forEach(function (r) {
       var t = $('[data-glance="' + r.g + '"]'); if (!t) return;
-      text($('[data-k="total"]', t), fmtUSD(r.h.cost_usd));
+      text($('[data-k="total"]', t), estUSD(r.h.cost_usd));
       text($('[data-k="sub"]', t), 'Whole project: ' + r.h.runs + ' runs, ' + r.h.wall_h.toFixed(1) + ' agent h. ' + basisParts(r.h) + '.');
     });
 
+    if (data.total && data.total.all_four_usd_est != null) each('[data-total="all_four"]', function (e) { text(e, estUSD(data.total.all_four_usd_est)); });
+
     // results: scoreboard cost rows
     rows.forEach(function (r) {
-      text($('[data-cost="' + r.g + '"][data-k="cost_usd"]'), fmtUSD(r.h.cost_usd));
+      text($('[data-cost="' + r.g + '"][data-k="cost_usd"]'), estUSD(r.h.cost_usd));
       text($('[data-cost="' + r.g + '"][data-k="wall_h"]'), r.h.wall_h.toFixed(1) + ' h');
       text($('[data-cost="' + r.g + '"][data-k="per_h"]'), fmtUSD(r.perH) + '/h');
     });
@@ -274,8 +279,8 @@
       var ratio = next.perH / cheapest.perH;
       lede.className = 'costhead'; lede.innerHTML = '';
       lede.appendChild(el('strong', null, NAMES[cheapest.g] + (ratio >= 2 ? ' is by far' : ' is') + ' the cheapest per hour of agent work: ' + fmtUSD(cheapest.perH) + ' an hour'));
-      lede.appendChild(document.createTextNode(', about ' + ratio.toFixed(1) + '× less than ' + NAMES[next.g] + ' (' + fmtUSD(next.perH) + ') and ' +
-        (sorted[2] ? (sorted[2].perH / cheapest.perH).toFixed(0) + '× less than ' + NAMES[sorted[2].g] + ' (' + fmtUSD(sorted[2].perH) + ')' : '') + '.'));
+      var others = sorted.slice(1).map(function (o, i) { return (o.perH / cheapest.perH).toFixed(i ? 0 : 1) + '× less than ' + NAMES[o.g] + ' (' + fmtUSD(o.perH) + ')'; });
+      lede.appendChild(document.createTextNode(', about ' + (others.length > 1 ? others.slice(0, -1).join(', ') + ' and ' + others[others.length - 1] : others[0]) + '.'));
     }
     var ph = $('#cost-perhour');
     ph.setAttribute('aria-label', 'Cost per agent hour');
@@ -296,7 +301,8 @@
       if (r === cheapest) tr.className = 'best';
       var v2 = r.h.assets_v2_cost_usd != null ? fmtUSD(r.h.assets_v2_cost_usd) : 'n/a';
       var v2sub = r.h.assets_v2_cost_usd != null ? r.h.assets_v2_runs + ' runs · ' + r.h.assets_v2_wall_h.toFixed(2) + ' h' : '';
-      var vals = [NAMES[r.g], fmtNum(r.h.runs), r.h.wall_h.toFixed(2), fmtTok(r.h.input_uncached), fmtTok(r.h.input_cached), fmtTok(r.h.output), fmtUSD(r.h.cost_usd), v2, fmtUSD(r.perH)];
+      var v2e = r.h.assets_v2_cost_usd != null ? 'est. ' + v2 : v2;
+      var vals = [NAMES[r.g], fmtNum(r.h.runs), r.h.wall_h.toFixed(2), fmtTok(r.h.input_uncached), fmtTok(r.h.input_cached), fmtTok(r.h.output), estUSD(r.h.cost_usd), v2e, fmtUSD(r.perH)];
       var full = [null, null, null, fmtNum(r.h.input_uncached), fmtNum(r.h.input_cached), fmtNum(r.h.output), null, null, null];
       vals.forEach(function (v, i) {
         var td = document.createElement('td');
@@ -316,31 +322,39 @@
       });
       tbody.appendChild(tr);
     });
+    if (data.total && data.total.all_four_usd_est != null) {
+      var tt = document.createElement('tr'); tt.className = 'costs__total';
+      var sum = function (k) { return rows.reduce(function (a, r) { return a + (r.h[k] || 0); }, 0); };
+      var tv = ['All four', fmtNum(sum('runs')), sum('wall_h').toFixed(2), fmtTok(sum('input_uncached')), fmtTok(sum('input_cached')), fmtTok(sum('output')), estUSD(data.total.all_four_usd_est), 'est. ' + fmtUSD(sum('assets_v2_cost_usd')), fmtUSD(data.total.all_four_usd_est / sum('wall_h'))];
+      tv.forEach(function (v, i) {
+        var td = document.createElement('td');
+        td.setAttribute('data-label', labels[i]);
+        if (i === 6) { td.className = 'v2col'; var w = el('span', 'v2col__v'); w.appendChild(el('b', null, v)); w.appendChild(el('span', 'v2col__sub', 'logged runs, mixed basis')); td.appendChild(w); }
+        else td.textContent = v;
+        tt.appendChild(td);
+      });
+      tbody.appendChild(tt);
+    }
     var basis = $('#cost-basis');
     rows.forEach(function (r) {
       if (!data.basis || !data.basis[r.g]) return;
       var d = el('div'); d.appendChild(el('dt', null, NAMES[r.g])); d.appendChild(el('dd', null, data.basis[r.g])); basis.appendChild(d);
     });
-    text($('#cost-generated'), 'Generated ' + (data.generated || 'unknown') + ' from the usage log, the same totals as the “Behind the build” post below. “Agent hours” are the wall-clock hours recorded across all runs. Bases differ, so compare with care.');
+    text($('#cost-generated'), 'Generated ' + (data.generated || 'unknown') + ' from the usage logs, the same totals as the “Behind the build” post below. “Agent hours” are the wall-clock hours recorded across all runs. Bases differ, so compare with care.' +
+      (data.total && data.total.unlogged_est_usd ? ' Not in any total: three runs with no token log (about est. ' + fmtUSD(data.total.unlogged_est_usd) + ' together), listed in the build log.' : ''));
     var bal = data.deepseek_balance_measured;
     if (bal && bal.spent_usd != null && H.deepseek) {
       text($('#cost-balance'), 'Footnote: the DeepSeek account balance was also measured directly. It dropped by ' + fmtUSD(bal.spent_usd) +
-        ' over the whole project (checked ' + (bal.checked || 'unknown') + '), against the ' + fmtUSD(H.deepseek.cost_usd) + ' estimated from tokens above.');
+        ' over the whole project (checked ' + (bal.checked || 'unknown') + '), against the est. ' + fmtUSD(H.deepseek.cost_usd) + ' priced from its logged tokens above.');
     }
   }).catch(function () {
     var tbody = $('#cost-table tbody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="9">Cost data could not be loaded (data/costs.json).</td></tr>';
     each('[data-cost]', function (c) { c.textContent = 'n/a'; });
     each('[data-glance] [data-k="total"]', function (c) { c.textContent = 'Cost: see the cost page'; });
+    each('[data-total]', function (c) { c.textContent = 'see the cost page'; });
     each('[data-v2cost]', function (c) { c.innerHTML = ''; c.appendChild(el('p', 'v2fine', 'Cost data could not be loaded (data/costs.json).')); });
   });
-  var gt = $('[data-glance-gemini]');
-  if (gt) getJSON('data/gemini.json').then(function (d) {
-    if (d.cost_usd_est == null) return;
-    text($('[data-k="total"]', gt), 'est. ' + fmtUSD(d.cost_usd_est));
-    var fin = /^finished/.test(d.status || ''), bill = (d.note || 'est.').split('; NOT included')[0];
-    text($('[data-k="sub"]', gt), (fin ? '' : 'So far: ') + d.runs + ' runs, ' + d.wall_h.toFixed(1) + ' agent h. All figures est. (measured tokens × list price; ' + bill.replace(/^est\.:?\s*/, '') + '), kept out of the other totals.');
-  }).catch(function () { text($('[data-k="total"]', gt), 'est.: see the cost page'); });
 
   // 6. Milestones gallery: Compare-harnesses grid <-> one-harness timeline (state in the URL), harness tabs, lightbox
   var ms = $('.ms');

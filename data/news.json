@@ -1,8 +1,8 @@
 {
- "id": "2026-10-23-coop",
- "text": "Two-player online co-op with proximity voice chat is live in the Codex, Claude and DeepSeek games.",
- "text_short": "Co-op + voice chat are live.",
+ "id": "2026-10-25-four",
+ "text": "All four games are finished: Codex, Claude, DeepSeek and Gemini 4 Argon each have two-player online co-op with proximity voice chat.",
+ "text_short": "All four games have co-op + voice.",
  "link_text": "How to play co-op",
  "href": "#coop",
- "until": "2026-11-06"
+ "until": "2026-11-08"
 }

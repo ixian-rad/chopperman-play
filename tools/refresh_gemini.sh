@@ -1,6 +1,7 @@
 #!/bin/bash
 # tools/refresh_gemini.sh [--no-push] [--no-live] [--no-netlify]
-# Re-snapshots the Gemini 4 Argon build (in progress) from its PRIVATE GitHub remote, republishes it on the site, refreshes the numbers, and (unless told not to) pushes + live-checks.
+# Re-snapshots the Gemini 4 Argon build (finished: coop-voice-release, not reviewed) from its PRIVATE GitHub remote, republishes it on the site, refreshes the numbers, and (unless told not to) pushes + live-checks.
+# Costs: every total = the usage logs' logged runs (tools/runlog.py COUNTED); Gemini is in data/costs.json and in the four-harness total, all figures est.
 # It never touches /workspace/chopperman/axe-gemini (the live driver's repo). Safe to rerun any time; with nothing new it just refreshes the est. cost numbers.
 #   1. clone/fetch ixian-rad/chopperman-axe-gemini into /workspace/gemini-snap
 #   2. pick refs: /gemini/ = tag coop-voice-release, else assets-v2-release, else origin/main (latest published build);
@@ -8,13 +9,13 @@
 #   3. copy game files only (driver/sync_play.sh), smoke-test locally (landing page + game loads, no console errors, text >= 16px); on failure the previous /gemini/ is restored
 #   4. screenshot -> assets/shots/gemini/latest.webp (fallback card image);
 #      python3 tools/build_milestones.py --capture --only=gemini: reads Gemini's tags from the snapshot, captures a frame of any new milestone tag
-#        (v1, v2, pre-assets, assets-v2-release, polish-1, coop-voice-release, or the newest iter-N as the in-progress cell) under the verify lock,
+#        (v1, v2, pre-assets, assets-v2-release, coop-voice-release; polish-1 is Codex-only) under the verify lock,
 #        derives assets/milestones/gemini/*, rewrites data/milestones.json, the /milestones/ gallery and the home teaser; iteration filmstrips come
 #        from reports/gemini-iter-N.png;
 #      python3 tools/build_blog.py: Gemini Play-picker card (home/index.html) and the splash page (index.html, via build_splash.py), progress line (milestones/), scoreboard note (results/),
-#        est. cost block + build log (cost/), data/gemini.json, from usage-gemini.csv + gemini-state.json;
+#        est. cost block + build log (cost/), data/gemini.json + data/costs.json (all four harnesses), from usage.csv, usage-gemini.csv + gemini-state.json;
 #      tools/check_pages.mjs on the local server (desktop + mobile, every page)
-#   5. commit + push to GitHub Pages, wait for the deploy, run the live checks on it
+#   5. commit + push to GitHub Pages, wait for the deploy, run the live checks on it (incl. tools/audit_builds.mjs: every build loads, renders, plays, co-op menu)
 #   6. if the Netlify CLI is logged in and the site is linked: tools/deploy_netlify.sh and live-check the Netlify URL
 # Exit code 0 = everything passed. Log: /workspace/chopperman/reports/gemini-site-refresh.log
 set -uo pipefail
@@ -95,6 +96,8 @@ if [ $PUSH -eq 1 ]; then
     (cd $CH/driver && flock $CH/reports/.verify.lock node site-live-check-gemini.mjs "$PAGES" --games=$GL > $CH/reports/gemini-site-live-pages.json 2>&1); R=$?
     tail -3 $CH/reports/gemini-site-live-pages.json | sed 's/^/  /'; [ $R -eq 0 ] && say "Pages live check PASS" || fail "Pages live check (see reports/gemini-site-live-pages.json)"
     (cd $CH/driver && SITE_URL=$PAGES flock $CH/reports/.verify.lock node site-live-check.mjs > $CH/reports/site-live-check-latest.json 2>&1) && say "driver/site-live-check.mjs ran (reports/site-live-check-latest.json)"
+    flock $CH/reports/.verify.lock node tools/audit_builds.mjs "$PAGES" /tmp/audit-builds-pages > /tmp/audit-builds-pages.log 2>&1 \
+      && say "build audit (all 8 builds, Pages) PASS" || { fail "build audit on Pages (see /tmp/audit-builds-pages.log)"; grep '^FAIL' /tmp/audit-builds-pages.log | head -4; }
   fi
 fi
 

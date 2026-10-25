@@ -133,7 +133,7 @@ for (const v of [VIEWS[0], VIEWS[1]]) { // splash: the Enter button is in the fi
   I['splash ' + v.name] = sp;
   check(sp.enterInFirstScreen && sp.enterHref === 'home/', `splash ${v.name}: Enter button not in the first screen (${JSON.stringify(sp.enterHref)})`);
   check(sp.videos.length && sp.videos.some(x => x.intro) && sp.videos.every(x => !x.autoplay && x.paused && x.t === 0), `splash ${v.name}: video autoplays or intro missing ${JSON.stringify(sp.videos)}`);
-  check(sp.scores.join() === '8,7,6' && /not reviewed yet/i.test(sp.gemini) && /in progress|finished/i.test(sp.gemini), `splash ${v.name}: review cards ${sp.scores} / Gemini "${sp.gemini.slice(0, 60)}"`);
+  check(sp.scores.join() === '8,7,6' && /not reviewed/i.test(sp.gemini) && /in progress|finished/i.test(sp.gemini) && !/\d\s*\/\s*10|bigscore/.test(sp.gemini), `splash ${v.name}: review cards ${sp.scores} / Gemini "${sp.gemini.slice(0, 60)}"`);
   await Promise.all([page.waitForURL(base + 'home/', { timeout: 15000 }).catch(() => {}), page.click('.splash__enter')]);
   I['splash click ' + v.name] = page.url().replace(base, '');
   check(page.url() === base + 'home/' && await page.evaluate(() => !!document.getElementById('play')), `splash ${v.name}: Enter -> ${page.url()}`);
@@ -141,6 +141,31 @@ for (const v of [VIEWS[0], VIEWS[1]]) { // splash: the Enter button is in the fi
   await page.goto(base + 'results/', { waitUntil: 'load' });
   I['logo href ' + v.name] = await page.evaluate(() => new URL(document.querySelector('.brandlink').href).pathname);
   check(I['logo href ' + v.name].endsWith('/home/'), `results ${v.name}: logo goes to ${I['logo href ' + v.name]}`);
+  await ctx.close();
+}
+{ // costs + descriptions: every shown total matches data/costs.json (logged runs, all four harnesses, labelled est.), no stale Gemini wording
+  const { ctx, page } = await newPage(VIEWS[0]);
+  const C = await (await fetch(base + 'data/costs.json?t=' + Date.now())).json();
+  const money = v => 'est. $' + v.toFixed(2);
+  check(['claude', 'codex', 'deepseek', 'gemini'].every(h => C.harness[h] && C.harness[h].cost_usd > 0), 'costs.json: missing a harness');
+  const sum4 = ['claude', 'codex', 'deepseek', 'gemini'].reduce((a, h) => a + C.harness[h].cost_usd, 0);
+  check(C.total && Math.abs(C.total.all_four_usd_est - sum4) < 0.015, `costs.json: all_four ${C.total && C.total.all_four_usd_est} != sum ${sum4.toFixed(2)}`);
+  await page.goto(base + 'home/', { waitUntil: 'load' }); await page.waitForTimeout(1500);
+  const tiles = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-glance]')].map(t => [t.getAttribute('data-glance'), t.querySelector('[data-k="total"]').textContent.trim()])));
+  I.glanceTiles = tiles;
+  for (const h of ['claude', 'codex', 'deepseek', 'gemini']) check(tiles[h] === money(C.harness[h].cost_usd), `home glance ${h}: "${tiles[h]}" != ${money(C.harness[h].cost_usd)}`);
+  const homeTotal = await page.evaluate(() => (document.querySelector('[data-total="all_four"]') || {}).textContent);
+  check(homeTotal === money(C.total.all_four_usd_est), `home all-four total "${homeTotal}"`);
+  await page.goto(base + 'cost/', { waitUntil: 'load' }); await page.waitForTimeout(1500);
+  const bill = await page.evaluate(() => [...document.querySelectorAll('#cost-table tbody tr')].map(r => [...r.children].map(c => c.textContent.trim())));
+  I.bill = bill.map(r => r[0] + ' ' + r[6]);
+  check(bill.length === 5 && bill[4][0] === 'All four' && bill[4][6].startsWith(money(C.total.all_four_usd_est)), `cost page bill: ${JSON.stringify(I.bill)}`);
+  for (const pg of PAGES) {
+    await page.goto(base + pg, { waitUntil: 'load' }); await page.waitForTimeout(400);
+    const txt = await page.evaluate(() => document.body.innerText);
+    const stale = (txt.match(/not billed|login-based|Gemini · WIP|in-progress build|kept (apart|out of)|still being built|Gemini[^.]{0,40}\bscored? \d/gi) || []);
+    check(!stale.length, `${label(pg)}: stale wording ${JSON.stringify(stale)}`);
+  }
   await ctx.close();
 }
 { // old anchors redirect

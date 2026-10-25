@@ -33,10 +33,19 @@ for h in H:
 json.dump(dict(note='Release verify on the merged main: driver/v2/check_v2.mjs + driver/coop/check_coop.mjs --voice (loopback backend) + the voice module node tests, headless Chrome with SOFTWARE rendering (no GPU). FPS are software-GL figures.',
                harness=data), open(f'{SITE}/data/coop.json', 'w'), indent=1)
 
+# date of Gemini's release check on its merged main, from the result file itself (not hard-coded)
+REL_AT = None
+if GEM:
+    try:
+        import datetime as _dt
+        REL_AT = _dt.datetime.fromtimestamp(os.path.getmtime(f'{CH}/reports/voice/gemini/release-main-result.json')).strftime('%b %-d')
+    except Exception: pass
+
+
 def fps(f): return 'n/a' if not f else f"{f.get('nj_low')} / {f.get('tiraspol_low')} / {f.get('tiraspol_high')}"
 def chk(x): return 'passed' if x else ('failed' if x is False else 'n/a')
 trs = ''.join(f'<tr><th scope="row">{NAME[h]}</th><td class="txt">{E(TITLE[h])}</td><td class="mono">{E(d["build"]["commit"])}</td><td>{chk(d["verify_ok"])}</td><td>{fps(d["fps"])}</td>'
-              f'<td class="txt">{d["runs"]} runs, {d["wall_h"]:.2f} h, {"est. " if h == "gemini" else ""}${d["cost_usd"]:.2f}</td></tr>' for h, d in data.items())
+              f'<td class="txt">{d["runs"]} runs, {d["wall_h"]:.2f} h, est. ${d["cost_usd"]:.2f}</td></tr>' for h, d in data.items())
 cards = ''.join(f'<li><a class="btn btn--play" href="{h}/"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg><span><em>Play co-op </em><b>{NAME[h].split()[0]} </b><small>{E(TITLE[h])}</small></span></a></li>' for h in H)
 LEDE = ('All four games, Codex, Claude Code, DeepSeek and Gemini 4 Argon, now have two-player online co-op, with optional voice chat that gets quieter the farther apart you are. All four got the same co-op brief, then the same voice chat brief.'
         if GEM else
@@ -64,7 +73,7 @@ block = f"""<section class="section" id="coop" aria-labelledby="coop-title">
     <details class="coop-check"><summary>Release check: automated test results on the merged builds</summary>
     <div class="tablewrap" role="region" aria-label="Co-op release check, scrollable" tabindex="0"><table class="blogtable"><caption class="sr-only">Co-op and voice chat: release check on the merged build</caption><thead><tr>
       <th scope="col">Harness</th><th scope="col">Game</th><th scope="col">Build</th><th scope="col">Automated check</th><th scope="col">FPS NJ low / Tiraspol low / Tiraspol high</th><th scope="col">Co-op + voice rounds</th></tr></thead><tbody>{trs}</tbody></table></div>
-    <p class="fine">The check ran on each merged build after release. It replays the Assets v2 check, plays a full two-player co-op session including every voice chat step, and runs the voice module’s 360 unit checks. It ran in headless Chrome with software rendering and no GPU, so FPS are far below what a real graphics card gives. Voice was tested with a simulated microphone, and the two players were linked by an in-page loopback, not a real network. Round costs are in the totals under <a href="cost/">The bill</a>. Claude’s are reported by the tool, and Codex’s and DeepSeek’s are token-priced (list-price equivalents).{" Gemini 4 Argon’s are est. (measured tokens × list price, run on a paid Gemini API key) and kept apart from the totals; its release check ran on Oct 25." if GEM else ""}</p></details>
+    <p class="fine">The check ran on each merged build after release. It replays the Assets v2 check, plays a full two-player co-op session including every voice chat step, and runs the voice module’s 360 unit checks. It ran in headless Chrome with software rendering and no GPU, so FPS are far below what a real graphics card gives. Voice was tested with a simulated microphone, and the two players were linked by an in-page loopback, not a real network. Round costs are in the totals under <a href="cost/">The bill</a>. All are est.: Claude’s are reported by the tool, and Codex’s and DeepSeek’s are token-priced (list-price equivalents).{" Gemini 4 Argon’s are measured tokens × list price, billed to its paid Gemini API key" + (", and its release check ran on " + REL_AT if REL_AT else "") + "." if GEM else ""}</p></details>
   </div>
 </section>"""
 block = rebase(block, HOME_ROOT)  # fragment links are written from the site root

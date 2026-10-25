@@ -6,7 +6,8 @@ Rows (milestones) x columns (harnesses). A cell is a tagged build:
   v1 · v2 · Classic final (tag pre-assets) · Assets v2 (assets-v2-release) · Polish (polish-1, Codex only) · Co-op + voice (coop-voice-release)
 Tags are read read-only (git for-each-ref / rev-parse / archive) from /workspace/chopperman/axe-{claude,codex,deepseek} and, for Gemini, from
 /workspace/gemini-snap (the clone of its private remote that tools/refresh_gemini.sh keeps; the live driver's axe-gemini repo is never touched).
-Gemini is in progress: the first milestone it has not tagged yet shows its newest iter-N tag as a live "in progress" cell; later rows read "Not started".
+Gemini 4 Argon has tagged every milestone (coop-voice-release, 2026-10-25); the polish row is Codex-only ("No polish pass" for the other three). While a harness
+is still in progress, the first milestone it has not tagged yet shows its newest iter-N tag as a live "in progress" cell; later rows read "Not started".
 
 Shots: every cell is one frame captured the same way (tools/capture_milestone.mjs: 1280x800, software GL, load, one chop, +1.5 s) from
 `git archive <tag>` served on localhost, under the shared lock /workspace/chopperman/reports/.verify.lock. Raw PNGs are cached by commit in
@@ -90,13 +91,13 @@ def cost_to(h, at):
 
 
 def gem_where(c):
-    if not c.get('api'): return 'on a Google login, not billed'
-    return f'est. {usd(c["api"])} on a paid Gemini API key, est. {usd(c["login"])} on a Google login'
+    if not c.get('api'): return 'on a Google login'
+    return f'est. {usd(c["api"])} billed to a paid Gemini API key, est. {usd(c["login"])} on a Google login'
 
 
 def cost_short(h, c):
     if h == 'gemini': return f'est. {usd(c["total"])} cum.'
-    s = f'{usd(c["total"])} cum.'
+    s = f'est. {usd(c["total"])} cum.'
     if c['est']: s += f' · incl. est. {usd(c["est"])}'
     if c['balance']: s += f' · incl. {usd(c["balance"])} by balance'
     return s
@@ -110,7 +111,7 @@ def cost_long(h, c):
     if c['token_priced']: parts.append(f'{usd(c["token_priced"])} token-priced')
     if c['est']: parts.append(f'est. {usd(c["est"])}')
     if c['balance']: parts.append(f'{usd(c["balance"])} measured by balance')
-    return f'Cost to here: {usd(c["total"])} over {c["runs"]} game-build run{"" if c["runs"] == 1 else "s"} = ' + ' + '.join(parts) + '.'
+    return f'Cost to here: est. {usd(c["total"])} over {c["runs"]} game-build run{"" if c["runs"] == 1 else "s"} = ' + ' + '.join(parts) + '.'
 
 
 # ---------------- capture + derive ----------------
@@ -178,7 +179,7 @@ def build(capture_for):
         live_used = False
         for key, label, tag, short, long_ in ROWS:
             ti = tag_info(h, tag)
-            if key == 'polish' and h in ('claude', 'deepseek'):
+            if key == 'polish' and h != 'codex':   # the polish pass was a Codex-only extra
                 cells[key] = dict(state='na'); continue
             if not ti:
                 if h == 'gemini' and not live_used and key != 'polish':
@@ -221,7 +222,7 @@ def _cell(h, key, ti, alias, capture_for, live=False):
     try: meta = json.load(open(raw.replace('.png', '.json')))
     except Exception: pass
     hud = (meta.get('hud') or {})
-    gem_logged = h != 'gemini' or any(p.split()[0] == ti['tag'] for p in c.get('phases', []))
+    gem_logged = h != 'gemini' or not live   # only Gemini's live (untagged-yet) cell is a running "so far" figure
     return dict(tag=ti['tag'], iter=(it if it and it != ti['tag'] else None), commit=ti['commit'], at=ti['at'].isoformat(), at_text=fmt_at(ti['at']),
                 cost=c, cost_short=(cost_short(h, c) if gem_logged else f'est. {usd(c["total"])} logged so far'), cost_long=cost_long(h, c),
                 img=img, hud_min_px=hud.get('min'), hud_small=bool(hud.get('min') is not None and hud['min'] < 16), live=live)

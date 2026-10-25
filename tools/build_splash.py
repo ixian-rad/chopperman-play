@@ -42,10 +42,14 @@ one(r'<p class="flag flag--wide"><strong>What was reviewed:</strong>(.*?)</p>', 
 try: gem = json.load(open(f'{SITE}/data/gemini.json'))
 except Exception: gem = {}
 g_play = gem.get('playable') or {}
-g_rounds = ', '.join(gem.get('finished_rounds') or []) or 'none yet'
+# rounds in the site's own milestone names (data/milestones.json), not the driver's phase names
+try: _gc = json.load(open(f'{SITE}/data/milestones.json'))['harness']['gemini']['cells']
+except Exception: _gc = {}
+_RN = [('v1', 'v1'), ('v2', 'v2'), ('classic', 'classic final'), ('assets', 'Assets v2'), ('coop', 'co-op + voice chat')]
+g_rounds = ', '.join(n for k, n in _RN if (_gc.get(k) or {}).get('state') == 'ok') or ', '.join(gem.get('finished_rounds') or []) or 'none yet'
 g_build = f'<span class="mono">{E(g_play["commit"])} · {E(g_play["tag"])}</span>' if g_play.get('commit') else 'not playable yet'
 g_cost = f'est. ${gem["cost_usd_est"]:.2f}' if gem.get('cost_usd_est') is not None else None
-g_paren = (gem.get('note') or '').split('; NOT included')[0] or 'est.'   # billing split, from tools/runlog.gemini_billing_paren via data/gemini.json
+g_paren = (gem.get('billing_paren') or gem.get('note') or 'est.').split('; NOT included')[0].replace('est.: ', '')   # billing split, from tools/runlog.gemini_billing_paren via data/gemini.json
 G_DONE = (gem.get('status') or '').startswith('finished')
 
 PLAY_SVG = '<svg aria-hidden="true" viewBox="0 0 20 20"><path d="M5 3 L17 10 L5 17 Z"/></svg>'
@@ -73,17 +77,17 @@ gcard = f'''<article class="scard scard--wip" style="--hc:var(--h-gemini)" aria-
         <header class="scard__head">
           <div>
             <h3 class="scard__who" id="sc-gemini">Gemini 4 Argon</h3>
-            <p class="scard__title">Not reviewed yet</p>
+            <p class="scard__title">{"Not reviewed" if G_DONE else "Not reviewed yet"}</p>
           </div>
         </header>
         <p class="scard__wip"><span class="chip chip--live">{"Finished · co-op + voice" if G_DONE else "In progress"}</span></p>
         <p class="scard__verdict">{"Joined later and finished every round, including two-player co-op and voice chat, but it has not been reviewed, so there is no score. It got the same prompts in the same order as the other three." if G_DONE else "Joined later and still being built, so there is no score yet. It gets the same prompts in the same order as the other three."}</p>
-        <p class="scard__meta">Newest build: {g_build}. Finished rounds: {E(g_rounds)}.{((" Cost: " if G_DONE else " Cost so far: ") + "<strong>" + E(g_cost) + "</strong> (" + E(g_paren) + ").") if g_cost else ""}</p>
-        <p class="scard__links"><a href="milestones/?view=harness&amp;h=gemini">See its progress</a><a href="gemini/">{"Play co-op" if G_DONE else "Play latest"}<span class="sr-only"> Gemini build</span></a></p>
+        <p class="scard__meta">{"Final build" if G_DONE else "Newest build"}: {g_build}. Finished rounds: {E(g_rounds)}.{((" Cost: " if G_DONE else " Cost so far: ") + "<strong>" + E(g_cost) + "</strong> (" + E(g_paren) + ").") if g_cost else ""}</p>
+        <p class="scard__links"><a href="milestones/?view=harness&amp;h=gemini">See its progress</a><a href="gemini/">{"Play Gemini" if G_DONE else 'Play latest<span class="sr-only"> Gemini build</span>'}</a></p>
       </article>'''
 
 DESC = ('One brief, four AI coding harnesses: Codex, Claude Code, DeepSeek and Gemini 4 Argon each build the same backyard axe-chopping browser game '
-        + ('' if G_DONE else '(Gemini’s is still in progress). ') + 'Watch the intro, see how the Grain &amp; Gravity review scored them, then play the games.')
+        + ('(all four are finished, up to online co-op with voice chat). ' if G_DONE else '(Gemini’s is still in progress). ') + 'Watch the intro, see how the Grain &amp; Gravity review scored them, then play the games.')
 SPLASH_IDS = ['main', 'enter', 'watch', 'reviews-in-short']  # anchors on the splash itself; every other hash belongs to the main page
 
 page = f'''<!doctype html>

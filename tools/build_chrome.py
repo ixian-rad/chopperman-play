@@ -14,7 +14,7 @@ NAV = [  # key, label, href (from the site root), sheet sub-label
     ('cost', 'Cost &amp; log', 'cost/', 'what it cost, every run'),
     ('about', 'About', None, 'what this is'),
 ]
-QUICK = [('codex', 'Codex', 'btn--play'), ('claude', 'Claude', 'btn--play'), ('deepseek', 'DeepSeek', 'btn--play'), ('gemini', 'Gemini · WIP', 'btn--ghost')]
+QUICK = [('codex', 'Codex', 'btn--play'), ('claude', 'Claude', 'btn--play'), ('deepseek', 'DeepSeek', 'btn--play'), ('gemini', 'Gemini', 'btn--play')]
 news = json.load(open(f'{SITE}/data/news.json'))
 
 
@@ -59,14 +59,15 @@ def head(page, root):
 
 
 def foot(page, root):
-    play = ''.join(f'<li><a class="btn btn--ghost" href="{root}{h}/">Play {n}{" co-op" if h == "gemini" else " v2"}</a></li>' for h, n in [('codex', 'Codex'), ('claude', 'Claude'), ('deepseek', 'DeepSeek'), ('gemini', 'Gemini')])
-    classic = ' · '.join(f'<a href="{root}classic/{h}/">{n}</a>' for h, n in [('codex', 'Codex'), ('claude', 'Claude'), ('deepseek', 'DeepSeek')])
+    four = [('codex', 'Codex'), ('claude', 'Claude'), ('deepseek', 'DeepSeek'), ('gemini', 'Gemini')]
+    play = ''.join(f'<li><a class="btn btn--ghost" href="{root}{h}/">Play {n}</a></li>' for h, n in four)
+    classic = ' · '.join(f'<a href="{root}classic/{h}/">{n}</a>' for h, n in four)
     return f'''<footer class="footer" id="about">
   <div class="wrap footer__inner">
     <div class="footer__brand"><img src="{root}assets/brand/logo-mark.svg" alt="" width="96" height="96"></div>
     <div class="prose">
       <h2 class="h-small">What is this?</h2>
-      <p>Chopperman is an experiment comparing four AI coding harnesses: Codex CLI, Claude Code, the DeepSeek Harness and Gemini 4 Argon. Each got the same brief, build a backyard axe-chopping game for the browser, then the same follow-up prompts in the same order. Their games live side by side here, with their milestones, scores, reviews and build costs. Gemini 4 Argon joined later and has now finished every round, including co-op and voice chat; it has not been reviewed.</p>
+      <p>Chopperman is an experiment comparing four AI coding harnesses: Codex CLI, Claude Code, the DeepSeek Harness and Gemini 4 Argon. Each got the same brief, build a backyard axe-chopping game for the browser, then the same follow-up prompts in the same order. Their games live side by side here, with their milestones, scores, reviews and build costs. All four have finished every round, up to two-player co-op with proximity voice chat. Gemini 4 Argon joined later and has not been reviewed.</p>
       <p>The games need <strong>WebGL 2</strong>. A desktop browser with a mouse is recommended. Click inside a game to start its audio. Classic (pre-assets) builds: {classic}.</p>
       <p class="fine">Reviews by the Grain &amp; Gravity channel (“Axe sims, split by the numbers.”). Logo, illustrations and site design by Claude. Screenshots are captures of the games themselves. The key art of Sergey is AI-generated (GPT) illustration.</p>
       <p class="fine" id="refreshed">Last refreshed: <span data-refreshed>see the data files</span>.</p>

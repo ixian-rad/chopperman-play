@@ -1,8 +1,10 @@
 {
- "generated": "2026-10-25 09:54 EDT",
+ "generated": "2026-10-25 10:35 EDT",
  "status": "finished (not reviewed)",
- "basis": "Estimate. Gemini 4 Argon (high) ran through the Antigravity CLI, first on a Google login (8 runs, est. $13.91, not billed separately), then, once that login hit its usage limit, on a paid Gemini API key (14 runs, est. $53.55 billed). Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
- "note": "est.: $53.55 on a paid Gemini API key, $13.91 on a Google login; NOT included in data/costs.json totals",
+ "basis": "Estimate. Gemini 4 Argon (high) ran through the Antigravity CLI, first on a Google login (8 runs, est. $13.91), then, once that login hit its usage limit, on a paid Gemini API key (14 runs, est. $53.55 billed). Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
+ "note": "est.: $53.55 billed to a paid Gemini API key, $13.91 on a Google login",
+ "billing_paren": "est.: $53.55 billed to a paid Gemini API key, $13.91 on a Google login",
+ "in_costs_json": true,
  "billing": {
   "cost_usd_est_total": 67.46,
   "cost_usd_est_api_key": 53.55,

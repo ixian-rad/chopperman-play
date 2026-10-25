@@ -376,6 +376,7 @@ summary .kicker { margin: 0; }
 .costs td:first-child { font-family: var(--f-display); font-size: 1.25rem; }
 .costs tr.best td { background: rgba(143,214,148,.08); }
 .costs tr.best td:last-child { color: var(--good); }
+.costs tr.costs__total td { border-top: 3px solid var(--cedar); font-weight: 700; background: rgba(232,195,138,.06); }
 @media (max-width: 860px) {
   .costs, .costs tbody, .costs tr, .costs td { display: block; width: 100%; }
   .costs thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

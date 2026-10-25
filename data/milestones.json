@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-25 09:54 EDT",
+ "generated": "2026-10-25 10:35 EDT",
  "rows": [
   {
    "key": "v1",
@@ -57,8 +57,8 @@
       "balance": 0,
       "runs": 1
      },
-     "cost_short": "$0.76 cum.",
-     "cost_long": "Cost to here: $0.76 over 1 game-build run = $0.76 token-priced.",
+     "cost_short": "est. $0.76 cum.",
+     "cost_long": "Cost to here: est. $0.76 over 1 game-build run = $0.76 token-priced.",
      "img": "assets/milestones/codex/v1",
      "hud_min_px": 7,
      "hud_small": true,
@@ -79,8 +79,8 @@
       "balance": 0,
       "runs": 2
      },
-     "cost_short": "$1.59 cum.",
-     "cost_long": "Cost to here: $1.59 over 2 game-build runs = $1.59 token-priced.",
+     "cost_short": "est. $1.59 cum.",
+     "cost_long": "Cost to here: est. $1.59 over 2 game-build runs = $1.59 token-priced.",
      "img": "assets/milestones/codex/v2",
      "hud_min_px": 7,
      "hud_small": true,
@@ -94,15 +94,15 @@
      "at": "2026-10-22T12:54:49-04:00",
      "at_text": "Oct 22 12:54",
      "cost": {
-      "total": 9.1,
+      "total": 8.3,
       "reported": 0,
       "token_priced": 8.3,
-      "est": 0.8,
+      "est": 0,
       "balance": 0,
-      "runs": 13
+      "runs": 12
      },
-     "cost_short": "$9.10 cum. \u00b7 incl. est. $0.80",
-     "cost_long": "Cost to here: $9.10 over 13 game-build runs = $8.30 token-priced + est. $0.80.",
+     "cost_short": "est. $8.30 cum.",
+     "cost_long": "Cost to here: est. $8.30 over 12 game-build runs = $8.30 token-priced.",
      "img": "assets/milestones/codex/classic",
      "hud_min_px": 14,
      "hud_small": true,
@@ -116,15 +116,15 @@
      "at": "2026-10-22T19:23:00-04:00",
      "at_text": "Oct 22 19:23",
      "cost": {
-      "total": 17.62,
+      "total": 16.82,
       "reported": 0,
       "token_priced": 16.82,
-      "est": 0.8,
+      "est": 0,
       "balance": 0,
-      "runs": 16
+      "runs": 15
      },
-     "cost_short": "$17.62 cum. \u00b7 incl. est. $0.80",
-     "cost_long": "Cost to here: $17.62 over 16 game-build runs = $16.82 token-priced + est. $0.80.",
+     "cost_short": "est. $16.82 cum.",
+     "cost_long": "Cost to here: est. $16.82 over 15 game-build runs = $16.82 token-priced.",
      "img": "assets/milestones/codex/assets",
      "hud_min_px": 16,
      "hud_small": false,
@@ -138,15 +138,15 @@
      "at": "2026-10-23T01:44:38-04:00",
      "at_text": "Oct 23 01:44",
      "cost": {
-      "total": 21.09,
+      "total": 20.3,
       "reported": 0,
       "token_priced": 20.3,
-      "est": 0.8,
+      "est": 0,
       "balance": 0,
-      "runs": 17
+      "runs": 16
      },
-     "cost_short": "$21.09 cum. \u00b7 incl. est. $0.80",
-     "cost_long": "Cost to here: $21.09 over 17 game-build runs = $20.30 token-priced + est. $0.80.",
+     "cost_short": "est. $20.30 cum.",
+     "cost_long": "Cost to here: est. $20.30 over 16 game-build runs = $20.30 token-priced.",
      "img": "assets/milestones/codex/polish",
      "hud_min_px": 16,
      "hud_small": false,
@@ -160,15 +160,15 @@
      "at": "2026-10-23T21:48:02-04:00",
      "at_text": "Oct 23 21:48",
      "cost": {
-      "total": 24.87,
+      "total": 24.08,
       "reported": 0,
       "token_priced": 24.08,
-      "est": 0.8,
+      "est": 0,
       "balance": 0,
-      "runs": 20
+      "runs": 19
      },
-     "cost_short": "$24.87 cum. \u00b7 incl. est. $0.80",
-     "cost_long": "Cost to here: $24.87 over 20 game-build runs = $24.08 token-priced + est. $0.80.",
+     "cost_short": "est. $24.08 cum.",
+     "cost_long": "Cost to here: est. $24.08 over 19 game-build runs = $24.08 token-priced.",
      "img": "assets/milestones/codex/coop",
      "hud_min_px": 16,
      "hud_small": false,
@@ -287,8 +287,8 @@
       "balance": 0,
       "runs": 1
      },
-     "cost_short": "$6.35 cum.",
-     "cost_long": "Cost to here: $6.35 over 1 game-build run = $6.35 token-priced.",
+     "cost_short": "est. $6.35 cum.",
+     "cost_long": "Cost to here: est. $6.35 over 1 game-build run = $6.35 token-priced.",
      "img": "assets/milestones/claude/v1",
      "hud_min_px": 10,
      "hud_small": true,
@@ -309,8 +309,8 @@
       "balance": 0,
       "runs": 2
      },
-     "cost_short": "$23.91 cum.",
-     "cost_long": "Cost to here: $23.91 over 2 game-build runs = $17.55 reported + $6.35 token-priced.",
+     "cost_short": "est. $23.91 cum.",
+     "cost_long": "Cost to here: est. $23.91 over 2 game-build runs = $17.55 reported + $6.35 token-priced.",
      "img": "assets/milestones/claude/v2",
      "hud_min_px": 9,
      "hud_small": true,
@@ -331,8 +331,8 @@
       "balance": 0,
       "runs": 7
      },
-     "cost_short": "$39.28 cum.",
-     "cost_long": "Cost to here: $39.28 over 7 game-build runs = $27.74 reported + $11.54 token-priced.",
+     "cost_short": "est. $39.28 cum.",
+     "cost_long": "Cost to here: est. $39.28 over 7 game-build runs = $27.74 reported + $11.54 token-priced.",
      "img": "assets/milestones/claude/classic",
      "hud_min_px": 14,
      "hud_small": true,
@@ -346,15 +346,15 @@
      "at": "2026-10-22T22:18:24-04:00",
      "at_text": "Oct 22 22:18",
      "cost": {
-      "total": 85.07,
+      "total": 77.92,
       "reported": 66.39,
       "token_priced": 11.54,
-      "est": 7.15,
+      "est": 0,
       "balance": 0,
-      "runs": 12
+      "runs": 11
      },
-     "cost_short": "$85.07 cum. \u00b7 incl. est. $7.15",
-     "cost_long": "Cost to here: $85.07 over 12 game-build runs = $66.39 reported + $11.54 token-priced + est. $7.15.",
+     "cost_short": "est. $77.92 cum.",
+     "cost_long": "Cost to here: est. $77.92 over 11 game-build runs = $66.39 reported + $11.54 token-priced.",
      "img": "assets/milestones/claude/assets",
      "hud_min_px": 16,
      "hud_small": false,
@@ -371,15 +371,15 @@
      "at": "2026-10-23T21:36:08-04:00",
      "at_text": "Oct 23 21:36",
      "cost": {
-      "total": 102.32,
+      "total": 95.17,
       "reported": 83.63,
       "token_priced": 11.54,
-      "est": 7.15,
+      "est": 0,
       "balance": 0,
-      "runs": 15
+      "runs": 14
      },
-     "cost_short": "$102.32 cum. \u00b7 incl. est. $7.15",
-     "cost_long": "Cost to here: $102.32 over 15 game-build runs = $83.63 reported + $11.54 token-priced + est. $7.15.",
+     "cost_short": "est. $95.17 cum.",
+     "cost_long": "Cost to here: est. $95.17 over 14 game-build runs = $83.63 reported + $11.54 token-priced.",
      "img": "assets/milestones/claude/coop",
      "hud_min_px": 16,
      "hud_small": false,
@@ -435,8 +435,8 @@
       "balance": 0,
       "runs": 1
      },
-     "cost_short": "$0.14 cum.",
-     "cost_long": "Cost to here: $0.14 over 1 game-build run = $0.14 token-priced.",
+     "cost_short": "est. $0.14 cum.",
+     "cost_long": "Cost to here: est. $0.14 over 1 game-build run = $0.14 token-priced.",
      "img": "assets/milestones/deepseek/v1",
      "hud_min_px": 7,
      "hud_small": true,
@@ -457,8 +457,8 @@
       "balance": 0,
       "runs": 4
      },
-     "cost_short": "$0.61 cum.",
-     "cost_long": "Cost to here: $0.61 over 4 game-build runs = $0.61 token-priced.",
+     "cost_short": "est. $0.61 cum.",
+     "cost_long": "Cost to here: est. $0.61 over 4 game-build runs = $0.61 token-priced.",
      "img": "assets/milestones/deepseek/v2",
      "hud_min_px": 5.5,
      "hud_small": true,
@@ -479,8 +479,8 @@
       "balance": 0,
       "runs": 54
      },
-     "cost_short": "$7.46 cum.",
-     "cost_long": "Cost to here: $7.46 over 54 game-build runs = $7.46 token-priced.",
+     "cost_short": "est. $7.46 cum.",
+     "cost_long": "Cost to here: est. $7.46 over 54 game-build runs = $7.46 token-priced.",
      "img": "assets/milestones/deepseek/classic",
      "hud_min_px": 14,
      "hud_small": true,
@@ -494,15 +494,15 @@
      "at": "2026-10-22T22:39:57-04:00",
      "at_text": "Oct 22 22:39",
      "cost": {
-      "total": 9.03,
+      "total": 8.74,
       "reported": 0,
       "token_priced": 8.74,
       "est": 0,
-      "balance": 0.29,
-      "runs": 58
+      "balance": 0,
+      "runs": 57
      },
-     "cost_short": "$9.03 cum. \u00b7 incl. $0.29 by balance",
-     "cost_long": "Cost to here: $9.03 over 58 game-build runs = $8.74 token-priced + $0.29 measured by balance.",
+     "cost_short": "est. $8.74 cum.",
+     "cost_long": "Cost to here: est. $8.74 over 57 game-build runs = $8.74 token-priced.",
      "img": "assets/milestones/deepseek/assets",
      "hud_min_px": 16,
      "hud_small": false,
@@ -519,15 +519,15 @@
      "at": "2026-10-23T21:48:04-04:00",
      "at_text": "Oct 23 21:48",
      "cost": {
-      "total": 9.84,
+      "total": 9.55,
       "reported": 0,
       "token_priced": 9.55,
       "est": 0,
-      "balance": 0.29,
-      "runs": 61
+      "balance": 0,
+      "runs": 60
      },
-     "cost_short": "$9.84 cum. \u00b7 incl. $0.29 by balance",
-     "cost_long": "Cost to here: $9.84 over 61 game-build runs = $9.55 token-priced + $0.29 measured by balance.",
+     "cost_short": "est. $9.55 cum.",
+     "cost_long": "Cost to here: est. $9.55 over 60 game-build runs = $9.55 token-priced.",
      "img": "assets/milestones/deepseek/coop",
      "hud_min_px": 16,
      "hud_small": false,
@@ -803,7 +803,7 @@
       "login": 1.24
      },
      "cost_short": "est. $1.24 cum.",
-     "cost_long": "Cost to here: est. $1.24 over 1 run (measured tokens \u00d7 Gemini 4 Argon list price; on a Google login, not billed).",
+     "cost_long": "Cost to here: est. $1.24 over 1 run (measured tokens \u00d7 Gemini 4 Argon list price; on a Google login).",
      "img": "assets/milestones/gemini/v1",
      "hud_min_px": 10.56,
      "hud_small": true,
@@ -829,7 +829,7 @@
       "login": 3.56
      },
      "cost_short": "est. $3.56 cum.",
-     "cost_long": "Cost to here: est. $3.56 over 2 runs (measured tokens \u00d7 Gemini 4 Argon list price; on a Google login, not billed).",
+     "cost_long": "Cost to here: est. $3.56 over 2 runs (measured tokens \u00d7 Gemini 4 Argon list price; on a Google login).",
      "img": "assets/milestones/gemini/v2",
      "hud_min_px": 9.92,
      "hud_small": true,
@@ -867,8 +867,8 @@
       "api": 22.5,
       "login": 13.91
      },
-     "cost_short": "est. $36.41 logged so far",
-     "cost_long": "Cost to here: est. $36.41 over 15 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $22.50 on a paid Gemini API key, est. $13.91 on a Google login).",
+     "cost_short": "est. $36.41 cum.",
+     "cost_long": "Cost to here: est. $36.41 over 15 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $22.50 billed to a paid Gemini API key, est. $13.91 on a Google login).",
      "img": "assets/milestones/gemini/classic",
      "hud_min_px": 14,
      "hud_small": true,
@@ -909,15 +909,15 @@
       "api": 39.5,
       "login": 13.91
      },
-     "cost_short": "est. $53.41 logged so far",
-     "cost_long": "Cost to here: est. $53.41 over 18 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $39.50 on a paid Gemini API key, est. $13.91 on a Google login).",
+     "cost_short": "est. $53.41 cum.",
+     "cost_long": "Cost to here: est. $53.41 over 18 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $39.50 billed to a paid Gemini API key, est. $13.91 on a Google login).",
      "img": "assets/milestones/gemini/assets",
      "hud_min_px": 16,
      "hud_small": false,
      "live": false
     },
     "polish": {
-     "state": "todo"
+     "state": "na"
     },
     "coop": {
      "state": "ok",
@@ -958,8 +958,8 @@
       "api": 53.55,
       "login": 13.91
      },
-     "cost_short": "est. $67.46 logged so far",
-     "cost_long": "Cost to here: est. $67.46 over 22 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $53.55 on a paid Gemini API key, est. $13.91 on a Google login).",
+     "cost_short": "est. $67.46 cum.",
+     "cost_long": "Cost to here: est. $67.46 over 22 runs (measured tokens \u00d7 Gemini 4 Argon list price; est. $53.55 billed to a paid Gemini API key, est. $13.91 on a Google login).",
      "img": "assets/milestones/gemini/coop",
      "hud_min_px": 16,
      "hud_small": false,
