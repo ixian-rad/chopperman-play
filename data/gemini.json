@@ -1,10 +1,10 @@
 {
- "generated": "2026-10-24 16:03 EDT",
+ "generated": "2026-10-24 23:07 EDT",
  "status": "in progress",
  "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est., login-based, not billed; NOT included in data/costs.json totals",
- "driver_phase": "coop-attempt-1",
- "driver_updated_et": "2026-10-24 16:02:19 EDT",
+ "driver_phase": "coop-docs",
+ "driver_updated_et": "2026-10-24 22:35:25 EDT",
  "finished_rounds": [
   "v1",
   "v2",
@@ -17,7 +17,10 @@
   "v2-attempt-2",
   "v2-docs",
   "v2-final",
-  "coop-setup"
+  "coop-setup",
+  "coop-attempt-1",
+  "coop-docs",
+  "coop-ready"
  ],
  "playable": {
   "commit": "d8d75ca",
@@ -27,14 +30,14 @@
   "commit": "c4d6ded",
   "tag": "iter-9"
  },
- "runs": 18,
- "wall_h": 21.83,
- "input_uncached": 13285184,
- "input_cached": 133319542,
- "output": 1350570,
- "reasoning": 497247,
- "cost_usd_est": 53.41,
- "per_agent_hour_est": 2.45,
+ "runs": 21,
+ "wall_h": 27.42,
+ "input_uncached": 16689524,
+ "input_cached": 160151568,
+ "output": 1602955,
+ "reasoning": 614633,
+ "cost_usd_est": 65.42,
+ "per_agent_hour_est": 2.39,
  "runs_detail": [
   {
    "phase": "v1",
@@ -143,6 +146,24 @@
    "wall_s": 1785.0,
    "cost_usd_est": 1.6289,
    "result": "docs; verify ok"
+  },
+  {
+   "phase": "coop-v1 attempt-1",
+   "wall_s": 15819.0,
+   "cost_usd_est": 9.04,
+   "result": "quota exhausted"
+  },
+  {
+   "phase": "coop-v1 attempt-1",
+   "wall_s": 2086.0,
+   "cost_usd_est": 1.4788,
+   "result": "verify ok (v2 True, coop True); fps NJ/Tir 19.2/23.7; tests n/a"
+  },
+  {
+   "phase": "coop-v1 docs",
+   "wall_s": 2190.0,
+   "cost_usd_est": 1.4969,
+   "result": "docs; final verify FAIL; [coop] voice_distance_gain: timed out waiting for A gain node ~ curve(1 m) = 1.000 (last: false)"
   }
  ]
 }
