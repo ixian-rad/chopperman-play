@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-24 23:07 EDT",
+ "generated": "2026-10-25 00:08 EDT",
  "status": "in progress",
  "basis": "Estimate, not a charge. Gemini 4 Argon (high) ran through the Antigravity CLI on a Google login, so nothing was billed. Dollars = measured tokens from the CLI\u2019s own result usage x the Gemini 4 Argon list price: $2 per million uncached input, $0.10 per million cached input, $10 per million output (thinking included).",
  "note": "est., login-based, not billed; NOT included in data/costs.json totals",
@@ -30,14 +30,14 @@
   "commit": "c4d6ded",
   "tag": "iter-9"
  },
- "runs": 21,
- "wall_h": 27.42,
- "input_uncached": 16689524,
- "input_cached": 160151568,
- "output": 1602955,
- "reasoning": 614633,
- "cost_usd_est": 65.42,
- "per_agent_hour_est": 2.39,
+ "runs": 22,
+ "wall_h": 28.06,
+ "input_uncached": 16974417,
+ "input_cached": 169111506,
+ "output": 1659919,
+ "reasoning": 652532,
+ "cost_usd_est": 67.46,
+ "per_agent_hour_est": 2.4,
  "runs_detail": [
   {
    "phase": "v1",
@@ -164,6 +164,12 @@
    "wall_s": 2190.0,
    "cost_usd_est": 1.4969,
    "result": "docs; final verify FAIL; [coop] voice_distance_gain: timed out waiting for A gain node ~ curve(1 m) = 1.000 (last: false)"
+  },
+  {
+   "phase": "coop-v1 voice-attempt-1",
+   "wall_s": 2310.0,
+   "cost_usd_est": 2.0354,
+   "result": "verify ok (v2 True, coop --voice True); fps NJ/Tir 14.8/21.9; tests n/a; module pass 360 checks"
   }
  ]
 }
